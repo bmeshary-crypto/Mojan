@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../screens/coming_soon_screen.dart';
 import '../widgets/game_icons.dart';
 import 'ludo/ludo_screen.dart';
+import 'quiz/quiz_screen.dart';
 import 'seeko/seeko_screen.dart';
 import 'truth_dare/truth_dare_screen.dart';
 
@@ -41,7 +42,7 @@ class GameRegistry {
       players: '1-8',
       modes: const [PlayMode.rooms, PlayMode.vsComputer],
       iconBuilder: (_) => const QuizIcon(),
-      screenBuilder: (_, mode) => ComingSoonScreen(gameId: 'quiz', mode: mode),
+      screenBuilder: (_, mode) => QuizScreen(mode: mode),
     ),
     GameModule(
       id: 'truth_dare',
