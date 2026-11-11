@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../screens/coming_soon_screen.dart';
 import '../widgets/game_icons.dart';
 import 'ludo/ludo_screen.dart';
+import 'seeko/seeko_screen.dart';
 
 /// كل ألعاب MOJAN. لإضافة لعبة جديدة يكفي إضافة عنصر هنا.
 class GameRegistry {
@@ -25,10 +26,11 @@ class GameRegistry {
       title: 'سيكو',
       tagline: 'كوّن صف خمسة قبل خصمك',
       colors: const [Color(0xFF5CF2B5), AppColors.seeko, Color(0xFF0E9F64)],
-      players: '2-3',
+      players: '2-4',
       modes: const [PlayMode.vsComputer, PlayMode.local, PlayMode.online],
       iconBuilder: (_) => const SeekoIcon(),
-      screenBuilder: (_, mode) => ComingSoonScreen(gameId: 'seeko', mode: mode),
+      screenBuilder: (_, mode) =>
+          mode == PlayMode.online ? ComingSoonScreen(gameId: 'seeko', mode: mode) : SeekoScreen(mode: mode),
     ),
     GameModule(
       id: 'quiz',
