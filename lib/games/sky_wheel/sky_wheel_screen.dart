@@ -104,6 +104,7 @@ class _SkyWheelScreenState extends State<SkyWheelScreen> {
     if (_disposed) return;
     final p = Account.instance.profile;
     final pay = game.settle(_botPool, myName: p?.name ?? 'أنا', myAvatar: p?.avatar ?? 0);
+    Account.instance.recordSkyRound(bet: game.myTotal, won: pay);
     if (pay > 0) {
       Account.instance.earn(pay);
       Haptics.heavyImpact();

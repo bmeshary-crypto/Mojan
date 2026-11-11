@@ -39,7 +39,12 @@ const gameTitles = {
   'seeko': 'سيكو',
   'quiz': 'أسئلة وأجوبة',
   'truth_dare': 'صراحة أو جرأة',
+  'sky_wheel': 'عجلة السماء',
 };
+
+/// ألعاب الرهان بالعملات لا تدخل في مجموع المباريات والنقاط العام
+/// (نقاطها = العملات المربوحة، فتطغى على باقي الألعاب).
+const coinGames = {'sky_wheel'};
 
 final achievements = <Achievement>[
   Achievement('first_game', '🎮', 'البداية', 'العب أول مباراة', (p) => p.totalPlayed >= 1),
@@ -49,7 +54,7 @@ final achievements = <Achievement>[
   Achievement('seeko_5', '🃏', 'خبير سيكو', 'افز 5 مرات في سيكو', (p) => p.statsFor('seeko').wins >= 5),
   Achievement('quiz_5', '🧠', 'العبقري', 'افز 5 مسابقات أسئلة', (p) => p.statsFor('quiz').wins >= 5),
   Achievement('brave', '⚡', 'الجريء', 'العب 5 جولات صراحة أو جرأة', (p) => p.statsFor('truth_dare').played >= 5),
-  Achievement('all_games', '🌟', 'متعدد المواهب', 'العب كل الألعاب', (p) => gameTitles.keys.every((g) => p.statsFor(g).played > 0)),
+  Achievement('all_games', '🌟', 'متعدد المواهب', 'العب كل الألعاب', (p) => gameTitles.keys.where((g) => !coinGames.contains(g)).every((g) => p.statsFor(g).played > 0)),
   Achievement('level_5', '🚀', 'صاعد', 'صل للمستوى 5', (p) => p.level >= 5),
   Achievement('daily_7', '📅', 'وفيّ', 'اجمع الهدية اليومية 7 أيام متتالية', (p) => p.dailyStreak >= 7),
 ];
@@ -201,9 +206,11 @@ class PlayerProfile {
   final DateTime createdAt;
 
   GameStats statsFor(String game) => stats.putIfAbsent(game, GameStats.new);
-  int get totalPlayed => stats.values.fold(0, (a, s) => a + s.played);
-  int get totalWins => stats.values.fold(0, (a, s) => a + s.wins);
-  int get totalPoints => stats.values.fold(0, (a, s) => a + s.points);
+  Iterable<GameStats> get _skillStats =>
+      stats.entries.where((e) => !coinGames.contains(e.key)).map((e) => e.value);
+  int get totalPlayed => _skillStats.fold(0, (a, s) => a + s.played);
+  int get totalWins => _skillStats.fold(0, (a, s) => a + s.wins);
+  int get totalPoints => _skillStats.fold(0, (a, s) => a + s.points);
 
   /// المستوى: يحتاج المستوى n إلى 100 + 50×(n-1) نقطة خبرة.
   static (int level, int into, int need) levelOf(int xp) {
@@ -493,6 +500,18 @@ class Account extends ChangeNotifier {
     p.coins -= coins;
     _save();
     return true;
+  }
+
+  /// نتيجة جولة عجلة السماء: النقاط = العملات المربوحة (بدون مكافآت إضافية).
+  void recordSkyRound({required int bet, required int won}) {
+    final p = profile;
+    if (p == null || bet <= 0) return;
+    final s = p.statsFor('sky_wheel')
+      ..played += 1
+      ..points += won;
+    if (won > bet) s.wins += 1;
+    if (won > s.best) s.best = won;
+    _save();
   }
 
   void earn(int coins) {

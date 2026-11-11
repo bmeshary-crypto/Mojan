@@ -23,18 +23,23 @@ class Leaderboard {
   static List<LeaderEntry> build(PlayerProfile? me, {String? game, bool weekly = false}) {
     final seed = (game ?? 'all').codeUnits.fold(7, (a, c) => a * 31 + c) + (weekly ? 99 : 0);
     final r = Random(seed);
-    final scale = game == null ? 4.0 : 1.0;
+    final coinGame = coinGames.contains(game);
+    final scale = game == null ? 4.0 : (coinGame ? 120.0 : 1.0);
     final list = <LeaderEntry>[
       for (var i = 0; i < _rivalNames.length; i++)
         LeaderEntry(
           name: _rivalNames[i],
           avatar: (i * 5 + seed) % avatars.length,
           points: ((weekly ? 400 : 2500) * scale * pow(.88, i) * (0.85 + r.nextDouble() * .3)).round(),
-          wins: ((weekly ? 4 : 25) * scale * pow(.9, i)).round() + r.nextInt(3),
+          wins: ((weekly ? 4 : 25) * (coinGame ? 3 : scale) * pow(.9, i)).round() + r.nextInt(3),
         ),
     ];
     if (me != null) {
-      final points = game == null ? me.totalPoints + me.totalWins * 100 : me.statsFor(game).points + me.statsFor(game).wins * 100;
+      final points = game == null
+          ? me.totalPoints + me.totalWins * 100
+          : coinGame
+              ? me.statsFor(game).points
+              : me.statsFor(game).points + me.statsFor(game).wins * 100;
       final wins = game == null ? me.totalWins : me.statsFor(game).wins;
       list.add(LeaderEntry(name: me.name, avatar: me.avatar, points: points, wins: wins, isMe: true));
     }

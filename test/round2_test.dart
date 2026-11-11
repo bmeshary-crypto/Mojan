@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mojan/core/account/account.dart';
 import 'package:mojan/core/admin/admin.dart';
+import 'package:mojan/core/account/leaderboard.dart';
 import 'package:mojan/core/shop.dart';
 import 'package:mojan/core/theme.dart';
 import 'package:mojan/core/voice/voice.dart';
@@ -236,6 +237,19 @@ void main() {
     AdminService.instance.grantCoins(1000000);
     expect(acc.profile!.coins, before + 1000000);
     expect(AdminService.instance.log.first, contains('1000000'));
+  });
+
+  test('sky wheel rounds feed their own leaderboard, not the overall totals', () {
+    acc.recordSkyRound(bet: 100, won: 4500);
+    acc.recordSkyRound(bet: 100, won: 0);
+    final st = acc.profile!.statsFor('sky_wheel');
+    expect(st.played, 2);
+    expect(st.wins, 1);
+    expect(st.points, 4500);
+    expect(acc.profile!.totalPlayed, 0);
+    final lb = Leaderboard.build(acc.profile, game: 'sky_wheel');
+    expect(lb.firstWhere((e) => e.isMe).points, 4500);
+    expect(gameTitles['sky_wheel'], 'عجلة السماء');
   });
 
   test('profile bio and posts persist', () {
