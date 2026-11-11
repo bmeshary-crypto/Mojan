@@ -65,6 +65,15 @@ class AdminService extends ChangeNotifier {
 
   static String _hm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
+  /// شحن رصيد تجريبي لحساب اللاعب الحالي (للتجربة فقط قبل ربط السيرفر).
+  void grantCoins(int amount) {
+    final p = Account.instance.profile;
+    if (p == null || amount <= 0) return;
+    Account.instance.earn(amount);
+    _audit('شحن $amount عملة تجريبية لحساب ${p.name}');
+    notifyListeners();
+  }
+
   /// إلغاء مباراة وإرجاع الرهان للاعبين.
   void voidMatch(LiveMatch m) {
     m.status = 'voided';

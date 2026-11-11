@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mojan/core/account/account.dart';
+import 'package:mojan/core/admin/admin.dart';
 import 'package:mojan/core/shop.dart';
 import 'package:mojan/core/theme.dart';
 import 'package:mojan/core/voice/voice.dart';
@@ -228,6 +229,13 @@ void main() {
     await tapKey(tester, 'btn-speaker', 300);
     expect(svc.speakerOn, isFalse);
     await finish(tester);
+  });
+
+  test('admin can grant test coins to my account', () {
+    final before = acc.profile!.coins;
+    AdminService.instance.grantCoins(1000000);
+    expect(acc.profile!.coins, before + 1000000);
+    expect(AdminService.instance.log.first, contains('1000000'));
   });
 
   test('profile bio and posts persist', () {

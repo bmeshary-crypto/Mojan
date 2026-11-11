@@ -689,7 +689,48 @@ class _UsersState extends State<_Users> {
     final admin = AdminService.instance;
     final banned = VoiceService.instance.bannedUsers;
     final users = admin.users.where((u) => u.contains(_q)).toList();
+    final me = Account.instance.profile;
     return _list([
+      if (me != null)
+        _card(
+          border: AppColors.gold,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const CoinIcon(size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('رصيد تجريبي لحسابي (${me.name})',
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
+                ),
+                ListenableBuilder(
+                  listenable: Account.instance,
+                  builder: (_, _) => Text('${Account.instance.profile?.coins ?? 0}',
+                      key: const ValueKey('grant-balance'),
+                      style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.gold)),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final n in const [10000, 100000, 1000000])
+                  FilledButton(
+                    key: ValueKey('grant-$n'),
+                    style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
+                    onPressed: () {
+                      admin.grantCoins(n);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        behavior: SnackBarBehavior.floating,
+                        content: Text('تمت إضافة $n عملة لحسابك ✅'),
+                      ));
+                    },
+                    child: Text('+$n', style: const TextStyle(fontWeight: FontWeight.w900)),
+                  ),
+              ]),
+            ],
+          ),
+        ),
+      const SizedBox(height: 10),
       TextField(
         key: const ValueKey('user-search'),
         onChanged: (v) => setState(() => _q = v.trim()),
