@@ -7,6 +7,9 @@ import '../core/theme.dart';
 import '../games/game_registry.dart';
 import '../widgets/account_widgets.dart';
 import '../widgets/bouncy_button.dart';
+import '../core/voice/voice.dart';
+import 'voice/voice_home.dart';
+import 'voice/voice_room_screen.dart';
 
 /// تبويب "الغرف": الانضمام برمز، إنشاء غرفة لكل لعبة، والغرف العامة.
 class RoomsTab extends StatefulWidget {
@@ -27,6 +30,12 @@ class _RoomsTabState extends State<RoomsTab> {
 
   void _join() {
     if (_code.text.length != 6) return;
+    VoiceService.instance.ensureDemo();
+    final room = VoiceService.instance.byId(_code.text);
+    if (room != null) {
+      openVoiceRoom(context, room);
+      return;
+    }
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -66,13 +75,48 @@ class _RoomsTabState extends State<RoomsTab> {
     );
   }
 
+  bool _voice = true;
+
   @override
   Widget build(BuildContext context) {
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Row(children: [
+          Text('الغرف', style: AppTheme.display.copyWith(fontSize: 30)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              _seg('rooms-voice', '🎙️ صوتية', _voice, () => setState(() => _voice = true)),
+              _seg('rooms-games', '🎮 ألعاب', !_voice, () => setState(() => _voice = false)),
+            ]),
+          ),
+        ]),
+      ),
+      Expanded(child: _voice ? const VoiceHome() : _gamesBody(context)),
+    ]);
+  }
+
+  Widget _seg(String key, String label, bool on, VoidCallback onTap) => GestureDetector(
+        key: ValueKey(key),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: 250.ms,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            gradient: on ? const LinearGradient(colors: [Color(0xFF8E6CFF), Color(0xFFFF4D9D)]) : null,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(label, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: on ? Colors.white : AppColors.textMuted)),
+        ),
+      );
+
+  Widget _gamesBody(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
       children: [
-        Text('الغرف', style: AppTheme.display.copyWith(fontSize: 30)),
-        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(

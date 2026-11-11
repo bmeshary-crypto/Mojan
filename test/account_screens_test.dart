@@ -57,6 +57,9 @@ void main() {
     // الغرف
     await tester.tap(find.text('الغرف'));
     await wait(tester);
+    expect(find.text('اكتشف غرف جديدة'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('rooms-games')));
+    await wait(tester);
     expect(find.text('انضم لغرفة صديق'), findsOneWidget);
     await tester.enterText(find.byKey(const ValueKey('room-code')), '123456');
     await wait(tester, 200);

@@ -79,6 +79,19 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('leaving any unfinished game asks first; cancel keeps playing', (tester) async {
+    await openLudo(tester, PlayMode.local);
+    await tapKey(tester, 'ludo-start', 800);
+    await tapKey(tester, 'ludo-setup', 600);
+    expect(find.text('هل فعلاً تود الانسحاب من اللعب؟'), findsOneWidget);
+    await tapKey(tester, 'cancel-leave', 600);
+    expect(find.byKey(const ValueKey('ludo-dice')), findsWidgets);
+    await tapKey(tester, 'ludo-back', 600);
+    expect(find.text('هل فعلاً تود الانسحاب من اللعب؟'), findsOneWidget);
+    await tapKey(tester, 'confirm-leave', 800);
+    await finish(tester);
+  });
+
   testWidgets('local 4 player quick game plays to the end', (tester) async {
     await openLudo(tester, PlayMode.local);
     await tapKey(tester, 'ludo-players-4');
@@ -160,7 +173,7 @@ void main() {
     expect(acc.profile!.coins, 300);
     await tester.pump(const Duration(seconds: 3));
     await tapKey(tester, 'ludo-back', 600);
-    expect(find.text('تنسحب من المباراة؟'), findsOneWidget);
+    expect(find.text('هل فعلاً تود الانسحاب من اللعب؟'), findsOneWidget);
     await tapKey(tester, 'confirm-leave', 800);
     expect(acc.profile!.statsFor('ludo').played, 1);
     expect(acc.profile!.statsFor('ludo').wins, 0);

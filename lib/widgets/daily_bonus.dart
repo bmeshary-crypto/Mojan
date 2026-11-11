@@ -6,6 +6,9 @@ import '../core/haptics.dart';
 import '../core/shop.dart';
 import '../core/theme.dart';
 
+/// صور هدايا الأيام السبعة.
+const _dailyArt = ['coins_1', 'coins_2', 'item_shield', 'chest_free', 'dice_gold', 'coins_3', 'gift_crown'];
+
 /// نافذة البونص اليومي: تقويم 7 أيام بجوائز متصاعدة.
 Future<void> showDailyBonus(BuildContext context) => showDialog(
       context: context,
@@ -65,7 +68,10 @@ class _DailyBonusDialogState extends State<DailyBonusDialog> {
                   color: current ? AppColors.bgTop : AppColors.textMuted,
                 )),
             const SizedBox(height: 2),
-            Text(g.emoji, style: TextStyle(fontSize: wide ? 36 : 28)),
+            Image.asset('assets/images/${_dailyArt[i]}.webp',
+                width: wide ? 56 : 42,
+                height: wide ? 56 : 42,
+                errorBuilder: (_, _, _) => Text(g.emoji, style: TextStyle(fontSize: wide ? 36 : 28))),
             const SizedBox(height: 2),
             FittedBox(
               child: Text(g.label,

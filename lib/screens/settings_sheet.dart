@@ -4,8 +4,9 @@ import '../core/account/account.dart';
 import '../core/account/auth_backend.dart';
 import '../core/theme.dart';
 import 'login_screen.dart';
+import 'admin/admin_screen.dart';
 
-const appVersion = '0.5.0';
+const appVersion = '0.7.0';
 
 /// الإعدادات: الاهتزاز، اللغة، الخصوصية، عن التطبيق، تسجيل الخروج.
 Future<void> showSettingsSheet(BuildContext context) {
@@ -96,6 +97,16 @@ Future<void> showSettingsSheet(BuildContext context) {
                     'منصة ألعاب جماعية: لودو، سيكو، أسئلة وأجوبة، وصراحة أو جرأة. والمزيد قريباً.'
                         '${authBackend.isDemo ? '\n\nتسجيل الدخول يعمل حالياً في وضع التجربة حتى ربط السيرفر.' : ''}',
                   ),
+                ),
+                ListTile(
+                  key: const ValueKey('open-admin'),
+                  leading: const Icon(Icons.admin_panel_settings_rounded, color: AppColors.gold),
+                  title: const Text(
+                    'لوحة تحكم الإدارة',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  trailing: const Icon(Icons.chevron_left_rounded),
+                  onTap: () => openAdmin(ctx),
                 ),
                 if (acc.signedIn) ...[
                   const Divider(color: Colors.white12),

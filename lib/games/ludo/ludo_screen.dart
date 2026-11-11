@@ -408,7 +408,7 @@ class _ItemBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (_, _, icon, color) = itemInfo[item]!;
+    final color = itemInfo[item]!.$4;
     return Opacity(
       opacity: enabled || active ? 1 : .4,
       child: SizedBox(
@@ -423,11 +423,13 @@ class _ItemBadge extends StatelessWidget {
               height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: RadialGradient(colors: [Color.lerp(color, Colors.white, .35)!, color]),
-                border: Border.all(color: active ? Colors.white : Colors.black26, width: active ? 3 : 2),
-                boxShadow: [BoxShadow(color: color.withValues(alpha: active ? .9 : .4), blurRadius: active ? 16 : 8)],
+                boxShadow: [BoxShadow(color: color.withValues(alpha: active ? .9 : .25), blurRadius: active ? 18 : 6)],
               ),
-              child: Icon(icon, color: Colors.white, size: size * .55),
+              child: active
+                  ? ItemArt(item: item, size: size)
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .scaleXY(begin: 1, end: 1.12, duration: 500.ms)
+                  : ItemArt(item: item, size: size),
             ),
           ),
           Positioned(
@@ -606,6 +608,7 @@ class _LudoTableState extends State<_LudoTable> {
   LudoToken? _hopping;
   bool _disposed = false;
   bool _over = false;
+  bool _leaving = false;
 
   bool get _solo => widget.humans.length == 1;
   bool get _humanTurn => widget.humans.contains(game.current);
@@ -871,38 +874,67 @@ class _LudoTableState extends State<_LudoTable> {
     );
   }
 
-  Future<void> _leave() async {
-    if (s.entry > 0 && !_over && _solo) {
+  /// سؤال الانسحاب يظهر دائماً أثناء المباراة. [toSetup] يرجع لشاشة الإعداد بدل الخروج.
+  Future<void> _leave({bool toSetup = false}) async {
+    if (!_over && _leaving) return;
+    if (!_over) {
+      _leaving = true;
+      final bet = s.entry > 0 && _solo;
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.surface,
-          title: const Text('تنسحب من المباراة؟', style: TextStyle(fontWeight: FontWeight.w900)),
-          content: Text('ستخسر رسوم الدخول (${s.entry} عملة).'),
+          icon: const Icon(Icons.exit_to_app_rounded, color: Color(0xFFFF7A7A), size: 44),
+          title: const Text('هل فعلاً تود الانسحاب من اللعب؟',
+              textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900)),
+          content: Text(
+            bet
+                ? 'المباراة ما خلصت، وإذا انسحبت تخسر رسوم الدخول (${s.entry} عملة) وتنحسب خسارة.'
+                : _solo
+                    ? 'المباراة ما خلصت، وإذا انسحبت تنحسب خسارة.'
+                    : 'المباراة ما خلصت، وإذا انسحبت تضيع اللعبة على الجميع.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(height: 1.6),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('أكمل اللعب')),
             FilledButton(
+              key: const ValueKey('cancel-leave'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.seeko, foregroundColor: AppColors.bgTop),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('أكمل اللعب', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+            OutlinedButton(
               key: const ValueKey('confirm-leave'),
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF5A5F)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFFF7A7A),
+                side: const BorderSide(color: Color(0xFFFF7A7A)),
+              ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('انسحب', style: TextStyle(fontWeight: FontWeight.w900)),
+              child: const Text('نعم، انسحب', style: TextStyle(fontWeight: FontWeight.w900)),
             ),
           ],
         ),
       );
+      _leaving = false;
       if (ok != true || !mounted) return;
-      Account.instance.recordGame('ludo', won: false);
+      if (_solo) Account.instance.recordGame('ludo', won: false);
       // نسمح بالخروج بعد التأكيد (حتى لا يظهر السؤال مرة ثانية)
       setState(() => _over = true);
       await WidgetsBinding.instance.endOfFrame;
     }
-    if (mounted) Navigator.maybePop(context);
+    if (!mounted) return;
+    if (toSetup) {
+      widget.onSetup();
+    } else {
+      Navigator.maybePop(context);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: s.entry == 0 || _over || !_solo,
+      canPop: _over,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _leave();
       },
@@ -925,8 +957,9 @@ class _LudoTableState extends State<_LudoTable> {
               ),
               if (s.entry == 0)
                 IconButton(
+                  key: const ValueKey('ludo-setup'),
                   tooltip: 'إعدادات اللعبة',
-                  onPressed: widget.onSetup,
+                  onPressed: () => _leave(toSetup: true),
                   icon: const Icon(Icons.tune_rounded),
                 ),
             ]),
@@ -1109,7 +1142,7 @@ class _LudoTableState extends State<_LudoTable> {
   Widget _dice(bool isHuman) {
     final canTap = isHuman && !_busy && game.phase == LudoPhase.waitingRoll;
     final skin = isHuman && (_solo || widget.humans.length > 1) ? _diceSkin : 'classic';
-    Widget d = DiceFace(value: _diceFace, size: 46, skin: skin);
+    Widget d = _rolling ? DiceArt(skin: skin, size: 50) : DiceFace(value: _diceFace, size: 46, skin: skin);
     if (_rolling) {
       d = d
           .animate(onPlay: (c) => c.repeat())

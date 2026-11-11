@@ -368,3 +368,47 @@ class DiceFace extends StatelessWidget {
     );
   }
 }
+
+/// صورة النرد ثلاثية الأبعاد للسكن (للمتجر والحقيبة وأثناء الرمي).
+class DiceArt extends StatelessWidget {
+  const DiceArt({super.key, this.skin = 'classic', required this.size});
+  final String skin;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: size,
+        height: size,
+        child: Image.asset(
+          'assets/images/dice_$skin.webp',
+          fit: BoxFit.contain,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, _, _) => DiceFace(value: 6, size: size * .8, skin: skin),
+        ),
+      );
+}
+
+/// أيقونة أداة الباور المرسومة.
+class ItemArt extends StatelessWidget {
+  const ItemArt({super.key, required this.item, required this.size});
+  final LudoItem item;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final (_, _, icon, color) = itemInfo[item]!;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Image.asset(
+        'assets/images/item_${item.name}.webp',
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => Container(
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          child: Icon(icon, color: Colors.white, size: size * .55),
+        ),
+      ),
+    );
+  }
+}

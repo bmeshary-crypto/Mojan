@@ -171,6 +171,14 @@ class _ShopScreenState extends State<ShopScreen> {
         child: Text(t, style: AppTheme.display.copyWith(fontSize: 20)),
       );
 
+  Widget _art(String name, double size) => Image.asset(
+        'assets/images/$name.webp',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => SizedBox(width: size, height: size, child: const Icon(Icons.card_giftcard_rounded)),
+      );
+
   // ---------- العملات ----------
   Widget _coinsTab(PlayerProfile p) {
     final acc = Account.instance;
@@ -182,7 +190,7 @@ class _ShopScreenState extends State<ShopScreen> {
       GlassCard(
         color: ready ? AppColors.gold.withValues(alpha: .16) : null,
         child: Row(children: [
-          Text(ready ? '🧰' : '⏳', style: const TextStyle(fontSize: 40))
+          Opacity(opacity: ready ? 1 : .55, child: _art('chest_free', 56))
               .animate(onPlay: (c) => ready ? c.repeat(reverse: true) : null)
               .rotate(begin: -.02, end: ready ? .02 : -.02, duration: 300.ms),
           const SizedBox(width: 12),
@@ -253,7 +261,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   border: Border.all(color: AppColors.gold.withValues(alpha: .4)),
                 ),
                 child: Column(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  Text(const ['🪙', '💰', '👜', '🏦'][i], style: const TextStyle(fontSize: 38)),
+                  Expanded(child: _art('coins_${i + 1}', 90)),
                   Text('$coins', style: AppTheme.display.copyWith(fontSize: 24, color: AppColors.gold)),
                   Container(
                     width: double.infinity,
@@ -365,7 +373,7 @@ class _ShopScreenState extends State<ShopScreen> {
         for (final name in diceSkins.keys)
           _skinCard(
             key: ValueKey('skin-dice.$name'),
-            preview: DiceFace(value: 6, size: 54, skin: name)
+            preview: DiceArt(skin: name, size: 74)
                 .animate(onPlay: (c) => c.repeat(reverse: true))
                 .rotate(begin: -.02, end: .02, duration: 1200.ms),
             title: 'نرد ${_skinNames[name]}',
@@ -445,19 +453,7 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
-  Widget _itemIcon(LudoItem i, {double size = 52}) {
-    final (_, _, icon, color) = itemInfo[i]!;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: [Color.lerp(color, Colors.white, .35)!, color]),
-        boxShadow: [BoxShadow(color: color.withValues(alpha: .5), blurRadius: 10)],
-      ),
-      child: Icon(icon, color: Colors.white, size: size * .55),
-    );
-  }
+  Widget _itemIcon(LudoItem i, {double size = 56}) => ItemArt(item: i, size: size);
 
   Widget _itemsTab(PlayerProfile p) {
     final bundle = shopItem('bundle.power');
@@ -486,7 +482,7 @@ class _ShopScreenState extends State<ShopScreen> {
           decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(18)),
           child: _itemRow(
             key: const ValueKey('buy-bundle.power'),
-            icon: const Text('⚡', style: TextStyle(fontSize: 44)),
+            icon: _art('bundle_power', 60),
             title: bundle.title,
             desc: '${bundle.description}، توفّر ${3 * (300 + 500 + 400) - bundle.price} عملة',
             price: bundle.price,
@@ -528,7 +524,7 @@ class _ShopScreenState extends State<ShopScreen> {
           _skinCard(
             key: ValueKey('bag-$id'),
             preview: id.startsWith('dice.')
-                ? DiceFace(value: 5, size: 50, skin: id.split('.').last)
+                ? DiceArt(skin: id.split('.').last, size: 64)
                 : AspectRatio(
                     aspectRatio: 1,
                     child: ClipRRect(

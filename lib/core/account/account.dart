@@ -54,6 +54,16 @@ final achievements = <Achievement>[
   Achievement('daily_7', '📅', 'وفيّ', 'اجمع الهدية اليومية 7 أيام متتالية', (p) => p.dailyStreak >= 7),
 ];
 
+/// مباراة منتهية في سجل الجهاز.
+class MatchRecord {
+  const MatchRecord({required this.game, required this.player, required this.won, required this.points, required this.at});
+  final String game;
+  final String player;
+  final bool won;
+  final int points;
+  final DateTime at;
+}
+
 /// الصور الرمزية المتاحة (رمز + لون).
 const avatars = [
   ('🦁', 0xFFFFB13D),
@@ -298,6 +308,9 @@ class Account extends ChangeNotifier {
     await _save();
   }
 
+  /// سجل مباريات هذا الجهاز (تعرضه لوحة الأدمن).
+  final List<MatchRecord> matchLog = [];
+
   /// يسجل نتيجة مباراة ويرجع المكافأة. لا يفعل شيئاً إن لم يكن هناك حساب.
   Reward? recordGame(String game, {required bool won, int points = 0}) {
     final p = profile;
@@ -307,6 +320,9 @@ class Account extends ChangeNotifier {
       ..points += points;
     if (won) s.wins += 1;
     if (points > s.best) s.best = points;
+
+    matchLog.insert(0, MatchRecord(game: game, player: p.name, won: won, points: points, at: DateTime.now()));
+    if (matchLog.length > 100) matchLog.removeLast();
 
     final before = p.level;
     final int xp = (won ? 60 : 20) + min<int>(points ~/ 200, 40);
@@ -451,6 +467,7 @@ class Account extends ChangeNotifier {
   @visibleForTesting
   void reset() {
     profile = null;
+    matchLog.clear();
     haptics = true;
     sounds = true;
   }
