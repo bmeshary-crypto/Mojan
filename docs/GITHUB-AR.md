@@ -13,6 +13,8 @@
 
 رفع الملفات من موقع GitHub مباشرة محدود بـ 100 ملف في المرة، والمشروع فيه حوالي 230 ملفاً، لذلك برنامج GitHub Desktop أسهل.
 
+0. في `D:\Mojan` اضغط بالزر الأيمن على `mojan-source.zip` ← **Extract All** ← واختر `D:\Mojan\mojan-source`.
+   تأكد أن داخل المجلد مباشرة ملفات مثل `pubspec.yaml` ومجلد `.github`.
 1. أنشئ حساباً على https://github.com إن لم يكن عندك.
 2. نزّل GitHub Desktop من https://desktop.github.com وسجل دخولك فيه.
 3. في البرنامج: **File ← Add local repository** واختر المجلد `D:\Mojan\mojan-source`.
@@ -38,7 +40,7 @@
 
 ## بديل سريع بدون GitHub (للتجربة فقط)
 
-المجلد `D:\Mojan\web-ready` هو نسخة ويب جاهزة مبنية.
+فك ضغط `D:\Mojan\web-ready.zip` إلى مجلد `web-ready`، فهو نسخة ويب جاهزة مبنية.
 تقدر تسحبه كما هو إلى https://app.netlify.com/drop فيعطيك رابطاً خلال ثوانٍ.
 هذا البديل لا يتحدث تلقائياً؛ كل نسخة جديدة تسحبها من جديد.
 
