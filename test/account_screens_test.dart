@@ -34,6 +34,7 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     Account.instance.reset();
+    debugSetDailyPopupShown(true);
   });
 
   testWidgets('guest sign-in, tabs, profile edits, daily reward, settings and sign out', (tester) async {
@@ -78,8 +79,14 @@ void main() {
     await wait(tester, 1200);
     expect(find.text('نورة'), findsWidgets);
     await tester.tap(find.byKey(const ValueKey('claim-daily')));
-    await wait(tester, 500);
-    expect(acc.profile!.coins, 600);
+    await wait(tester, 600);
+    expect(find.byKey(const ValueKey('daily-day-7')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('daily-claim')));
+    await wait(tester, 800);
+    expect(acc.profile!.coins, 800);
+    expect(find.byKey(const ValueKey('daily-got')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('daily-claim')));
+    await wait(tester, 600);
     expect(find.byKey(const ValueKey('claim-daily')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('edit-name')));

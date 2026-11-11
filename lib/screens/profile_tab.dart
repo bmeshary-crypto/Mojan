@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/account/account.dart';
+import '../widgets/daily_bonus.dart';
+import 'shop_screen.dart';
 import '../core/theme.dart';
 import '../games/game_registry.dart';
 import '../widgets/account_widgets.dart';
@@ -265,6 +267,30 @@ class ProfileTab extends StatelessWidget {
             ).animate().fadeIn(delay: 100.ms),
             const SizedBox(height: 14),
             const DailyRewardCard(),
+            const SizedBox(height: 10),
+            GlassCard(
+              child: InkWell(
+                key: const ValueKey('profile-shop'),
+                onTap: () => openShop(context, tab: 3),
+                child: const Row(
+                  children: [
+                    Text('🎒', style: TextStyle(fontSize: 32)),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('المتجر والحقيبة', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                          Text('سكنات النرد واللوح وأدوات الباور',
+                              style: TextStyle(color: AppColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_left_rounded),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 20),
             Text(
               'إحصائيات الألعاب',
@@ -460,7 +486,7 @@ class DailyRewardCard extends StatelessWidget {
                 ),
                 Text(
                   available
-                      ? 'اجمعها كل يوم لتكبر (حتى 700 عملة)'
+                      ? 'هدية اليوم ${acc.nextDailyIndex + 1} من 7 جاهزة'
                       : 'رجع بكرة! السلسلة: ${p.dailyStreak} يوم',
                   style: const TextStyle(
                     color: AppColors.textMuted,
@@ -478,20 +504,7 @@ class DailyRewardCard extends StatelessWidget {
                 backgroundColor: AppColors.gold,
                 foregroundColor: AppColors.bgTop,
               ),
-              onPressed: () {
-                final got = acc.claimDaily();
-                if (got != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      behavior: SnackBarBehavior.floating,
-                      content: Text(
-                        'حصلت على $got عملة! 🎉',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  );
-                }
-              },
+              onPressed: () => showDailyBonus(context),
               child: const Text(
                 'اجمع',
                 style: TextStyle(fontWeight: FontWeight.w900),

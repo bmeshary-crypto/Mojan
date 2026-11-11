@@ -15,6 +15,15 @@ import 'leaderboard_tab.dart';
 import 'profile_tab.dart';
 import 'rooms_tab.dart';
 import 'settings_sheet.dart';
+import 'shop_screen.dart';
+import '../widgets/daily_bonus.dart';
+
+/// يظهر البونص اليومي تلقائياً مرة واحدة في كل تشغيل.
+bool _dailyShown = false;
+
+/// للاختبارات: إيقاف أو إعادة النافذة التلقائية للبونص.
+@visibleForTesting
+void debugSetDailyPopupShown(bool shown) => _dailyShown = shown;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,6 +34,19 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0;
+
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _dailyShown || !Account.instance.dailyAvailable) return;
+      _dailyShown = true;
+      Future.delayed(const Duration(milliseconds: 900), () {
+        if (mounted && Account.instance.dailyAvailable) showDailyBonus(context);
+      });
+    });
+  }
 
   Future<void> _openGame(GameModule game) async {
     final mode = await showModeSheet(context, game);
@@ -64,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: _TopBar(
                             onProfile: () => setState(() => _tab = 3),
                             onSettings: () => showSettingsSheet(context),
+                            onShop: () => openShop(context),
                           ),
                         ),
                       ),
@@ -158,9 +181,10 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onProfile, required this.onSettings});
+  const _TopBar({required this.onProfile, required this.onSettings, required this.onShop});
   final VoidCallback onProfile;
   final VoidCallback onSettings;
+  final VoidCallback onShop;
 
   @override
   Widget build(BuildContext context) {
@@ -206,9 +230,10 @@ class _TopBar extends StatelessWidget {
                 const SizedBox(width: 8),
                 BouncyButton(
                   tilt: false,
-                  onTap: onProfile,
+                  onTap: onShop,
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(6, 5, 12, 5),
+                    key: const ValueKey('top-shop'),
+                    padding: const EdgeInsets.fromLTRB(6, 5, 8, 5),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: .28),
                       borderRadius: BorderRadius.circular(30),
@@ -232,10 +257,8 @@ class _TopBar extends StatelessWidget {
                             fontSize: 15,
                           ),
                         ),
-                        if (Account.instance.dailyAvailable) ...[
-                          const SizedBox(width: 6),
-                          const Text('🎁', style: TextStyle(fontSize: 14)),
-                        ],
+                        const SizedBox(width: 4),
+                        const Icon(Icons.add_circle_rounded, size: 18, color: AppColors.gold),
                       ],
                     ),
                   ),

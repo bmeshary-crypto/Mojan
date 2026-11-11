@@ -4,6 +4,9 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../games/ludo/ludo_engine.dart';
+import '../shop.dart';
+
 enum AuthMethod { guest, google, phone }
 
 /// إحصائيات اللاعب في لعبة واحدة.
@@ -81,9 +84,30 @@ class PlayerProfile {
     this.dailyStreak = 0,
     this.lastDaily,
     DateTime? createdAt,
+    Map<String, int>? inventory,
+    Set<String>? owned,
+    this.diceSkin = 'classic',
+    this.boardTheme = 'classic',
+    this.lastChest,
   })  : stats = stats ?? {},
         unlocked = unlocked ?? {},
+        inventory = inventory ?? {},
+        owned = owned ?? {},
         createdAt = createdAt ?? DateTime.now();
+
+  /// الأدوات المملوكة (حقيبة اللاعب) حسب اسم الأداة.
+  final Map<String, int> inventory;
+
+  /// السكنات والثيمات المشتراة (مثل dice.gold).
+  final Set<String> owned;
+  String diceSkin;
+  String boardTheme;
+
+  /// آخر مرة فُتح فيها صندوق العملات المجاني.
+  DateTime? lastChest;
+
+  int itemCount(LudoItem i) => inventory[i.name] ?? 0;
+  bool owns(String id) => id.endsWith('.classic') || owned.contains(id);
 
   final String id;
   String name;
@@ -135,6 +159,11 @@ class PlayerProfile {
         'dailyStreak': dailyStreak,
         'lastDaily': lastDaily,
         'createdAt': createdAt.toIso8601String(),
+        'inventory': inventory,
+        'owned': owned.toList(),
+        'diceSkin': diceSkin,
+        'boardTheme': boardTheme,
+        'lastChest': lastChest?.toIso8601String(),
       };
 
   factory PlayerProfile.fromJson(Map<String, dynamic> j) => PlayerProfile(
@@ -151,6 +180,11 @@ class PlayerProfile {
         dailyStreak: j['dailyStreak'] ?? 0,
         lastDaily: j['lastDaily'],
         createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+        inventory: (j['inventory'] as Map<String, dynamic>? ?? {}).map((k, v) => MapEntry(k, v as int)),
+        owned: {...(j['owned'] as List? ?? []).cast<String>()},
+        diceSkin: j['diceSkin'] ?? 'classic',
+        boardTheme: j['boardTheme'] ?? 'classic',
+        lastChest: DateTime.tryParse(j['lastChest'] ?? ''),
       );
 }
 
@@ -301,19 +335,117 @@ class Account extends ChangeNotifier {
 
   bool get dailyAvailable => profile != null && profile!.lastDaily != _day(DateTime.now());
 
-  /// الهدية اليومية: 100 عملة × أيام السلسلة (حتى 7).
-  int? claimDaily({DateTime? now}) {
+  /// يوم البونص القادم في دورة الأيام السبعة (0..6).
+  int get nextDailyIndex {
+    final p = profile;
+    if (p == null) return 0;
+    final yesterday = _day(DateTime.now().subtract(const Duration(days: 1)));
+    final today = _day(DateTime.now());
+    if (p.lastDaily == today) return (p.dailyStreak - 1) % 7;
+    return p.lastDaily == yesterday ? p.dailyStreak % 7 : 0;
+  }
+
+  /// البونص اليومي: تقويم 7 أيام بجوائز متصاعدة، ويرجع لليوم الأول إذا فاتك يوم.
+  DailyGift? claimDaily({DateTime? now}) {
     final p = profile;
     now ??= DateTime.now();
     if (p == null || p.lastDaily == _day(now)) return null;
     final yesterday = _day(now.subtract(const Duration(days: 1)));
     p.dailyStreak = p.lastDaily == yesterday ? p.dailyStreak + 1 : 1;
     p.lastDaily = _day(now);
-    final int amount = 100 * min<int>(p.dailyStreak, 7);
-    p.coins += amount;
+    final gift = dailyGifts[(p.dailyStreak - 1) % 7];
+    p.coins += gift.coins;
+    gift.items.forEach((i, n) => p.inventory[i.name] = p.itemCount(i) + n);
+    if (gift.skin != null) {
+      // إذا كان يملكه يأخذ قيمته عملات
+      if (p.owns(gift.skin!)) {
+        p.coins += 800;
+      } else {
+        p.owned.add(gift.skin!);
+      }
+    }
     _checkAchievements();
     _save();
-    return amount;
+    return gift;
+  }
+
+  // ---- العملات والمتجر ----
+
+  static const chestCoins = 300;
+  static const chestEvery = Duration(hours: 4);
+
+  Duration chestWait({DateTime? now}) {
+    final last = profile?.lastChest;
+    if (last == null) return Duration.zero;
+    final left = last.add(chestEvery).difference(now ?? DateTime.now());
+    return left.isNegative ? Duration.zero : left;
+  }
+
+  /// صندوق عملات مجاني كل 4 ساعات.
+  int? claimChest({DateTime? now}) {
+    final p = profile;
+    now ??= DateTime.now();
+    if (p == null || chestWait(now: now) > Duration.zero) return null;
+    p.lastChest = now;
+    p.coins += chestCoins;
+    _save();
+    return chestCoins;
+  }
+
+  bool spend(int coins) {
+    final p = profile;
+    if (p == null || coins < 0 || p.coins < coins) return false;
+    p.coins -= coins;
+    _save();
+    return true;
+  }
+
+  void earn(int coins) {
+    if (profile == null || coins <= 0) return;
+    profile!.coins += coins;
+    _save();
+  }
+
+  /// شراء من المتجر. يرجع رسالة خطأ أو null عند النجاح.
+  String? buy(ShopItem item) {
+    final p = profile;
+    if (p == null) return 'سجّل دخولك أولاً';
+    final cosmetic = item.kind == ShopKind.dice || item.kind == ShopKind.board;
+    if (cosmetic && p.owns(item.id)) return 'تملكه بالفعل';
+    if (p.coins < item.price) return 'عملاتك لا تكفي';
+    p.coins -= item.price;
+    switch (item.kind) {
+      case ShopKind.dice:
+      case ShopKind.board:
+        p.owned.add(item.id);
+      case ShopKind.item:
+        final i = LudoItem.values.byName(item.id.split('.').last);
+        p.inventory[i.name] = p.itemCount(i) + item.amount;
+      case ShopKind.bundle:
+        for (final i in LudoItem.values) {
+          p.inventory[i.name] = p.itemCount(i) + item.amount;
+        }
+    }
+    _save();
+    return null;
+  }
+
+  void equip(String id) {
+    final p = profile;
+    if (p == null || !p.owns(id)) return;
+    final name = id.split('.').last;
+    if (id.startsWith('dice.')) p.diceSkin = name;
+    if (id.startsWith('board.')) p.boardTheme = name;
+    _save();
+  }
+
+  /// يستهلك أداة من الحقيبة (عند استخدامها في المباراة).
+  bool consumeItem(LudoItem i) {
+    final p = profile;
+    if (p == null || p.itemCount(i) <= 0) return false;
+    p.inventory[i.name] = p.itemCount(i) - 1;
+    _save();
+    return true;
   }
 
   @visibleForTesting

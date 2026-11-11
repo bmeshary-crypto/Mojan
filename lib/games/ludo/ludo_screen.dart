@@ -4,17 +4,43 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../core/account/account.dart';
 import '../../core/game_module.dart';
+import '../../core/haptics.dart';
+import '../../core/shop.dart';
 import '../../core/theme.dart';
+import '../../screens/shop_screen.dart';
+import '../../widgets/account_widgets.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/bouncy_button.dart';
 import 'ludo_board.dart';
 import 'ludo_engine.dart';
-import '../../core/haptics.dart';
-import '../../widgets/account_widgets.dart';
-import '../../core/account/account.dart';
 
-/// شاشة لعبة لودو: إعداد سريع ثم اللوح.
+enum LudoVariant { classic, power, quick }
+
+/// إعدادات مباراة لودو.
+class LudoSetup {
+  const LudoSetup({this.players = 2, this.teams = false, this.variant = LudoVariant.classic, this.entry = 0});
+  final int players;
+  final bool teams;
+  final LudoVariant variant;
+  final int entry;
+
+  bool get power => variant == LudoVariant.power;
+  int get count => teams ? 4 : players;
+
+  List<LudoColor> get colors => switch (count) {
+        2 => const [LudoColor.red, LudoColor.yellow],
+        3 => const [LudoColor.red, LudoColor.green, LudoColor.yellow],
+        _ => LudoColor.values,
+      };
+
+  LudoRules get rules => LudoRules(tokensPerPlayer: variant == LudoVariant.quick ? 2 : 4);
+
+  int get prize => ludoPrize(entry, count, teams: teams);
+}
+
+/// شاشة لعبة لودو: الإعداد (عدد اللاعبين، الوضع، الرهان) ثم اللوح.
 class LudoScreen extends StatefulWidget {
   const LudoScreen({super.key, required this.mode});
   final PlayMode mode;
@@ -25,125 +51,225 @@ class LudoScreen extends StatefulWidget {
 
 class _LudoScreenState extends State<LudoScreen> {
   int _players = 2;
-  bool _quick = false;
+  bool _teams = false;
+  LudoVariant _variant = LudoVariant.classic;
+  int _entryIndex = 0;
   bool _started = false;
   int _gameKey = 0;
 
   bool get _vsAi => widget.mode == PlayMode.vsComputer;
+  bool get _canBet => _vsAi && Account.instance.signedIn;
+  int get _entry => _canBet ? ludoEntries[_entryIndex] : 0;
+
+  LudoSetup get _setupData => LudoSetup(players: _players, teams: _teams, variant: _variant, entry: _entry);
+
+  /// يبدأ مباراة جديدة ويخصم رسوم الدخول إن وُجدت.
+  void _start() {
+    final s = _setupData;
+    if (s.entry > 0 && !Account.instance.spend(s.entry)) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: const Text('عملاتك لا تكفي لرسوم الدخول', style: TextStyle(fontWeight: FontWeight.w700)),
+          action: SnackBarAction(label: 'المتجر', onPressed: () => openShop(context)),
+        ));
+      setState(() => _started = false);
+      return;
+    }
+    setState(() {
+      _started = true;
+      _gameKey++;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final s = _setupData;
     return Scaffold(
       body: AnimatedBackground(
         child: SafeArea(
           child: _started
               ? _LudoTable(
                   key: ValueKey(_gameKey),
-                  players: _playerColors,
-                  humans: _vsAi ? {LudoColor.red} : _playerColors.toSet(),
-                  rules: LudoRules(tokensPerPlayer: _quick ? 2 : 4),
-                  onRestart: () => setState(() => _gameKey++),
+                  setup: s,
+                  humans: _vsAi ? {LudoColor.red} : s.colors.toSet(),
+                  onRestart: _start,
                   onSetup: () => setState(() => _started = false),
                 )
-              : _setup(context),
+              : ListenableBuilder(listenable: Account.instance, builder: (context, _) => _setup(context)),
         ),
       ),
     );
   }
 
-  List<LudoColor> get _playerColors => switch (_players) {
-        2 => const [LudoColor.red, LudoColor.yellow],
-        3 => const [LudoColor.red, LudoColor.green, LudoColor.yellow],
-        _ => LudoColor.values,
-      };
-
-  Widget _setup(BuildContext context) {
-    Widget choice(String label, bool selected, VoidCallback onTap) => Expanded(
-          child: BouncyButton(
-            tilt: false,
-            onTap: onTap,
-            child: AnimatedContainer(
-              duration: 250.ms,
-              height: 54,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected ? AppColors.gold : Colors.white.withValues(alpha: .08),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: selected ? AppColors.gold : Colors.white24),
+  Widget _choice(String label, bool selected, VoidCallback onTap, {Key? key, String? sub, IconData? icon}) => Expanded(
+        child: BouncyButton(
+          tilt: false,
+          onTap: onTap,
+          child: AnimatedContainer(
+            key: key,
+            duration: 250.ms,
+            height: sub == null ? 54 : 70,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? AppColors.gold : Colors.white.withValues(alpha: .08),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: selected ? AppColors.gold : Colors.white24),
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (icon != null) ...[
+                      Icon(icon, size: 18, color: selected ? AppColors.bgTop : Colors.white),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(label,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          color: selected ? AppColors.bgTop : Colors.white,
+                        )),
+                  ]),
+                  if (sub != null)
+                    Text(sub,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: selected ? AppColors.bgTop.withValues(alpha: .7) : AppColors.textMuted,
+                        )),
+                ],
               ),
-              child: Text(label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                    color: selected ? AppColors.bgTop : Colors.white,
-                  )),
             ),
           ),
-        );
+        ),
+      );
 
+  Widget _setup(BuildContext context) {
+    final s = _setupData;
+    final acc = Account.instance;
+    const label = TextStyle(fontWeight: FontWeight.w800, fontSize: 16);
     return Column(
       children: [
-        _BackBar(title: 'لودو', subtitle: widget.mode.label),
+        _BackBar(
+          title: 'لودو',
+          
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (acc.signedIn) _CoinPill(coins: acc.profile!.coins, onTap: () => openShop(context)),
+            IconButton(
+              key: const ValueKey('ludo-help'),
+              tooltip: 'طريقة اللعب',
+              onPressed: () => showLudoHelp(context),
+              icon: const Icon(Icons.help_outline_rounded, size: 26),
+            ),
+          ]),
+        ),
         Expanded(
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: const BoxConstraints(maxWidth: 440),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Center(
                       child: SizedBox(
-                        width: 150,
-                        height: 150,
-                        child: AspectRatio(
-                          aspectRatio: 1,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(18),
-                            child: CustomPaint(painter: LudoBoardPainter(active: _playerColors.toSet())),
+                        width: 140,
+                        height: 140,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: CustomPaint(
+                            painter: LudoBoardPainter(
+                              active: s.colors.toSet(),
+                              theme: acc.profile?.boardTheme ?? 'classic',
+                              power: s.power,
+                            ),
                           ),
                         ),
                       ).animate().scale(curve: Curves.easeOutBack, duration: 500.ms),
                     ),
-                    const SizedBox(height: 24),
-                    Text(_vsAi ? 'عدد اللاعبين (أنت + الكمبيوتر)' : 'عدد اللاعبين',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    const SizedBox(height: 20),
+                    Text(_vsAi ? 'عدد اللاعبين (أنت + الكمبيوتر)' : 'عدد اللاعبين', style: label),
                     const SizedBox(height: 10),
                     Row(children: [
                       for (final n in [2, 3, 4]) ...[
-                        choice('$n', _players == n, () => setState(() => _players = n)),
-                        if (n != 4) const SizedBox(width: 10),
+                        _choice('$n', !_teams && _players == n, () => setState(() {
+                              _players = n;
+                              _teams = false;
+                            }), key: ValueKey('ludo-players-$n')),
+                        const SizedBox(width: 8),
                       ],
+                      _choice('2 ضد 2', _teams, () => setState(() => _teams = true),
+                          key: const ValueKey('ludo-teams'), icon: Icons.groups_rounded),
                     ]),
+                    if (_teams)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _vsAi
+                              ? 'أنت (الأحمر) مع شريكك الأصفر ضد الأخضر والأزرق. الفريق الذي يوصل كل قطعه أولاً يفوز.'
+                              : 'الأحمر والأصفر فريق، والأخضر والأزرق فريق. لا يأكل الشريك قطع شريكه.',
+                          style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5, height: 1.5),
+                        ),
+                      ),
                     const SizedBox(height: 20),
-                    const Text('نوع اللعبة', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    const Text('وضع اللعب', style: label),
                     const SizedBox(height: 10),
                     Row(children: [
-                      choice('كلاسيك (4 قطع)', !_quick, () => setState(() => _quick = false)),
-                      const SizedBox(width: 10),
-                      choice('سريع (قطعتان)', _quick, () => setState(() => _quick = true)),
+                      _choice('كلاسيك', _variant == LudoVariant.classic,
+                          () => setState(() => _variant = LudoVariant.classic),
+                          key: const ValueKey('ludo-classic'), sub: '4 قطع'),
+                      const SizedBox(width: 8),
+                      _choice('باور', _variant == LudoVariant.power, () => setState(() => _variant = LudoVariant.power),
+                          key: const ValueKey('ludo-power'), sub: 'أدوات + رميات', icon: Icons.bolt_rounded),
+                      const SizedBox(width: 8),
+                      _choice('سريع', _variant == LudoVariant.quick, () => setState(() => _variant = LudoVariant.quick),
+                          key: const ValueKey('ludo-quick'), sub: 'قطعتان'),
                     ]),
-                    const SizedBox(height: 32),
+                    if (s.power) ...[
+                      const SizedBox(height: 10),
+                      _PowerKit(
+                          bag: {for (final i in LudoItem.values) i: acc.profile?.itemCount(i) ?? 0},
+                          onShop: acc.signedIn ? () => openShop(context, tab: 2) : null),
+                    ],
+                    if (_canBet) ...[
+                      const SizedBox(height: 20),
+                      const Text('الرهان', style: label),
+                      const SizedBox(height: 10),
+                      _betBox(s, acc.profile!.coins),
+                    ],
+                    const SizedBox(height: 28),
                     BouncyButton(
                       tilt: false,
-                      onTap: () => setState(() => _started = true),
+                      onTap: _start,
                       child: Container(
+                        key: const ValueKey('ludo-start'),
                         height: 60,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(30),
-                          gradient: const LinearGradient(
-                              colors: [Color(0xFFFF6B85), AppColors.ludo, Color(0xFFC9184A)]),
+                          gradient: const LinearGradient(colors: [Color(0xFFFF6B85), AppColors.ludo, Color(0xFFC9184A)]),
                           border: const Border(bottom: BorderSide(color: Color(0xFF8A0F33), width: 5)),
                           boxShadow: [BoxShadow(color: AppColors.ludo.withValues(alpha: .5), blurRadius: 20)],
                         ),
-                        child: const Text('ابدأ اللعب',
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Text('ابدأ اللعب',
+                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)),
+                          if (s.entry > 0) ...[
+                            const SizedBox(width: 10),
+                            const CoinIcon(size: 20),
+                            const SizedBox(width: 4),
+                            Text('${s.entry}',
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white)),
+                          ],
+                        ]),
                       ),
-                    )
-                        .animate(onPlay: (c) => c.repeat(reverse: true))
-                        .scaleXY(begin: 1, end: 1.03, duration: 900.ms),
+                    ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(begin: 1, end: 1.03, duration: 900.ms),
                   ],
                 ),
               ),
@@ -153,13 +279,260 @@ class _LudoScreenState extends State<LudoScreen> {
       ],
     );
   }
+
+  Widget _betBox(LudoSetup s, int coins) {
+    Widget step(IconData icon, bool enabled, VoidCallback onTap, Key key) => IconButton.filled(
+          key: key,
+          style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: .15)),
+          onPressed: enabled ? onTap : null,
+          icon: Icon(icon, color: Colors.white),
+        );
+    final enough = coins >= s.entry;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [
+          const Color(0xFF3B2A8A).withValues(alpha: .9),
+          const Color(0xFF241657).withValues(alpha: .9),
+        ]),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.gold.withValues(alpha: .5)),
+      ),
+      child: Column(children: [
+        Row(children: [
+          step(Icons.remove_rounded, _entryIndex > 0, () => setState(() => _entryIndex--), const ValueKey('bet-minus')),
+          Expanded(
+            child: Column(children: [
+              const Text('الجائزة', style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const CoinIcon(size: 26),
+                const SizedBox(width: 6),
+                Text(s.entry == 0 ? 'ودّية' : '${s.prize}',
+                    key: const ValueKey('bet-prize'),
+                    style: AppTheme.display.copyWith(fontSize: 30, color: AppColors.gold)),
+              ]),
+            ]),
+          ),
+          step(Icons.add_rounded, _entryIndex < ludoEntries.length - 1, () => setState(() => _entryIndex++),
+              const ValueKey('bet-plus')),
+        ]),
+        const SizedBox(height: 6),
+        Text(
+          s.entry == 0
+              ? 'بدون رهان: تكسب عملات وخبرة عادية بعد المباراة'
+              : 'الدخول ${s.entry} عملة. ${s.teams ? 'الفريق الفائز يقتسم الجائزة' : 'الفائز يأخذ الجائزة'} (5٪ رسوم)',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: enough ? AppColors.textMuted : const Color(0xFFFF7A7A),
+          ),
+        ),
+        if (!enough)
+          TextButton(onPressed: () => openShop(context), child: const Text('عملاتك لا تكفي، اذهب للمتجر')),
+      ]),
+    );
+  }
+}
+
+/// حبة العملات في الأعلى: تفتح المتجر.
+class _CoinPill extends StatelessWidget {
+  const _CoinPill({required this.coins, required this.onTap});
+  final int coins;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(6, 4, 10, 4),
+          decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const CoinIcon(size: 20),
+            const SizedBox(width: 5),
+            Text('$coins', style: const TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(width: 4),
+            const Icon(Icons.add_circle_rounded, size: 18, color: AppColors.gold),
+          ]),
+        ),
+      );
+}
+
+/// يعرض أدوات الباور: واحدة مجانية من كل أداة في كل مباراة + ما في حقيبتك.
+class _PowerKit extends StatelessWidget {
+  const _PowerKit({required this.bag, this.onShop});
+  final Map<LudoItem, int> bag;
+  final VoidCallback? onShop;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('معك في المباراة: أداة مجانية من كل نوع + حقيبتك',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        const SizedBox(height: 8),
+        Row(children: [
+          for (final i in LudoItem.values)
+            Expanded(
+              child: Column(children: [
+                _ItemBadge(item: i, count: 1 + bag[i]!, size: 40),
+                const SizedBox(height: 4),
+                Text(itemInfo[i]!.$1,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+        ]),
+        if (onShop != null)
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              onPressed: onShop,
+              icon: const Icon(Icons.storefront_rounded, size: 18),
+              label: const Text('اشترِ أدوات'),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
+class _ItemBadge extends StatelessWidget {
+  const _ItemBadge({required this.item, required this.count, this.size = 44, this.active = false, this.enabled = true});
+  final LudoItem item;
+  final int count;
+  final double size;
+  final bool active;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final (_, _, icon, color) = itemInfo[item]!;
+    return Opacity(
+      opacity: enabled || active ? 1 : .4,
+      child: SizedBox(
+        width: size + 8,
+        height: size + 8,
+        child: Stack(clipBehavior: Clip.none, children: [
+          Positioned(
+            left: 4,
+            top: 4,
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(colors: [Color.lerp(color, Colors.white, .35)!, color]),
+                border: Border.all(color: active ? Colors.white : Colors.black26, width: active ? 3 : 2),
+                boxShadow: [BoxShadow(color: color.withValues(alpha: active ? .9 : .4), blurRadius: active ? 16 : 8)],
+              ),
+              child: Icon(icon, color: Colors.white, size: size * .55),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: count > 0 ? AppColors.ludo : Colors.grey,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: Text('$count', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// نافذة شرح الأوضاع: كلاسيك، باور، فرق.
+Future<void> showLudoHelp(BuildContext context) {
+  Widget section(String title, List<(IconData, Color, String)> lines) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: AppTheme.display.copyWith(fontSize: 20, color: AppColors.gold)),
+          const SizedBox(height: 6),
+          for (final (icon, color, text) in lines)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(icon, color: color, size: 22),
+                const SizedBox(width: 8),
+                Expanded(child: Text(text, style: const TextStyle(height: 1.5, fontWeight: FontWeight.w600))),
+              ]),
+            ),
+        ],
+      );
+
+  return showDialog(
+    context: context,
+    builder: (ctx) => DefaultTabController(
+      length: 3,
+      child: Dialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420, maxHeight: 560),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const TabBar(
+              indicatorColor: AppColors.gold,
+              labelColor: AppColors.gold,
+              labelStyle: TextStyle(fontWeight: FontWeight.w900, fontFamily: 'Cairo'),
+              tabs: [Tab(text: 'كلاسيك'), Tab(text: 'باور'), Tab(text: 'فرق')],
+            ),
+            Flexible(
+              child: TabBarView(children: [
+                SingleChildScrollView(
+                  padding: const EdgeInsets.all(18),
+                  child: section('القواعد', const [
+                    (Icons.casino_rounded, Colors.white, 'تحتاج 6 لتخرج قطعة من البيت، والـ 6 تعطيك رمية إضافية.'),
+                    (Icons.restaurant_rounded, Color(0xFFFF6B81), 'إذا وقفت على قطعة خصم ترجعها لبيتها وتلعب مرة أخرى.'),
+                    (Icons.star_rounded, AppColors.gold, 'خانات النجمة آمنة: لا تؤكل فيها أي قطعة.'),
+                    (Icons.flag_rounded, AppColors.seeko, 'أول من يوصل كل قطعه للمنتصف يفوز. ثلاث ستات متتالية تضيّع الدور.'),
+                  ]),
+                ),
+                SingleChildScrollView(
+                  padding: const EdgeInsets.all(18),
+                  child: section('وضع الباور', [
+                    for (final i in LudoItem.values)
+                      (itemInfo[i]!.$3, itemInfo[i]!.$4, '${itemInfo[i]!.$1}: ${itemInfo[i]!.$2}.'),
+                    (Icons.add_box_rounded, AppColors.gold,
+                        'خانات +1 الذهبية على المسار: إذا وقفت عليها تأخذ رمية إضافية.'),
+                    (Icons.backpack_rounded, AppColors.textMuted,
+                        'تبدأ كل مباراة بأداة مجانية من كل نوع، وتقدر تستخدم أدوات حقيبتك التي اشتريتها من المتجر. الأداة تُستخدم قبل رمي النرد.'),
+                  ]),
+                ),
+                SingleChildScrollView(
+                  padding: const EdgeInsets.all(18),
+                  child: section('2 ضد 2', const [
+                    (Icons.groups_rounded, Colors.white, 'أربعة لاعبين في فريقين: الأحمر مع الأصفر، والأخضر مع الأزرق.'),
+                    (Icons.handshake_rounded, AppColors.seeko, 'لا تأكل قطع شريكك، وتقدر تقف معه في نفس الخانة.'),
+                    (Icons.emoji_events_rounded, AppColors.gold, 'الفريق الذي يوصل كل قطع اللاعبين الاثنين أولاً يفوز، والجائزة تنقسم بينهما.'),
+                  ]),
+                ),
+              ]),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('فهمت')),
+            ),
+          ]),
+        ),
+      ),
+    ),
+  );
 }
 
 class _BackBar extends StatelessWidget {
-  const _BackBar({required this.title, this.subtitle, this.trailing});
+  const _BackBar({required this.title, this.subtitle, this.trailing, this.onBack});
   final String title;
   final String? subtitle;
   final Widget? trailing;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -168,19 +541,26 @@ class _BackBar extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Navigator.maybePop(context),
+            key: const ValueKey('ludo-back'),
+            onPressed: onBack ?? () => Navigator.maybePop(context),
             icon: const Icon(Icons.arrow_back_rounded, size: 28),
           ),
           Text(title, style: AppTheme.display.copyWith(fontSize: 28)),
           if (subtitle != null) ...[
             const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .1),
-                borderRadius: BorderRadius.circular(12),
+            Flexible(
+              flex: 5,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700)),
               ),
-              child: Text(subtitle!, style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700)),
             ),
           ],
           const Spacer(),
@@ -195,15 +575,13 @@ class _BackBar extends StatelessWidget {
 class _LudoTable extends StatefulWidget {
   const _LudoTable({
     super.key,
-    required this.players,
+    required this.setup,
     required this.humans,
-    required this.rules,
     required this.onRestart,
     required this.onSetup,
   });
-  final List<LudoColor> players;
+  final LudoSetup setup;
   final Set<LudoColor> humans;
-  final LudoRules rules;
   final VoidCallback onRestart;
   final VoidCallback onSetup;
 
@@ -212,8 +590,12 @@ class _LudoTable extends StatefulWidget {
 }
 
 class _LudoTableState extends State<_LudoTable> {
-  late final LudoGame game = LudoGame(players: widget.players, rules: widget.rules);
+  LudoSetup get s => widget.setup;
+  late final LudoGame game;
   final _rng = Random();
+
+  /// الأدوات المجانية المتبقية للاعب صاحب الحساب (بعدها يُخصم من الحقيبة).
+  final Map<LudoItem, int> _free = {for (final i in LudoItem.values) i: 1};
 
   /// مواقع مؤقتة للقطع أثناء الأنميشن (القطعة تمشي خانة خانة).
   final Map<LudoToken, int> _shown = {};
@@ -223,21 +605,27 @@ class _LudoTableState extends State<_LudoTable> {
   String _status = '';
   LudoToken? _hopping;
   bool _disposed = false;
+  bool _over = false;
 
+  bool get _solo => widget.humans.length == 1;
   bool get _humanTurn => widget.humans.contains(game.current);
-
-  String _nameOf(LudoColor c) {
-    if (widget.humans.length == 1) {
-      if (widget.humans.contains(c)) return 'أنت';
-      final aiIndex = widget.players.where((p) => !widget.humans.contains(p)).toList().indexOf(c) + 1;
-      return 'كمبيوتر $aiIndex';
-    }
-    return 'لاعب ${ludoNames[c]}';
-  }
+  LudoColor get _me => widget.humans.first;
+  String get _diceSkin => Account.instance.profile?.diceSkin ?? 'classic';
+  String get _boardTheme => Account.instance.profile?.boardTheme ?? 'classic';
 
   @override
   void initState() {
     super.initState();
+    final items = <LudoColor, Map<LudoItem, int>>{};
+    if (s.power) {
+      for (final c in s.colors) {
+        final bag = _solo && c == _me && Account.instance.signedIn;
+        items[c] = {
+          for (final i in LudoItem.values) i: 1 + (bag ? Account.instance.profile!.itemCount(i) : 0),
+        };
+      }
+    }
+    game = LudoGame(players: s.colors, rules: s.rules, teams: s.teams, power: s.power, items: items);
     _status = _turnText();
     _scheduleAi();
   }
@@ -248,19 +636,89 @@ class _LudoTableState extends State<_LudoTable> {
     super.dispose();
   }
 
+  String _nameOf(LudoColor c) {
+    if (_solo) {
+      if (c == _me) return 'أنت';
+      if (s.teams && game.allies(c, _me)) return 'شريكك';
+      final ai = s.colors.where((p) => p != _me && !(s.teams && game.allies(p, _me))).toList().indexOf(c) + 1;
+      return 'كمبيوتر $ai';
+    }
+    return 'لاعب ${ludoNames[c]}';
+  }
+
   Future<void> _wait(int ms) => Future.delayed(Duration(milliseconds: ms));
 
-  String _turnText() => _humanTurn
-      ? (widget.humans.length == 1 ? 'دورك! اضغط على النرد' : 'دور ${_nameOf(game.current)}: اضغط على النرد')
-      : 'دور ${_nameOf(game.current)}…';
+  String _turnText() {
+    if (!_humanTurn) return 'دور ${_nameOf(game.current)}…';
+    final who = _solo ? 'دورك!' : 'دور ${_nameOf(game.current)}:';
+    if (game.controlledValue != null) return '$who النرد سيعطيك ${game.controlledValue}';
+    if (s.power) return '$who استخدم أداة أو اضغط على النرد';
+    return '$who اضغط على النرد';
+  }
 
   void _scheduleAi() {
-    if (!_humanTurn && game.phase == LudoPhase.waitingRoll) {
-      Future.delayed(const Duration(milliseconds: 700), () {
-        if (!_disposed && !_humanTurn && game.phase == LudoPhase.waitingRoll && !_busy) _roll();
-      });
-    }
+    if (_humanTurn || game.phase != LudoPhase.waitingRoll) return;
+    Future.delayed(const Duration(milliseconds: 700), () async {
+      if (_disposed || _humanTurn || game.phase != LudoPhase.waitingRoll || _busy) return;
+      final used = game.aiUseItem();
+      if (used != null) {
+        _busy = true;
+        Haptics.mediumImpact();
+        setState(() => _status = '${_nameOf(game.current)} استخدم ${itemInfo[used]!.$1}');
+        await _wait(1000);
+        if (_disposed) return;
+        _busy = false;
+      }
+      _roll();
+    });
   }
+
+  Future<void> _useItem(LudoItem item) async {
+    if (_busy || !_humanTurn || game.phase != LudoPhase.waitingRoll) return;
+    int? value;
+    if (item == LudoItem.diceControl) {
+      value = await _pickDiceValue();
+      if (value == null || _disposed) return;
+    }
+    if (!game.useItem(item, value: value)) return;
+    // المجاني أولاً ثم الحقيبة (فقط لصاحب الحساب)
+    if (_solo && game.current == _me) {
+      if (_free[item]! > 0) {
+        _free[item] = _free[item]! - 1;
+      } else {
+        Account.instance.consumeItem(item);
+      }
+    }
+    Haptics.mediumImpact();
+    setState(() => _status = switch (item) {
+          LudoItem.doubleDistance => 'مسافة مضاعفة! الرمية القادمة ×2',
+          LudoItem.diceControl => 'النرد سيعطيك $value',
+          LudoItem.shield => 'الدرع مفعّل: قطعك محمية حتى يرجع دورك',
+        });
+  }
+
+  Future<int?> _pickDiceValue() => showModalBottomSheet<int>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('اختر رقم النرد', style: AppTheme.display.copyWith(fontSize: 22)),
+              const SizedBox(height: 14),
+              Wrap(spacing: 12, runSpacing: 12, alignment: WrapAlignment.center, children: [
+                for (var v = 1; v <= 6; v++)
+                  GestureDetector(
+                    key: ValueKey('pick-$v'),
+                    onTap: () => Navigator.pop(ctx, v),
+                    child: DiceFace(value: v, size: 52, skin: _diceSkin),
+                  ),
+              ]),
+            ]),
+          ),
+        ),
+      );
 
   Future<void> _roll() async {
     if (_busy || game.phase != LudoPhase.waitingRoll) return;
@@ -273,6 +731,7 @@ class _LudoTableState extends State<_LudoTable> {
       setState(() => _diceFace = _rng.nextInt(6) + 1);
     }
     final player = game.current;
+    final doubled = game.doubleActive;
     final hasMoves = game.roll();
     if (_disposed) return;
     setState(() {
@@ -281,7 +740,7 @@ class _LudoTableState extends State<_LudoTable> {
     });
 
     if (!hasMoves) {
-      final threeSixes = game.dice == 6;
+      final threeSixes = game.dice == 6 && !doubled;
       setState(() => _status = threeSixes ? 'ثلاث ستات! خسرت الدور' : 'لا توجد حركة متاحة');
       await _wait(900);
       if (_disposed) return;
@@ -315,7 +774,6 @@ class _LudoTableState extends State<_LudoTable> {
     _busy = true;
     final before = {for (final t in game.allTokens) t: t.pos};
     final result = game.move(m);
-    // نعرض الحالة القديمة ثم نحرك خطوة خطوة
     _shown
       ..clear()
       ..addAll(before);
@@ -325,7 +783,7 @@ class _LudoTableState extends State<_LudoTable> {
       _shown[m.token] = p;
       Haptics.selectionClick();
       setState(() {});
-      await _wait(170);
+      await _wait(m.path.length > 8 ? 110 : 170);
       if (_disposed) return;
     }
     _hopping = null;
@@ -349,6 +807,10 @@ class _LudoTableState extends State<_LudoTable> {
     if (result.playerFinished) {
       setState(() => _status = '${_nameOf(m.token.color)} أنهى كل القطع!');
       await _wait(900);
+    } else if (result.bonusRoll) {
+      Haptics.mediumImpact();
+      setState(() => _status = '⭐ +1 رمية إضافية لـ${_nameOf(m.token.color)}');
+      await _wait(800);
     } else if (result.extraTurn) {
       setState(() => _status = '${_nameOf(game.current)} يلعب مرة أخرى');
       await _wait(500);
@@ -365,14 +827,27 @@ class _LudoTableState extends State<_LudoTable> {
     if (m != null) _doMove(m);
   }
 
+  bool get _humanWon {
+    if (s.teams) return game.winnerTeam == LudoGame.teamOf(_me);
+    return game.ranking.first == _me;
+  }
+
   void _showResults() {
-    final solo = widget.humans.length == 1;
-    final place = solo ? game.ranking.indexOf(widget.humans.first) : -1;
-    final reward = Account.instance.recordGame(
-      'ludo',
-      won: solo && place == 0,
-      points: solo && place >= 0 ? const [400, 200, 100, 0][place.clamp(0, 3)] : 0,
-    );
+    _over = true;
+    Reward? reward;
+    var payout = 0;
+    if (_solo) {
+      final won = _humanWon;
+      final place = game.ranking.indexOf(_me);
+      final points = s.teams ? (won ? 300 : 0) : const [400, 200, 100, 0][place.clamp(0, 3)];
+      reward = Account.instance.recordGame('ludo', won: won, points: points + (won ? s.entry ~/ 10 : 0));
+      if (won && s.entry > 0) {
+        payout = s.prize;
+        Account.instance.earn(payout);
+      }
+    } else {
+      reward = Account.instance.recordGame('ludo', won: false);
+    }
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -380,7 +855,10 @@ class _LudoTableState extends State<_LudoTable> {
         reward: reward,
         ranking: game.ranking,
         nameOf: _nameOf,
-        humanWon: widget.humans.contains(game.ranking.first),
+        teams: s.teams,
+        humanWon: _solo ? _humanWon : true,
+        entry: _solo ? s.entry : 0,
+        payout: payout,
         onAgain: () {
           Navigator.pop(ctx);
           widget.onRestart();
@@ -393,55 +871,150 @@ class _LudoTableState extends State<_LudoTable> {
     );
   }
 
+  Future<void> _leave() async {
+    if (s.entry > 0 && !_over && _solo) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('تنسحب من المباراة؟', style: TextStyle(fontWeight: FontWeight.w900)),
+          content: Text('ستخسر رسوم الدخول (${s.entry} عملة).'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('أكمل اللعب')),
+            FilledButton(
+              key: const ValueKey('confirm-leave'),
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF5A5F)),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('انسحب', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+      Account.instance.recordGame('ludo', won: false);
+      // نسمح بالخروج بعد التأكيد (حتى لا يظهر السؤال مرة ثانية)
+      setState(() => _over = true);
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    if (mounted) Navigator.maybePop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _BackBar(
-          title: 'لودو',
-          trailing: IconButton(
-            tooltip: 'إعدادات اللعبة',
-            onPressed: widget.onSetup,
-            icon: const Icon(Icons.tune_rounded),
+    return PopScope(
+      canPop: s.entry == 0 || _over || !_solo,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leave();
+      },
+      child: Column(
+        children: [
+          _BackBar(
+            title: 'لودو',
+            subtitle: [
+              if (s.teams) '2 ضد 2',
+              if (s.power) '⚡ باور',
+              if (s.variant == LudoVariant.quick) 'سريع',
+            ].join(' · ').ifEmpty('كلاسيك'),
+            onBack: _leave,
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (s.entry > 0) _PotPill(prize: s.prize),
+              IconButton(
+                tooltip: 'طريقة اللعب',
+                onPressed: () => showLudoHelp(context),
+                icon: const Icon(Icons.help_outline_rounded),
+              ),
+              if (s.entry == 0)
+                IconButton(
+                  tooltip: 'إعدادات اللعبة',
+                  onPressed: widget.onSetup,
+                  icon: const Icon(Icons.tune_rounded),
+                ),
+            ]),
           ),
-        ),
-        Expanded(
-          child: LayoutBuilder(builder: (context, c) {
-            final boardSize = min(c.maxWidth - 24, c.maxHeight - 210).clamp(240.0, 640.0);
-            return Directionality(
-              textDirection: TextDirection.ltr,
-              child: Center(
-                child: SizedBox(
-                  width: boardSize,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _playersRow(LudoColor.green, LudoColor.yellow),
-                      const SizedBox(height: 10),
-                      _board(boardSize),
-                      const SizedBox(height: 10),
-                      _playersRow(LudoColor.red, LudoColor.blue),
-                      const SizedBox(height: 14),
-                      Directionality(
-                        textDirection: TextDirection.rtl,
-                        child: AnimatedSwitcher(
-                          duration: 250.ms,
-                          child: Text(
-                            _status,
-                            key: ValueKey(_status),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          Expanded(
+            child: LayoutBuilder(builder: (context, c) {
+              final reserved = s.power ? 290.0 : 210.0;
+              final boardSize = min(c.maxWidth - 24, c.maxHeight - reserved).clamp(240.0, 640.0);
+              return Directionality(
+                textDirection: TextDirection.ltr,
+                child: Center(
+                  child: SizedBox(
+                    width: boardSize,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _playersRow(LudoColor.green, LudoColor.yellow),
+                        const SizedBox(height: 10),
+                        _board(boardSize),
+                        const SizedBox(height: 10),
+                        _playersRow(LudoColor.red, LudoColor.blue),
+                        const SizedBox(height: 10),
+                        Directionality(
+                          textDirection: TextDirection.rtl,
+                          child: AnimatedSwitcher(
+                            duration: 250.ms,
+                            child: Text(
+                              _status,
+                              key: ValueKey(_status),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        if (s.power) ...[const SizedBox(height: 8), _itemBar()],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// شريط الأدوات للاعب البشري في دوره.
+  Widget _itemBar() {
+    final c = game.current;
+    final mine = _humanTurn && game.phase != LudoPhase.gameOver;
+    final owner = mine ? c : (_solo ? _me : c);
+    final canUse = mine && !_busy && game.phase == LudoPhase.waitingRoll;
+    bool active(LudoItem i) => switch (i) {
+          LudoItem.doubleDistance => game.doubleActive && game.current == owner,
+          LudoItem.diceControl => game.controlledValue != null && game.current == owner,
+          LudoItem.shield => game.shielded.contains(owner),
+        };
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: .25),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: ludoColors[owner]!.withValues(alpha: .6)),
         ),
-      ],
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            for (final i in LudoItem.values)
+              GestureDetector(
+                key: ValueKey('use-${i.name}'),
+                onTap: canUse && game.itemCount(owner, i) > 0 && !active(i) ? () => _useItem(i) : null,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  _ItemBadge(
+                    item: i,
+                    count: game.itemCount(owner, i),
+                    size: 40,
+                    active: active(i),
+                    enabled: canUse && game.itemCount(owner, i) > 0,
+                  ),
+                  Text(itemInfo[i]!.$1, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
+                ]),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -456,26 +1029,55 @@ class _LudoTableState extends State<_LudoTable> {
   }
 
   Widget _panel(LudoColor c, {required bool alignEnd}) {
-    if (!widget.players.contains(c)) return const SizedBox(height: 64);
+    if (!s.colors.contains(c)) return const SizedBox(height: 64);
     final active = game.current == c && game.phase != LudoPhase.gameOver;
     final color = ludoColors[c]!;
     final done = game.tokens[c]!.where((t) => t.finished).length;
     final isHuman = widget.humans.contains(c);
+    final shielded = game.shielded.contains(c);
 
-    final avatar = AnimatedContainer(
-      duration: 300.ms,
-      width: 48,
-      height: 48,
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: active ? color : Colors.white24,
-        boxShadow: active ? [BoxShadow(color: color, blurRadius: 16)] : null,
-      ),
-      child: CircleAvatar(
-        backgroundColor: Color.lerp(color, Colors.black, .35),
-        child: Icon(isHuman ? Icons.face_rounded : Icons.smart_toy_rounded, color: Colors.white),
-      ),
+    final avatar = SizedBox(
+      width: 50,
+      height: 50,
+      child: Stack(clipBehavior: Clip.none, children: [
+        AnimatedContainer(
+          duration: 300.ms,
+          width: 48,
+          height: 48,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: active ? color : Colors.white24,
+            boxShadow: active ? [BoxShadow(color: color, blurRadius: 16)] : null,
+          ),
+          child: _solo && c == _me && Account.instance.signedIn
+              ? PlayerAvatar(index: Account.instance.profile!.avatar, size: 42, ring: false)
+              : CircleAvatar(
+                  backgroundColor: Color.lerp(color, Colors.black, .35),
+                  child: Icon(isHuman ? Icons.face_rounded : Icons.smart_toy_rounded, color: Colors.white),
+                ),
+        ),
+        if (shielded)
+          const Positioned(
+            right: -4,
+            bottom: -2,
+            child: Icon(Icons.shield_rounded, color: Color(0xFF2EE59D), size: 22),
+          ),
+        if (s.teams)
+          Positioned(
+            left: -4,
+            top: -4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: LudoGame.teamOf(c) == 0 ? const Color(0xFFFF8A3D) : const Color(0xFF3DB8FF),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(LudoGame.teamOf(c) == 0 ? 'A' : 'B',
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+            ),
+          ),
+      ]),
     );
 
     final info = Directionality(
@@ -488,9 +1090,9 @@ class _LudoTableState extends State<_LudoTable> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-          Text('🏁 $done/${widget.rules.tokensPerPlayer}',
+          Text('🏁 $done/${s.rules.tokensPerPlayer}',
               maxLines: 1,
-              style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -506,7 +1108,8 @@ class _LudoTableState extends State<_LudoTable> {
 
   Widget _dice(bool isHuman) {
     final canTap = isHuman && !_busy && game.phase == LudoPhase.waitingRoll;
-    Widget d = DiceFace(value: _diceFace, size: 46);
+    final skin = isHuman && (_solo || widget.humans.length > 1) ? _diceSkin : 'classic';
+    Widget d = DiceFace(value: _diceFace, size: 46, skin: skin);
     if (_rolling) {
       d = d
           .animate(onPlay: (c) => c.repeat())
@@ -515,24 +1118,37 @@ class _LudoTableState extends State<_LudoTable> {
           .then()
           .scaleXY(begin: 1.1, end: .9, duration: 140.ms);
     } else if (canTap) {
-      d = d.animate(onPlay: (c) => c.repeat(reverse: true)).moveY(begin: 0, end: -5, duration: 450.ms).scaleXY(
-            begin: 1,
-            end: 1.08,
-            duration: 450.ms,
-          );
+      d = d
+          .animate(onPlay: (c) => c.repeat(reverse: true))
+          .moveY(begin: 0, end: -5, duration: 450.ms)
+          .scaleXY(begin: 1, end: 1.08, duration: 450.ms);
     }
+    final x2 = game.doubleActive && !_rolling;
     return GestureDetector(
+      key: isHuman ? const ValueKey('ludo-dice') : null,
       onTap: canTap ? _roll : null,
-      child: Container(
-        padding: const EdgeInsets.all(3),
-        decoration: canTap
-            ? BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [BoxShadow(color: AppColors.gold.withValues(alpha: .7), blurRadius: 14)],
-              )
-            : null,
-        child: d,
-      ),
+      child: Stack(clipBehavior: Clip.none, children: [
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: canTap
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: AppColors.gold.withValues(alpha: .7), blurRadius: 14)],
+                )
+              : null,
+          child: d,
+        ),
+        if (x2)
+          Positioned(
+            top: -8,
+            right: -8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(color: const Color(0xFF3DB8FF), borderRadius: BorderRadius.circular(8)),
+              child: const Text('×2', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+            ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(begin: 1, end: 1.15, duration: 400.ms),
+          ),
+      ]),
     );
   }
 
@@ -541,7 +1157,6 @@ class _LudoTableState extends State<_LudoTable> {
         ? game.legalMoves.map((m) => m.token).toSet()
         : <LudoToken>{};
 
-    // تجميع القطع حسب الخانة لترتيب المتراكب منها
     final positions = <LudoToken, Offset>{};
     final groups = <String, List<LudoToken>>{};
     for (final t in game.allTokens) {
@@ -557,23 +1172,27 @@ class _LudoTableState extends State<_LudoTable> {
         return rank(a).compareTo(rank(b));
       });
 
+    final theme = boardThemes[_boardTheme] ?? boardThemes['classic']!;
     return Container(
       width: size,
       height: size,
       padding: EdgeInsets.all(size * .025),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * .05),
-        gradient: const LinearGradient(colors: [Color(0xFFA9713D), Color(0xFF7A4A22)]),
+        gradient: LinearGradient(colors: theme.frame),
         boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 12))],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(size * .03),
         child: LayoutBuilder(builder: (context, c) {
-          final inner = c.maxWidth;
-          final cs = inner / LudoLayout.grid;
+          final cs = c.maxWidth / LudoLayout.grid;
           return Stack(
             children: [
-              Positioned.fill(child: CustomPaint(painter: LudoBoardPainter(active: widget.players.toSet()))),
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: LudoBoardPainter(active: s.colors.toSet(), theme: _boardTheme, power: s.power),
+                ),
+              ),
               for (final t in sorted) _tokenWidget(t, positions[t]!, groups, cs, movable.contains(t)),
             ],
           );
@@ -595,8 +1214,23 @@ class _LudoTableState extends State<_LudoTable> {
     if (t.inYard && !_shown.containsKey(t)) size = cs * 1.0;
     final center = ctr * cs + offset;
     final hopping = t == _hopping;
+    final shielded = game.isProtected(t) && !t.inYard && !t.finished;
 
     Widget pawn = LudoPawn(color: t.color, size: size, highlight: movable);
+    if (shielded) {
+      pawn = Stack(clipBehavior: Clip.none, children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF2EE59D), width: 2),
+              boxShadow: const [BoxShadow(color: Color(0x992EE59D), blurRadius: 8)],
+            ),
+          ),
+        ),
+        pawn,
+      ]);
+    }
     if (movable) {
       pawn = pawn
           .animate(onPlay: (c) => c.repeat(reverse: true))
@@ -623,6 +1257,29 @@ class _LudoTableState extends State<_LudoTable> {
   }
 }
 
+extension on String {
+  String ifEmpty(String other) => isEmpty ? other : this;
+}
+
+class _PotPill extends StatelessWidget {
+  const _PotPill({required this.prize});
+  final int prize;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(6, 4, 10, 4),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFFFFE27A), AppColors.goldDeep]),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Text('🏆', style: TextStyle(fontSize: 14)),
+          const SizedBox(width: 4),
+          Text('$prize', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.bgTop)),
+        ]),
+      );
+}
+
 class _ResultsDialog extends StatelessWidget {
   const _ResultsDialog({
     required this.ranking,
@@ -630,18 +1287,28 @@ class _ResultsDialog extends StatelessWidget {
     required this.humanWon,
     required this.onAgain,
     required this.onHome,
+    this.teams = false,
+    this.entry = 0,
+    this.payout = 0,
     this.reward,
   });
   final Reward? reward;
   final List<LudoColor> ranking;
   final String Function(LudoColor) nameOf;
   final bool humanWon;
+  final bool teams;
+  final int entry;
+  final int payout;
   final VoidCallback onAgain;
   final VoidCallback onHome;
 
   @override
   Widget build(BuildContext context) {
     const medals = ['🥇', '🥈', '🥉', '4'];
+    final winner = nameOf(ranking.first);
+    final title = teams
+        ? (humanWon ? 'فريقك فاز!' : 'فاز الفريق الآخر')
+        : '$winner ${winner == 'أنت' ? 'فزت' : 'فاز'}!';
     return Dialog(
       backgroundColor: Colors.transparent,
       child: Container(
@@ -652,64 +1319,90 @@ class _ResultsDialog extends StatelessWidget {
           border: Border.all(color: AppColors.gold, width: 2),
           boxShadow: [BoxShadow(color: AppColors.gold.withValues(alpha: .4), blurRadius: 30)],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(humanWon ? '🏆' : '🎲', style: const TextStyle(fontSize: 56))
-                .animate()
-                .scale(duration: 700.ms, curve: Curves.elasticOut, begin: Offset.zero),
-            Text(
-              '${nameOf(ranking.first)} ${nameOf(ranking.first) == 'أنت' ? 'فزت' : 'فاز'}!',
-              style: AppTheme.display.copyWith(fontSize: 32, color: AppColors.gold),
-            ),
-            const SizedBox(height: 14),
-            for (final (i, c) in ranking.indexed)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: ludoColors[c]!.withValues(alpha: .25),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  children: [
-                    Text(medals[i], style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                    const SizedBox(width: 10),
-                    LudoPawn(color: c, size: 24),
-                    const SizedBox(width: 10),
-                    Text(nameOf(c), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                  ],
-                ),
-              ).animate().fadeIn(delay: (200 + i * 120).ms).slideX(begin: .3, end: 0),
-            if (reward != null) ...[const SizedBox(height: 6), RewardBanner(reward: reward!)],
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.gold,
-                      foregroundColor: AppColors.bgTop,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: onAgain,
-                    child: const Text('العب مرة أخرى', style: TextStyle(fontWeight: FontWeight.w900)),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(humanWon ? '🏆' : '🎲', style: const TextStyle(fontSize: 56))
+                  .animate()
+                  .scale(duration: 700.ms, curve: Curves.elasticOut, begin: Offset.zero),
+              Text(title, style: AppTheme.display.copyWith(fontSize: 30, color: AppColors.gold)),
+              const SizedBox(height: 14),
+              for (final (i, c) in ranking.indexed)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: ludoColors[c]!.withValues(alpha: .25),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: onHome,
-                    child: const Text('الرئيسية', style: TextStyle(fontWeight: FontWeight.w800)),
+                  child: Row(
+                    children: [
+                      Text(medals[i], style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                      const SizedBox(width: 10),
+                      LudoPawn(color: c, size: 24),
+                      const SizedBox(width: 10),
+                      Text(nameOf(c), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    ],
                   ),
-                ),
-              ],
-            ),
-          ],
+                ).animate().fadeIn(delay: (200 + i * 120).ms).slideX(begin: .3, end: 0),
+              if (entry > 0)
+                Container(
+                  key: const ValueKey('bet-result'),
+                  margin: const EdgeInsets.only(top: 4, bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: (payout > 0 ? AppColors.gold : const Color(0xFFFF5A5F)).withValues(alpha: .18),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const CoinIcon(size: 24),
+                    const SizedBox(width: 8),
+                    Text(
+                      payout > 0 ? 'ربحت الرهان +$payout' : 'خسرت الرهان -$entry',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 17,
+                        color: payout > 0 ? AppColors.gold : const Color(0xFFFF8A8A),
+                      ),
+                    ),
+                  ]),
+                ).animate().scale(delay: 500.ms, curve: Curves.elasticOut, duration: 700.ms),
+              if (reward != null) ...[const SizedBox(height: 6), RewardBanner(reward: reward!)],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton(
+                      key: const ValueKey('ludo-again'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.gold,
+                        foregroundColor: AppColors.bgTop,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: onAgain,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(entry > 0 ? 'مرة أخرى ($entry)' : 'العب مرة أخرى',
+                            style: const TextStyle(fontWeight: FontWeight.w900)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: onHome,
+                      child: const Text('الرئيسية', style: TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

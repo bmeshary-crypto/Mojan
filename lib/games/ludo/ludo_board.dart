@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'ludo_engine.dart';
+import '../../core/shop.dart';
 
 /// ألوان لودو على اللوح.
 const ludoColors = {
@@ -99,19 +100,24 @@ class LudoLayout {
 
 /// يرسم اللوح الثابت: الساحات والمسار والنجوم والوسط.
 class LudoBoardPainter extends CustomPainter {
-  LudoBoardPainter({required this.active});
+  LudoBoardPainter({required this.active, this.theme = 'classic', this.power = false});
   final Set<LudoColor> active;
+  final String theme;
+
+  /// يرسم خانات الرمية الإضافية لوضع الباور.
+  final bool power;
 
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.width / LudoLayout.grid;
     Rect cell((int, int) c) => Rect.fromLTWH(c.$1 * s, c.$2 * s, s, s);
 
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
+    final th = boardThemes[theme] ?? boardThemes['classic']!;
+    canvas.drawRect(Offset.zero & size, Paint()..color = th.cell);
 
     // خانات المسار
     final line = Paint()
-      ..color = const Color(0xFFCFD3DC)
+      ..color = th.line
       ..style = PaintingStyle.stroke
       ..strokeWidth = s * .04;
     for (final c in LudoLayout.track) {
@@ -120,7 +126,8 @@ class LudoBoardPainter extends CustomPainter {
 
     for (final color in LudoColor.values) {
       final base = ludoColors[color]!;
-      final dim = active.contains(color) ? base : Color.lerp(base, Colors.white, .55)!;
+      final dim0 = active.contains(color) ? base : Color.lerp(base, th.cell, .55)!;
+      final dim = Color.lerp(dim0, Colors.black, th.yardTint)!;
 
       // ممر البيت وخانة البداية
       for (final c in LudoLayout.homeColumn(color)) {
@@ -151,11 +158,27 @@ class LudoBoardPainter extends CustomPainter {
       }
     }
 
+    // خانات الرمية الإضافية (+1)
+    if (power) {
+      for (final g in LudoGeo.bonusIndices) {
+        final r = cell(LudoLayout.track[g]).deflate(s * .06);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(r, Radius.circular(s * .18)),
+          Paint()..shader = const LinearGradient(colors: [Color(0xFFFFE27A), Color(0xFFE09B12)]).createShader(r),
+        );
+        final tp = TextPainter(
+          text: TextSpan(text: '+1', style: TextStyle(color: const Color(0xFF6B3A00), fontSize: s * .5, fontWeight: FontWeight.w900)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, r.center - Offset(tp.width / 2, tp.height / 2));
+      }
+    }
+
     // النجوم على الخانات الآمنة
     for (final g in LudoGeo.safeIndices) {
       if (LudoGeo.startIndex.containsValue(g)) continue;
       final r = cell(LudoLayout.track[g]);
-      canvas.drawRect(r, Paint()..color = const Color(0xFFE9ECF2));
+      canvas.drawRect(r, Paint()..color = Color.lerp(th.cell, const Color(0xFF9AA1AE), .18)!);
       canvas.drawRect(r, line);
       _star(canvas, r.center, s * .34, Paint()..color = const Color(0xFF9AA1AE));
     }
@@ -293,7 +316,8 @@ class _PawnDisc extends StatelessWidget {
 
 /// وجه نرد بالنقاط.
 class DiceFace extends StatelessWidget {
-  const DiceFace({super.key, required this.value, required this.size, this.color = const Color(0xFF1A1033)});
+  const DiceFace({super.key, required this.value, required this.size, this.color = const Color(0xFF1A1033), this.skin = 'classic'});
+  final String skin;
   final int value;
   final double size;
   final Color color;
@@ -310,18 +334,21 @@ class DiceFace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = size * .18;
+    final sk = diceSkins[skin] ?? diceSkins['classic']!;
+    final pip = skin == 'classic' ? color : sk.pip;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(size * .22),
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Colors.white, Color(0xFFE4E1F0)],
+          colors: sk.faces,
         ),
         boxShadow: [
           BoxShadow(color: Colors.black.withValues(alpha: .35), blurRadius: size * .15, offset: Offset(0, size * .08)),
+          if (sk.glow != null) BoxShadow(color: sk.glow!.withValues(alpha: .55), blurRadius: size * .3),
         ],
       ),
       child: Stack(
@@ -333,7 +360,7 @@ class DiceFace extends StatelessWidget {
               child: Container(
                 width: d,
                 height: d,
-                decoration: BoxDecoration(color: value == 1 ? const Color(0xFFE63946) : color, shape: BoxShape.circle),
+                decoration: BoxDecoration(color: value == 1 && skin == 'classic' ? const Color(0xFFE63946) : pip, shape: BoxShape.circle),
               ),
             ),
         ],
