@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../core/haptics.dart';
 
 /// يغلف أي عنصر ليصبح زراً ينضغط للداخل ويميل قليلاً عند اللمس، مع اهتزاز خفيف.
 class BouncyButton extends StatefulWidget {
@@ -32,7 +32,7 @@ class _BouncyButtonState extends State<BouncyButton> {
       final size = Size(c.maxWidth, c.maxHeight.isFinite ? c.maxHeight : c.maxWidth);
       return GestureDetector(
         onTapDown: (d) {
-          HapticFeedback.lightImpact();
+          Haptics.lightImpact();
           _update(d.localPosition, size);
           setState(() => _down = true);
         },

@@ -30,13 +30,20 @@ class ComingSoonScreen extends StatelessWidget {
               const Spacer(),
               Hero(
                 tag: 'game-${game.id}',
-                child: SizedBox(width: 180, height: 180, child: game.iconBuilder(context)),
+                child: SizedBox(
+                  width: 180,
+                  height: 180,
+                  child: game.iconBuilder(context),
+                ),
               ),
               const SizedBox(height: 24),
               Text(game.title, style: AppTheme.display.copyWith(fontSize: 40)),
               const SizedBox(height: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: game.colors[1].withValues(alpha: .25),
                   borderRadius: BorderRadius.circular(20),
@@ -46,13 +53,22 @@ class ComingSoonScreen extends StatelessWidget {
                   children: [
                     Icon(mode.icon, size: 18),
                     const SizedBox(width: 6),
-                    Text(mode.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(
+                      mode.label,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 28),
-              Text('اللعبة قيد البناء… قريباً',
-                      style: TextStyle(fontSize: 18, color: AppColors.textMuted, fontWeight: FontWeight.w700))
+              Text(
+                    'اللعبة قيد البناء… قريباً',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  )
                   .animate(onPlay: (c) => c.repeat(reverse: true))
                   .fadeIn(duration: 900.ms),
               const Spacer(flex: 2),

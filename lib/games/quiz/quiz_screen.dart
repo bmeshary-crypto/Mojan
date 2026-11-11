@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/game_module.dart';
@@ -12,6 +11,8 @@ import '../../widgets/bouncy_button.dart';
 import '../../widgets/game_ui.dart';
 import 'quiz_engine.dart';
 import 'quiz_questions.dart';
+import '../../core/haptics.dart';
+import '../../core/account/account.dart';
 
 /// ألوان أزرار الإجابات الأربعة.
 const _answerColors = [Color(0xFFE63946), Color(0xFF2F8BF5), Color(0xFFFFB703), Color(0xFF2EBD59)];
@@ -465,7 +466,7 @@ class _QuizPlayState extends State<_QuizPlay> {
 
   void _answer(int i) {
     if (_phase != _Phase.question || m.answers.containsKey(me) || _hidden.contains(i)) return;
-    HapticFeedback.mediumImpact();
+    Haptics.mediumImpact();
     m.answer(me, i, _elapsedMs);
     setState(() => _myChoice = i);
     _checkDone();
@@ -474,7 +475,7 @@ class _QuizPlayState extends State<_QuizPlay> {
   void _lifeline(QuizLifeline l) {
     if (_phase != _Phase.question || m.answers.containsKey(me)) return;
     final hide = m.useLifeline(me, l);
-    HapticFeedback.selectionClick();
+    Haptics.selectionClick();
     setState(() => _hidden = {..._hidden, ...hide});
     if (l == QuizLifeline.skip) _checkDone();
   }
@@ -489,7 +490,7 @@ class _QuizPlayState extends State<_QuizPlay> {
     m.reveal();
     final mine = m.answers[me]?.choice;
     if (mine != null) {
-      mine == m.current.correctIndex ? HapticFeedback.lightImpact() : HapticFeedback.heavyImpact();
+      mine == m.current.correctIndex ? Haptics.lightImpact() : Haptics.heavyImpact();
     }
     setState(() => _phase = _Phase.reveal);
     await Future.delayed(const Duration(milliseconds: 2200));
@@ -509,10 +510,12 @@ class _QuizPlayState extends State<_QuizPlay> {
   void _showResults() {
     final r = m.ranking;
     final iWon = r.first == me;
+    final reward = Account.instance.recordGame('quiz', won: iWon, points: m.players[me].score);
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => GameResultDialog(
+        reward: reward,
         emoji: iWon ? '🏆' : '🎯',
         title: iWon ? 'أنت البطل!' : '${m.players[r.first].name} فاز!',
         rows: [

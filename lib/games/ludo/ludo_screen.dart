@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/game_module.dart';
@@ -11,6 +10,9 @@ import '../../widgets/animated_background.dart';
 import '../../widgets/bouncy_button.dart';
 import 'ludo_board.dart';
 import 'ludo_engine.dart';
+import '../../core/haptics.dart';
+import '../../widgets/account_widgets.dart';
+import '../../core/account/account.dart';
 
 /// شاشة لعبة لودو: إعداد سريع ثم اللوح.
 class LudoScreen extends StatefulWidget {
@@ -263,7 +265,7 @@ class _LudoTableState extends State<_LudoTable> {
   Future<void> _roll() async {
     if (_busy || game.phase != LudoPhase.waitingRoll) return;
     _busy = true;
-    HapticFeedback.mediumImpact();
+    Haptics.mediumImpact();
     setState(() => _rolling = true);
     for (var i = 0; i < 8; i++) {
       await _wait(70);
@@ -321,7 +323,7 @@ class _LudoTableState extends State<_LudoTable> {
     setState(() {});
     for (final p in m.path) {
       _shown[m.token] = p;
-      HapticFeedback.selectionClick();
+      Haptics.selectionClick();
       setState(() {});
       await _wait(170);
       if (_disposed) return;
@@ -331,7 +333,7 @@ class _LudoTableState extends State<_LudoTable> {
       _shown.remove(c);
     }
     if (result.captured.isNotEmpty) {
-      HapticFeedback.heavyImpact();
+      Haptics.heavyImpact();
       setState(() => _status = '${_nameOf(m.token.color)} أكل قطعة ${_nameOf(result.captured.first.color)}!');
       await _wait(700);
       if (_disposed) return;
@@ -364,10 +366,18 @@ class _LudoTableState extends State<_LudoTable> {
   }
 
   void _showResults() {
+    final solo = widget.humans.length == 1;
+    final place = solo ? game.ranking.indexOf(widget.humans.first) : -1;
+    final reward = Account.instance.recordGame(
+      'ludo',
+      won: solo && place == 0,
+      points: solo && place >= 0 ? const [400, 200, 100, 0][place.clamp(0, 3)] : 0,
+    );
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => _ResultsDialog(
+        reward: reward,
         ranking: game.ranking,
         nameOf: _nameOf,
         humanWon: widget.humans.contains(game.ranking.first),
@@ -620,7 +630,9 @@ class _ResultsDialog extends StatelessWidget {
     required this.humanWon,
     required this.onAgain,
     required this.onHome,
+    this.reward,
   });
+  final Reward? reward;
   final List<LudoColor> ranking;
   final String Function(LudoColor) nameOf;
   final bool humanWon;
@@ -669,6 +681,7 @@ class _ResultsDialog extends StatelessWidget {
                   ],
                 ),
               ).animate().fadeIn(delay: (200 + i * 120).ms).slideX(begin: .3, end: 0),
+            if (reward != null) ...[const SizedBox(height: 6), RewardBanner(reward: reward!)],
             const SizedBox(height: 10),
             Row(
               children: [

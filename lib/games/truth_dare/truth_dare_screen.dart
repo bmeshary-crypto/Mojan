@@ -1,7 +1,6 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/game_module.dart';
@@ -11,6 +10,8 @@ import '../../widgets/bouncy_button.dart';
 import '../../widgets/game_ui.dart';
 import 'truth_dare_content.dart';
 import 'truth_dare_engine.dart';
+import '../../core/haptics.dart';
+import '../../core/account/account.dart';
 
 const _blue = AppColors.truth;
 const _red = AppColors.dare;
@@ -41,6 +42,7 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
       AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
   double _angleFrom = 0, _angleTo = 0;
   bool _spinning = false;
+  bool _recorded = false;
   String? _penalty;
 
   @override
@@ -63,6 +65,7 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
   void _start() {
     if (_names.length < 2) return;
     setState(() {
+      _recorded = false;
       _game = TruthDareGame(
         names: _names,
         level: _level,
@@ -79,7 +82,7 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
   Future<void> _spin() async {
     final g = _game!;
     if (_spinning || _stage != _Stage.spin) return;
-    HapticFeedback.mediumImpact();
+    Haptics.mediumImpact();
     final target = g.spin();
     final n = g.players.length;
     // الزجاجة ترسم متجهة للأعلى، فنديرها لتشير للاعب
@@ -92,7 +95,7 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
     });
     await _spinCtrl.forward(from: 0);
     if (!mounted) return;
-    HapticFeedback.heavyImpact();
+    Haptics.heavyImpact();
     await Future.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     setState(() {
@@ -102,7 +105,7 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
   }
 
   void _choose(TdChoice c) {
-    HapticFeedback.selectionClick();
+    Haptics.selectionClick();
     setState(() {
       _game!.draw(c);
       _penalty = null;
@@ -125,9 +128,12 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
   void _finish() {
     final g = _game!;
     final board = g.leaderboard;
+    final reward = _recorded ? null : Account.instance.recordGame('truth_dare', won: false);
+    _recorded = true;
     showDialog(
       context: context,
       builder: (ctx) => GameResultDialog(
+        reward: reward,
         emoji: '🏆',
         title: '${board.first.name} الأشجع!',
         rows: [

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/game_module.dart';
@@ -10,6 +9,8 @@ import '../../core/theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/game_ui.dart';
 import 'seeko_engine.dart';
+import '../../core/haptics.dart';
+import '../../core/account/account.dart';
 
 const seekoTeamColors = [Color(0xFF2EBD59), Color(0xFF2F8BF5), Color(0xFFF2453D)];
 
@@ -224,7 +225,7 @@ class _SeekoTableState extends State<_SeekoTable> {
     final player = game.current;
     final card = game.hands[player][p.handIndex];
     final res = game.play(p);
-    HapticFeedback.mediumImpact();
+    Haptics.mediumImpact();
     _selected = null;
     _lastCell = p.cell;
     final verb = p.type == SeekoActionType.remove ? 'أزال قطعة بـ' : 'لعب';
@@ -233,7 +234,7 @@ class _SeekoTableState extends State<_SeekoTable> {
     if (_disposed) return;
 
     if (res.newSequences.isNotEmpty) {
-      HapticFeedback.heavyImpact();
+      Haptics.heavyImpact();
       setState(() {
         _flash = res.newSequences.expand((s) => s).toSet();
         _status = '🎉 صف كامل لـ${teamName(game.teamOf(player))}!';
@@ -252,7 +253,7 @@ class _SeekoTableState extends State<_SeekoTable> {
 
   void _onCardTap(int i) {
     if (_busy || !_humanTurn) return;
-    HapticFeedback.selectionClick();
+    Haptics.selectionClick();
     setState(() => _selected = _selected == i ? null : i);
   }
 
@@ -277,10 +278,13 @@ class _SeekoTableState extends State<_SeekoTable> {
   void _showResults() {
     final w = game.winner;
     final humanWon = w != null && widget.humans.any((p) => game.teamOf(p) == w);
+    final solo = widget.humans.length == 1;
+    final reward = Account.instance.recordGame('seeko', won: solo && humanWon, points: solo && humanWon ? 300 : 50);
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => GameResultDialog(
+        reward: reward,
         emoji: w == null ? '🤝' : (humanWon || widget.humans.length > 1 ? '🏆' : '🃏'),
         title: w == null ? 'تعادل!' : '${teamName(w)} ${w == 0 && widget.humans.length == 1 && widget.playerCount != 4 ? 'فزت' : 'فاز'}!',
         rows: [

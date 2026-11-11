@@ -3,6 +3,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/theme.dart';
 import 'bouncy_button.dart';
+import 'account_widgets.dart';
+import '../core/account/account.dart';
 
 /// شريط علوي مشترك لشاشات الألعاب.
 class GameTopBar extends StatelessWidget {
@@ -137,7 +139,9 @@ class GameResultDialog extends StatelessWidget {
     required this.rows,
     required this.onAgain,
     required this.onHome,
+    this.reward,
   });
+  final Reward? reward;
   final String emoji;
   final String title;
   final List<Widget> rows;
@@ -167,6 +171,7 @@ class GameResultDialog extends StatelessWidget {
             const SizedBox(height: 14),
             for (final (i, r) in rows.indexed)
               r.animate().fadeIn(delay: (200 + i * 120).ms).slideX(begin: .3, end: 0),
+            if (reward != null) ...[const SizedBox(height: 6), RewardBanner(reward: reward!)],
             const SizedBox(height: 10),
             Row(
               children: [

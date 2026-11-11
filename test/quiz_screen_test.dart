@@ -3,12 +3,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mojan/core/game_module.dart';
 import 'package:mojan/core/theme.dart';
 import 'package:mojan/games/quiz/quiz_screen.dart';
+import 'package:mojan/core/account/account.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('quiz full match: create room, bots join, answer with lifelines, results', (tester) async {
     tester.view.physicalSize = const Size(420 * 3, 900 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({});
+    Account.instance.reset();
+    await Account.instance.signIn(method: AuthMethod.guest, name: 'لاعب');
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.dark,
       home: const Directionality(textDirection: TextDirection.rtl, child: QuizScreen(mode: PlayMode.vsComputer)),
@@ -51,6 +56,8 @@ void main() {
       questions++;
     }
     expect(questions, 5);
+    expect(Account.instance.profile!.statsFor('quiz').played, 1, reason: 'match result saved to the profile');
+    expect(find.textContaining('خبرة'), findsOneWidget, reason: 'reward shown in results');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 2));
