@@ -230,25 +230,65 @@ class LudoPawn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = ludoColors[color]!;
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          center: const Alignment(-.3, -.4),
-          colors: [Color.lerp(c, Colors.white, .45)!, c, Color.lerp(c, Colors.black, .3)!],
-          stops: const [0, .55, 1],
-        ),
-        border: Border.all(color: Colors.white, width: size * .1),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: .4), blurRadius: size * .2, offset: Offset(0, size * .1)),
-          if (highlight) BoxShadow(color: Colors.white, blurRadius: size * .4, spreadRadius: size * .08),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          // ظل القاعدة وهالة التمييز
+          Positioned(
+            bottom: 0,
+            child: Container(
+              width: size * .8,
+              height: size * .28,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.all(Radius.elliptical(size * .4, size * .14)),
+                color: highlight ? Colors.white : Colors.black.withValues(alpha: .35),
+                boxShadow: [
+                  if (highlight) BoxShadow(color: Colors.white, blurRadius: size * .4, spreadRadius: size * .1),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: -size * .2,
+            right: -size * .2,
+            top: -size * .45,
+            bottom: size * .02,
+            child: IgnorePointer(
+              child: Image.asset(
+                'assets/images/pawn_${color.name}.webp',
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
+                errorBuilder: (_, _, _) => _PawnDisc(color: c, size: size),
+              ),
+            ),
+          ),
         ],
       ),
-      child: Icon(Icons.workspace_premium_rounded, size: size * .5, color: Colors.white.withValues(alpha: .9)),
     );
   }
+}
+
+class _PawnDisc extends StatelessWidget {
+  const _PawnDisc({required this.color, required this.size});
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            center: const Alignment(-.3, -.4),
+            colors: [Color.lerp(color, Colors.white, .45)!, color, Color.lerp(color, Colors.black, .3)!],
+            stops: const [0, .55, 1],
+          ),
+          border: Border.all(color: Colors.white, width: size * .1),
+        ),
+      );
 }
 
 /// وجه نرد بالنقاط.

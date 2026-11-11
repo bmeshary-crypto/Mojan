@@ -530,18 +530,24 @@ class _Chip extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: RadialGradient(
-          center: const Alignment(-.3, -.4),
-          colors: [Color.lerp(c, Colors.white, .45)!, c, Color.lerp(c, Colors.black, .35)!],
-        ),
-        border: Border.all(color: locked ? AppColors.gold : Colors.white, width: max(1.5, size * .1)),
         boxShadow: [BoxShadow(color: Colors.black45, blurRadius: size * .2, offset: Offset(0, size * .08))],
       ),
-      child: Center(
-        child: Container(
-          width: size * .45,
-          height: size * .45,
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white54, width: 1)),
+      foregroundDecoration: locked
+          ? BoxDecoration(shape: BoxShape.circle, border: Border.all(color: AppColors.gold, width: max(1.5, size * .12)))
+          : null,
+      child: Image.asset(
+        'assets/images/chip_$team.webp',
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              center: const Alignment(-.3, -.4),
+              colors: [Color.lerp(c, Colors.white, .45)!, c, Color.lerp(c, Colors.black, .35)!],
+            ),
+            border: Border.all(color: Colors.white, width: max(1.5, size * .1)),
+          ),
         ),
       ),
     );

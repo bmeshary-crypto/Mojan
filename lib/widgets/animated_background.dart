@@ -39,6 +39,16 @@ class _AnimatedBackgroundState extends State<AnimatedBackground>
             ),
           ),
         ),
+        // خلفية مصممة بجيميناي فوق التدرج (تتجاهل إن لم تتوفر)
+        Opacity(
+          opacity: .85,
+          child: Image.asset(
+            'assets/images/background.webp',
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
+        ),
         // هالات ضوئية كبيرة
         const Positioned(top: -120, right: -80, child: _Glow(color: Color(0xFF7B4DFF), size: 320)),
         const Positioned(bottom: -140, left: -100, child: _Glow(color: Color(0xFFFF4D9D), size: 340)),
