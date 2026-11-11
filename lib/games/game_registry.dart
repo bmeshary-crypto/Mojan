@@ -6,6 +6,7 @@ import '../screens/coming_soon_screen.dart';
 import '../widgets/game_icons.dart';
 import 'ludo/ludo_screen.dart';
 import 'seeko/seeko_screen.dart';
+import 'truth_dare/truth_dare_screen.dart';
 
 /// كل ألعاب MOJAN. لإضافة لعبة جديدة يكفي إضافة عنصر هنا.
 class GameRegistry {
@@ -50,7 +51,9 @@ class GameRegistry {
       players: '2-12',
       modes: const [PlayMode.local, PlayMode.online],
       iconBuilder: (_) => const TruthDareIcon(),
-      screenBuilder: (_, mode) => ComingSoonScreen(gameId: 'truth_dare', mode: mode),
+      screenBuilder: (_, mode) => mode == PlayMode.online
+          ? ComingSoonScreen(gameId: 'truth_dare', mode: mode)
+          : TruthDareScreen(mode: mode),
     ),
   ];
 

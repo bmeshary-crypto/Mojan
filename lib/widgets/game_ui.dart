@@ -21,19 +21,22 @@ class GameTopBar extends StatelessWidget {
             onPressed: () => Navigator.maybePop(context),
             icon: const Icon(Icons.arrow_back_rounded, size: 28),
           ),
-          Flexible(
-            child: Text(title,
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTheme.display.copyWith(fontSize: 28)),
-          ),
+          Text(title, maxLines: 1, style: AppTheme.display.copyWith(fontSize: 28)),
           if (subtitle != null) ...[
             const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .1),
-                borderRadius: BorderRadius.circular(12),
+            Flexible(
+              flex: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700)),
               ),
-              child: Text(subtitle!, style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700)),
             ),
           ],
           const Spacer(),
