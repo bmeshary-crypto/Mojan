@@ -1,5 +1,8 @@
 # نشر MOJAN على GitHub حتى يدخل عليها أصحابك
 
+> **منشورة الآن:** https://bmeshary-crypto.github.io/Mojan/ وتتحدث تلقائياً مع كل رفع على `main` (تُعرض من فرع `gh-pages`).
+> الخطوات أدناه للمرجع فقط لو أردت إعادة النشر في مستودع آخر.
+
 الهدف: رابط واحد مثل `https://اسمك.github.io/mojan/` يفتحه أي شخص من جواله أو كمبيوتره.
 
 ## ما الذي ستحصل عليه، بصراحة
@@ -25,7 +28,7 @@
    - **أزل** علامة "Keep this code private" (صفحات GitHub المجانية تحتاج مستودعاً عاماً).
    - اضغط **Publish repository**.
 6. افتح المستودع على الموقع: **Repository ← View on GitHub**.
-7. من المستودع: **Settings ← Pages**، وتحت **Build and deployment** اختر **Source: GitHub Actions**.
+7. من المستودع: **Settings ← Pages**، وتحت **Build and deployment** اختر **Source: Deploy from a branch** ← الفرع `gh-pages` (يُنشأ تلقائياً بعد أول بناء).
 8. افتح تبويب **Actions**: ستجد عملية "Deploy MOJAN web" تعمل (5 إلى 8 دقائق أول مرة).
    إن لم تبدأ، اضغط عليها ثم **Run workflow**.
 9. عند ظهور العلامة الخضراء، الرابط يكون:

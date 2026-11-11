@@ -7,9 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -34,16 +32,12 @@ jobs:
           sed -i 's|<base href="/">|<base href="./">|' build/web/index.html
           sed -i 's|<title>[^<]*</title>|<title>MOJAN</title>|' build/web/index.html
           cp build/web/index.html build/web/404.html
-      - uses: actions/upload-pages-artifact@v3
+      - name: Disable Jekyll
+        run: touch build/web/.nojekyll
+      # يحدّث فرع gh-pages الذي تُعرض منه الصفحة
+      - uses: peaceiris/actions-gh-pages@v4
         with:
-          path: build/web
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: build/web
+          publish_branch: gh-pages
+          force_orphan: true

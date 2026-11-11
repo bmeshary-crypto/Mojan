@@ -8,11 +8,13 @@
 
 ## النشر على GitHub Pages
 
+النسخة المنشورة: https://bmeshary-crypto.github.io/Mojan/
+
 راجع الدليل الكامل: [docs/GITHUB-AR.md](docs/GITHUB-AR.md)
 
 باختصار:
 1. ارفع هذا المجلد كما هو إلى مستودع جديد على GitHub (فرع `main`).
-2. من **Settings ← Pages** اختر **Source: GitHub Actions**.
+2. من **Settings ← Pages** اختر **Deploy from a branch ← gh-pages** (الفرع يُنشأ بعد أول بناء).
 3. بعد دقائق يصبح الرابط: `https://اسم-حسابك.github.io/اسم-المستودع/`
 
 الملف `.github/workflows/deploy.yml` يبني نسخة الويب ويشغل الاختبارات وينشرها تلقائياً مع كل رفع.
