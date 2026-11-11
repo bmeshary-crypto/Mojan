@@ -153,7 +153,30 @@ void main() {
     expect(svc.minimized, isNull);
     expect(find.byKey(const ValueKey('mini-room')), findsNothing);
 
-    // تصغير ثم إغلاق الفقاعة = خروج
+    // الضغط على نفس الغرفة من القائمة وهي مصغّرة يرجعك لها بدون دخول جديد
+    await tapKey(tester, 'room-exit', 600);
+    await tapKey(tester, 'exit-minimize', 1000);
+    final l0 = room.listeners;
+    await tester.tap(find.text('open'));
+    await pumpFor(tester, 1000);
+    expect(find.byType(VoiceRoomScreen), findsOneWidget);
+    expect(room.listeners, l0);
+    expect(svc.minimized, isNull);
+
+    // دخول غرفة أخرى يخرجك من المصغّرة
+    await tapKey(tester, 'room-exit', 600);
+    await tapKey(tester, 'exit-minimize', 1000);
+    final other = svc.live.firstWhere((r) => r != room);
+    final ctx = tester.element(find.text('open'));
+    openVoiceRoom(ctx, other);
+    await pumpFor(tester, 1000);
+    expect(svc.minimized, isNull);
+    expect(room.listeners, l0 - 1);
+    await tapKey(tester, 'room-exit', 600);
+    await tapKey(tester, 'exit-leave', 1000);
+    await tester.tap(find.text('open'));
+    await pumpFor(tester, 1200);
+
     await tapKey(tester, 'room-exit', 600);
     await tapKey(tester, 'exit-minimize', 1000);
     final listeners = room.listeners;

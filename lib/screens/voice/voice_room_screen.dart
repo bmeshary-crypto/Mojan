@@ -1374,7 +1374,16 @@ extension on _VoiceRoomScreenState {
 
 /// يدخل غرفة صوتية مع التحقق من السماح بالدخول.
 Future<void> openVoiceRoom(BuildContext context, VoiceRoom room) async {
-  final err = VoiceService.instance.join(room);
+  final svc = VoiceService.instance;
+  final mini = svc.minimized;
+  if (mini == room) {
+    // نفس الغرفة المصغّرة: نرجع لها بدون دخول جديد
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => VoiceRoomScreen(room: room)));
+    return;
+  }
+  // غرفة واحدة فقط في نفس الوقت: دخول غرفة أخرى يخرجك من المصغّرة
+  if (mini != null) svc.leave(mini);
+  final err = svc.join(room);
   if (err != null) {
     voiceToast(context, err);
     return;
