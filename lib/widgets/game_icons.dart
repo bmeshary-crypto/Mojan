@@ -316,3 +316,18 @@ class _SplitPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+/// صورة اللعبة المصممة (من جيميناي)، وترجع للأيقونة المرسومة بالكود إن لم تتوفر.
+class GameArt extends StatelessWidget {
+  const GameArt(this.asset, {super.key, required this.fallback});
+  final String asset;
+  final Widget fallback;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+        asset,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => fallback,
+      );
+}

@@ -19,7 +19,7 @@ class GameRegistry {
       colors: const [Color(0xFFFF6B85), AppColors.ludo, Color(0xFFC9184A)],
       players: '2-4',
       modes: const [PlayMode.vsComputer, PlayMode.local, PlayMode.online],
-      iconBuilder: (_) => const LudoIcon(),
+      iconBuilder: (_) => const GameArt('assets/images/ludo.webp', fallback: LudoIcon()),
       screenBuilder: (_, mode) =>
           mode == PlayMode.online ? ComingSoonScreen(gameId: 'ludo', mode: mode) : LudoScreen(mode: mode),
     ),
@@ -30,7 +30,7 @@ class GameRegistry {
       colors: const [Color(0xFF5CF2B5), AppColors.seeko, Color(0xFF0E9F64)],
       players: '2-4',
       modes: const [PlayMode.vsComputer, PlayMode.local, PlayMode.online],
-      iconBuilder: (_) => const SeekoIcon(),
+      iconBuilder: (_) => const GameArt('assets/images/seeko.webp', fallback: SeekoIcon()),
       screenBuilder: (_, mode) =>
           mode == PlayMode.online ? ComingSoonScreen(gameId: 'seeko', mode: mode) : SeekoScreen(mode: mode),
     ),
@@ -41,7 +41,7 @@ class GameRegistry {
       colors: const [Color(0xFF6CCBFF), AppColors.quiz, Color(0xFF1B7FD1)],
       players: '1-8',
       modes: const [PlayMode.rooms, PlayMode.vsComputer],
-      iconBuilder: (_) => const QuizIcon(),
+      iconBuilder: (_) => const GameArt('assets/images/quiz.webp', fallback: QuizIcon()),
       screenBuilder: (_, mode) => QuizScreen(mode: mode),
     ),
     GameModule(
@@ -51,7 +51,7 @@ class GameRegistry {
       colors: const [Color(0xFF4CB8FF), Color(0xFF8F6BFF), AppColors.dare],
       players: '2-12',
       modes: const [PlayMode.local, PlayMode.online],
-      iconBuilder: (_) => const TruthDareIcon(),
+      iconBuilder: (_) => const GameArt('assets/images/truth_dare.webp', fallback: TruthDareIcon()),
       screenBuilder: (_, mode) => mode == PlayMode.online
           ? ComingSoonScreen(gameId: 'truth_dare', mode: mode)
           : TruthDareScreen(mode: mode),
