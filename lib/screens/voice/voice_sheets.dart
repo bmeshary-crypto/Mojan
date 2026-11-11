@@ -71,19 +71,20 @@ Future<(VoiceGift, int)?> showGiftSheet(
 }) {
   final svc = VoiceService.instance;
   var target = to ?? room.host;
+  var allMics = false;
   var selected = voiceGifts.first;
   var count = 1;
   return _sheet(context, (ctx) {
+    final mics = room.onMics.where((u) => !u.isMe).toList();
     final people = [
-      room.host,
-      ...room.seats
-          .where((s) => s.user != null && !s.user!.isMe)
-          .map((s) => s.user!),
+      if (to != null && !mics.any((u) => u.id == to.id)) to,
+      ...mics,
     ];
     return StatefulBuilder(
       builder: (ctx, set) {
         final coins = Account.instance.profile?.coins ?? 0;
-        final cost = selected.price * count;
+        final targets = allMics ? mics : [target];
+        final cost = selected.price * count * targets.length;
         return Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
           child: Column(
@@ -104,17 +105,76 @@ Future<(VoiceGift, int)?> showGiftSheet(
                       child: ListView(
                         scrollDirection: Axis.horizontal,
                         children: [
+                          if (mics.length > 1)
+                            GestureDetector(
+                              key: const ValueKey('gift-to-all-mics'),
+                              onTap: () => set(() => allMics = !allMics),
+                              child: AnimatedContainer(
+                                duration: 200.ms,
+                                margin: const EdgeInsets.only(left: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  gradient: allMics
+                                      ? const LinearGradient(
+                                          colors: [
+                                            Color(0xFFFFE27A),
+                                            AppColors.goldDeep,
+                                          ],
+                                        )
+                                      : null,
+                                  color: allMics ? null : Colors.white12,
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: allMics
+                                        ? Colors.white
+                                        : Colors.white24,
+                                  ),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.mic_rounded,
+                                      size: 18,
+                                      color: allMics
+                                          ? AppColors.bgTop
+                                          : Colors.white,
+                                    ),
+                                    Text(
+                                      'كل المايكات',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w900,
+                                        color: allMics
+                                            ? AppColors.bgTop
+                                            : Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           for (final p in people)
                             GestureDetector(
                               key: ValueKey('gift-to-${p.id}'),
-                              onTap: () => set(() => target = p),
+                              onTap: () => set(() {
+                                target = p;
+                                allMics = false;
+                              }),
                               child: Container(
                                 margin: const EdgeInsets.only(left: 6),
                                 padding: const EdgeInsets.all(2),
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: target.id == p.id
+                                    color: allMics
+                                        ? (mics.contains(p)
+                                              ? AppColors.gold
+                                              : Colors.transparent)
+                                        : target.id == p.id
                                         ? AppColors.gold
                                         : Colors.transparent,
                                     width: 2.5,
@@ -134,7 +194,10 @@ Future<(VoiceGift, int)?> showGiftSheet(
                 ],
               ),
               Text(
-                target.name,
+                allMics
+                    ? 'كل من على المايك (${mics.length}) · ${selected.price * count} لكل شخص'
+                    : target.name,
+                key: const ValueKey('gift-target-name'),
                 style: const TextStyle(
                   color: AppColors.gold,
                   fontWeight: FontWeight.w800,
@@ -270,10 +333,10 @@ Future<(VoiceGift, int)?> showGiftSheet(
                       backgroundColor: const Color(0xFFFF4D9D),
                     ),
                     onPressed: () {
-                      final err = svc.sendGift(
+                      final err = svc.sendGiftTo(
                         room,
                         selected,
-                        target,
+                        targets,
                         count: count,
                       );
                       if (err != null) {
@@ -390,17 +453,91 @@ Future<void> showUserSheet(
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 12),
-          if (!u.isMe)
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _stat('استلم', room.receivedBy(u.id), const Color(0xFFFF7AB6)),
+              const SizedBox(width: 10),
+              _stat('أرسل', room.sent[u.id] ?? 0, AppColors.gold),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            key: const ValueKey('user-bio'),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .06),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Text(
+              (u.isMe ? (Account.instance.profile?.bio ?? u.bio) : u.bio)
+                      .trim()
+                      .isEmpty
+                  ? 'لا توجد نبذة بعد'
+                  : (u.isMe ? (Account.instance.profile?.bio ?? u.bio) : u.bio),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w700, height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (!u.isMe) ...[
+            GestureDetector(
+                  key: const ValueKey('user-gift'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    onGift();
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    height: 50,
+                    margin: const EdgeInsets.only(bottom: 6),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [
+                          Color(0xFFFF7AB6),
+                          Color(0xFFFF4D9D),
+                          Color(0xFF8E6CFF),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(25),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x66FF4D9D),
+                          blurRadius: 14,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        artImage(
+                          'gift_box',
+                          32,
+                          fallback: Icons.card_giftcard_rounded,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'أرسل هدية إلى ${u.name}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .animate(onPlay: (c) => c.repeat())
+                .shimmer(
+                  delay: 1200.ms,
+                  duration: 1200.ms,
+                  color: Colors.white54,
+                ),
             Row(
               children: [
-                act(
-                  'user-gift',
-                  Icons.card_giftcard_rounded,
-                  'إهداء',
-                  onGift,
-                  color: const Color(0xFFFF7AB6),
-                ),
                 act(
                   'user-mention',
                   Icons.alternate_email_rounded,
@@ -416,6 +553,7 @@ Future<void> showUserSheet(
                 ),
               ],
             ),
+          ],
           if (u.isMe && s != null)
             Row(
               children: [
@@ -458,6 +596,322 @@ Future<void> showUserSheet(
     );
   });
 }
+
+Widget _stat(String label, int v, Color c) => Container(
+  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+  decoration: BoxDecoration(
+    color: c.withValues(alpha: .14),
+    borderRadius: BorderRadius.circular(12),
+    border: Border.all(color: c.withValues(alpha: .5)),
+  ),
+  child: Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Image.asset(
+        'assets/images/gift_box.webp',
+        width: 16,
+        height: 16,
+        errorBuilder: (_, _, _) =>
+            const Icon(Icons.card_giftcard_rounded, size: 14),
+      ),
+      const SizedBox(width: 4),
+      Text(
+        '$label ',
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: Colors.white70,
+        ),
+      ),
+      Text(
+        fmtK(v),
+        style: TextStyle(fontWeight: FontWeight.w900, color: c),
+      ),
+    ],
+  ),
+);
+
+// ---------------- صندوق الأشخاص ----------------
+
+/// من في الغرفة: على المايك ثم الحضور.
+Future<void> showAudienceSheet(
+  BuildContext context,
+  VoiceRoom room, {
+  required void Function(VoiceUser) onUser,
+}) => _sheet(context, (ctx) {
+  Widget row(VoiceUser u, {String? tag}) => ListTile(
+    key: ValueKey('aud-${u.id}'),
+    contentPadding: EdgeInsets.zero,
+    onTap: () {
+      Navigator.pop(ctx);
+      onUser(u);
+    },
+    leading: PlayerAvatar(index: u.avatar, size: 40, ring: false),
+    title: Row(
+      children: [
+        Flexible(
+          child: Text(
+            u.isMe ? '${u.name} (أنت)' : u.name,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: u.vip ? AppColors.gold : Colors.white,
+            ),
+          ),
+        ),
+        if (tag != null) ...[
+          const SizedBox(width: 6),
+          Text(
+            tag,
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
+        ],
+      ],
+    ),
+    subtitle: Text(
+      'المستوى ${u.level}',
+      style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+    ),
+    trailing: GiftBadge(room.receivedBy(u.id)),
+  );
+  final svc = VoiceService.instance;
+  final meListening = !svc.isHost(room) && svc.mySeat(room) == null;
+  return ConstrainedBox(
+    key: const ValueKey('audience-sheet'),
+    constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .7),
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _handle(),
+          _title('في الغرفة الآن · ${room.online}'),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const Text(
+                  '🎤 على المايك',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.gold,
+                  ),
+                ),
+                for (final (i, u) in room.onMics.indexed)
+                  row(u, tag: i == 0 ? '👑 المضيف' : null),
+                const SizedBox(height: 8),
+                const Text(
+                  '👥 الحضور',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.gold,
+                  ),
+                ),
+                if (meListening) row(svc.me()),
+                for (final u in room.audience) row(u),
+                if (room.listeners > room.audience.length + 1)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Text(
+                      '+ ${room.listeners - room.audience.length - 1} آخرين يستمعون',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+});
+
+// ---------------- إحصائيات الهدايا ----------------
+
+Future<void> showGiftStats(
+  BuildContext context,
+  VoiceRoom room,
+) => _sheet(context, (ctx) {
+  Widget board(List<(VoiceUser, int)> list, String empty) => list.isEmpty
+      ? Center(
+          child: Text(
+            empty,
+            style: const TextStyle(color: AppColors.textMuted),
+          ),
+        )
+      : ListView.builder(
+          itemCount: list.length,
+          itemBuilder: (_, i) {
+            final (u, v) = list[i];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: i < 3
+                    ? AppColors.gold.withValues(alpha: .12 - i * .03)
+                    : Colors.white.withValues(alpha: .05),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 30,
+                    child: Text(
+                      i < 3 ? ['🥇', '🥈', '🥉'][i] : '${i + 1}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  PlayerAvatar(index: u.avatar, size: 36, ring: false),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      u.isMe ? '${u.name} (أنت)' : u.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  const CoinIcon(size: 15),
+                  const SizedBox(width: 3),
+                  Text(
+                    fmtK(v),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.gold,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+  return SizedBox(
+    key: const ValueKey('gift-stats-sheet'),
+    height: MediaQuery.sizeOf(ctx).height * .72,
+    child: DefaultTabController(
+      length: 3,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _handle(),
+            _title('إحصائيات هدايا الغرفة'),
+            Row(
+              children: [
+                for (final (label, value, c) in [
+                  ('قيمة الهدايا', fmtK(room.giftsValue), AppColors.gold),
+                  (
+                    'عدد الهدايا',
+                    fmtK(room.giftsCount),
+                    const Color(0xFFFF7AB6),
+                  ),
+                  ('الداعمون', '${room.sent.length}', const Color(0xFF7CC8FF)),
+                ])
+                  Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: c.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: c.withValues(alpha: .4)),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            value,
+                            style: AppTheme.display.copyWith(
+                              fontSize: 22,
+                              color: c,
+                            ),
+                          ),
+                          Text(
+                            label,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const TabBar(
+              indicatorColor: AppColors.gold,
+              labelStyle: TextStyle(fontWeight: FontWeight.w900),
+              tabs: [
+                Tab(text: 'الداعمون'),
+                Tab(text: 'المستلمون'),
+                Tab(text: 'الهدايا'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  board(room.top(room.sent), 'لا توجد هدايا بعد'),
+                  board(room.top(room.received), 'لا توجد هدايا بعد'),
+                  GridView.count(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    children: [
+                      for (final g in voiceGifts)
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: .05),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          padding: const EdgeInsets.all(6),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: artImage(
+                                  g.art,
+                                  60,
+                                  fallback: Icons.card_giftcard_rounded,
+                                ),
+                              ),
+                              Text(
+                                g.title,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                '×${fmtK(room.giftCounts[g.id] ?? 0)}',
+                                key: ValueKey('gift-count-stat-${g.id}'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.gold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+});
 
 // ---------------- البلاغ ----------------
 

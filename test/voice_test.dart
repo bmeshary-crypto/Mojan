@@ -249,7 +249,8 @@ void main() {
     expect(flagged.seats.where((s) => s.user != null).every((s) => s.muted), isTrue);
     await tapKey(tester, 'monitor-${flagged.id}', 1200);
     expect(find.byType(VoiceRoomScreen), findsOneWidget);
-    await tapKey(tester, 'room-exit', 1000);
+    await tapKey(tester, 'room-exit', 600);
+    await tapKey(tester, 'exit-leave', 1000);
     await tapKey(tester, 'close-${flagged.id}', 600);
     await tapKey(tester, 'confirm-admin-close', 600);
     expect(flagged.closed, isTrue);

@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/account/account.dart';
 import 'core/theme.dart';
 import 'screens/splash_screen.dart';
+import 'screens/voice/mini_room_bubble.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +29,14 @@ class MojanApp extends StatelessWidget {
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar'), Locale('en')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      navigatorKey: appNavigatorKey,
+      // فقاعة الغرفة الصوتية المصغّرة تطفو فوق كل الشاشات
+      builder: (context, child) => Stack(
+        children: [
+          ?child,
+          const MiniRoomBubble(),
+        ],
+      ),
       home: const SplashScreen(),
     );
   }

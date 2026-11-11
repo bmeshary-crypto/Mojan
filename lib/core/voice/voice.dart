@@ -58,8 +58,12 @@ class VoiceUser {
     this.frameArt,
     this.entrance,
     this.bubble,
+    this.bio = '',
   });
   final String id;
+
+  /// النبذة التعريفية التي تظهر في بطاقة الشخص.
+  String bio;
 
   /// إطار من المتجر (اسم مثل angel) يغطي الإطار الافتراضي.
   String? frameArt;
@@ -96,7 +100,10 @@ class VoiceSeat {
 enum VoiceMsgKind { chat, system, gift, join }
 
 class VoiceMessage {
-  VoiceMessage({required this.kind, required this.text, this.user, this.gift, this.count = 1});
+  VoiceMessage({required this.kind, required this.text, this.user, this.gift, this.count = 1, this.to = const []});
+
+  /// مستلمو الهدية (لرسم طيرانها إلى أماكنهم).
+  final List<VoiceUser> to;
   final VoiceMsgKind kind;
   final String text;
   final VoiceUser? user;
@@ -166,6 +173,47 @@ class VoiceRoom {
 
   final List<VoiceMessage> messages = [];
   final List<MicRequest> requests = [];
+
+  /// الحضور غير الجالسين على المايك (صندوق الأشخاص).
+  final List<VoiceUser> audience = [];
+
+  // ---- إحصائيات الهدايا داخل الغرفة ----
+  /// قيمة الهدايا (بالعملات) التي استلمها كل شخص، حسب المعرّف.
+  final Map<String, int> received = {};
+
+  /// قيمة الهدايا التي أرسلها كل شخص.
+  final Map<String, int> sent = {};
+
+  /// عدد كل نوع هدية أُرسل في الغرفة.
+  final Map<String, int> giftCounts = {};
+
+  /// آخر نسخة معروفة من كل شخص ظهر في الإحصائيات.
+  final Map<String, VoiceUser> people = {};
+
+  int get giftsValue => received.values.fold(0, (a, b) => a + b);
+  int get giftsCount => giftCounts.values.fold(0, (a, b) => a + b);
+  int receivedBy(String id) => received[id] ?? 0;
+
+  void recordGift(VoiceUser from, List<VoiceUser> to, VoiceGift g, int count) {
+    final each = g.price * count;
+    people[from.id] = from;
+    sent[from.id] = (sent[from.id] ?? 0) + each * to.length;
+    for (final u in to) {
+      people[u.id] = u;
+      received[u.id] = (received[u.id] ?? 0) + each;
+    }
+    giftCounts[g.id] = (giftCounts[g.id] ?? 0) + count * to.length;
+  }
+
+  /// أكبر الداعمين أو المستلمين مرتبين.
+  List<(VoiceUser, int)> top(Map<String, int> m) {
+    final list = [for (final e in m.entries) if (people[e.key] != null) (people[e.key]!, e.value)];
+    list.sort((a, b) => b.$2.compareTo(a.$2));
+    return list;
+  }
+
+  /// الأشخاص على المايكات (المضيف ثم المقاعد).
+  List<VoiceUser> get onMics => [host, for (final s in seats) if (s.user != null) s.user!];
   final Set<String> kicked = {};
 
   int get onSeats => seats.where((s) => !s.empty).length;
@@ -181,6 +229,17 @@ const _botNames = [
 const _botFrames = ['angel', 'hearts', 'ice', 'fire', 'jungle', 'royal', 'rainbow', 'demon', 'ramadan'];
 const _botEntrances = ['car', 'scooter', 'horse', 'carpet', 'dragon', 'yacht', 'rocket', 'lion', 'jet'];
 const _botBubbles = ['pink', 'ocean', 'gold', 'neon'];
+
+const _botBios = [
+  'أحب الطرب والسهرات الحلوة 🎶',
+  'هنا للضحك والسوالف ☕',
+  'لاعب لودو محترف 🎲 تحداني',
+  'الهدوء سر الجمال 🌙',
+  'صوتي على المايك كل ليلة 🎤',
+  'لا تحكم من الصورة 😄',
+  'محب للخير والناس الطيبة 🌹',
+  'جديد هنا، رحبوا فيني 👋',
+];
 
 const _botChat = [
   'صوتك جميل جداً ❤️', 'منورين يا جماعة', 'السلام عليكم', 'أبي مايك 🙋', 'كمّل كمّل 👏', 'هههههه',
@@ -205,6 +264,19 @@ class VoiceService extends ChangeNotifier {
 
   /// كتم صوت الغرفة عندي فقط (السماعة).
   bool speakerOn = true;
+
+  /// الغرفة المصغّرة في الخلفية (تظهر كفقاعة عائمة).
+  VoiceRoom? minimized;
+
+  void minimize(VoiceRoom r) {
+    minimized = r;
+    notifyListeners();
+  }
+
+  void restore() {
+    minimized = null;
+    notifyListeners();
+  }
   void toggleSpeaker() {
     speakerOn = !speakerOn;
     notifyListeners();
@@ -225,6 +297,7 @@ class VoiceService extends ChangeNotifier {
       frameArt: p == null || p.frame == 'none' ? null : p.frame,
       entrance: p == null || p.entrance == 'none' ? null : p.entrance,
       bubble: p == null || p.bubble == 'none' ? null : p.bubble,
+      bio: p?.bio ?? '',
     );
   }
 
@@ -237,6 +310,7 @@ class VoiceService extends ChangeNotifier {
       avatar: 2 * ((n * 7 + 1) % 8) + n % 2,
       level: 1 + _rng.nextInt(40),
       vip: _rng.nextDouble() < .25,
+      bio: _botBios[(n + _rng.nextInt(3)) % _botBios.length],
     );
     // بعض المستخدمين المميزين عندهم إطارات ودخوليات من المتجر
     if (u.vip) {
@@ -245,6 +319,33 @@ class VoiceService extends ChangeNotifier {
       if (_rng.nextBool()) u.bubble = _botBubbles[_rng.nextInt(_botBubbles.length)];
     }
     return u;
+  }
+
+  /// إحصائيات هدايا تجريبية للغرف الجاهزة حتى لا تبدأ فارغة.
+  void _seedGifts(VoiceRoom r, int heat) {
+    for (var i = 0; i < 10; i++) {
+      r.audience.add(_bot());
+    }
+    final mics = r.onMics;
+    final senders = [...r.audience.take(6), ...mics.skip(1).take(3)];
+    // المضيف يأخذ النصيب الأكبر وقد يصل للملايين
+    final scale = heat * 40;
+    for (final (i, u) in mics.indexed) {
+      final v = i == 0 ? scale * (3 + _rng.nextInt(8)) : (scale * _rng.nextDouble() * 1.5).round() + _rng.nextInt(900);
+      r.people[u.id] = u;
+      r.received[u.id] = v;
+    }
+    var total = r.giftsValue;
+    for (final (i, u) in senders.indexed) {
+      final v = i == senders.length - 1 ? total : (total * (.15 + _rng.nextDouble() * .3)).round();
+      total -= v;
+      if (v <= 0) continue;
+      r.people[u.id] = u;
+      r.sent[u.id] = (r.sent[u.id] ?? 0) + v;
+    }
+    for (final g in voiceGifts) {
+      r.giftCounts[g.id] = (heat / g.price * (.5 + _rng.nextDouble())).round() + _rng.nextInt(5);
+    }
   }
 
   String _newId() => (100000 + _rng.nextInt(899999)).toString();
@@ -281,6 +382,7 @@ class VoiceService extends ChangeNotifier {
         room.reports = 2; // غرفة عليها بلاغات للمراقبة
         room.seats.first.user ??= _bot(7);
       }
+      _seedGifts(room, heat);
       room.messages.addAll([
         VoiceMessage(kind: VoiceMsgKind.system, text: room.announcement),
         VoiceMessage(kind: VoiceMsgKind.chat, text: _botChat[i % _botChat.length], user: room.seats.first.user ?? host),
@@ -351,6 +453,7 @@ class VoiceService extends ChangeNotifier {
   }
 
   void leave(VoiceRoom r) {
+    if (minimized == r) minimized = null;
     final s = mySeat(r);
     if (s != null) r.seats[s].user = null;
     micOn = false;
@@ -502,6 +605,7 @@ class VoiceService extends ChangeNotifier {
 
   void close(VoiceRoom r, {String reason = 'أغلق المضيف الغرفة'}) {
     r.closed = true;
+    if (minimized == r) minimized = null;
     for (final s in r.seats) {
       s.user = null;
     }
@@ -533,11 +637,18 @@ class VoiceService extends ChangeNotifier {
   }
 
   /// إرسال هدية: تُخصم العملات وتزيد شعبية الغرفة.
-  String? sendGift(VoiceRoom r, VoiceGift g, VoiceUser to, {int count = 1}) {
-    final cost = g.price * count;
+  String? sendGift(VoiceRoom r, VoiceGift g, VoiceUser to, {int count = 1}) => sendGiftTo(r, g, [to], count: count);
+
+  /// إرسال هدية لعدة أشخاص (مثل كل من على المايكات). السعر × العدد × عدد المستلمين.
+  String? sendGiftTo(VoiceRoom r, VoiceGift g, List<VoiceUser> to, {int count = 1}) {
+    if (to.isEmpty) return 'اختر من ترسل له';
+    final cost = g.price * count * to.length;
     if (!Account.instance.spend(cost)) return 'عملاتك لا تكفي';
     r.heat += cost;
-    r.messages.add(VoiceMessage(kind: VoiceMsgKind.gift, text: 'أرسل ${g.title} ×$count إلى ${to.name}', user: me(), gift: g, count: count));
+    final from = me();
+    r.recordGift(from, to, g, count);
+    final names = to.length == 1 ? to.first.name : 'كل من على المايك (${to.length})';
+    r.messages.add(VoiceMessage(kind: VoiceMsgKind.gift, text: 'أرسل ${g.title} ×$count إلى $names', user: from, gift: g, count: count, to: to));
     notifyListeners();
     return null;
   }
@@ -578,13 +689,18 @@ class VoiceService extends ChangeNotifier {
     } else if (roll < .30) {
       final g = voiceGifts[_rng.nextInt(5)];
       final from = _bot();
-      final to = bots.isNotEmpty && _rng.nextBool() ? bots[_rng.nextInt(bots.length)] : r.host;
-      gift = VoiceMessage(kind: VoiceMsgKind.gift, text: 'أرسل ${g.title} إلى ${to.name}', user: from, gift: g);
+      final pool = [...bots, ...r.audience.take(4)];
+      final to = pool.isNotEmpty && _rng.nextBool() ? pool[_rng.nextInt(pool.length)] : r.host;
+      r.recordGift(from, [to], g, 1);
+      gift = VoiceMessage(kind: VoiceMsgKind.gift, text: 'أرسل ${g.title} إلى ${to.name}', user: from, gift: g, to: [to]);
       r.messages.add(gift);
       r.heat += g.price;
     } else if (roll < .36) {
       r.listeners++;
-      r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: _bot()));
+      final u = _bot();
+      r.audience.insert(0, u);
+      if (r.audience.length > 40) r.audience.removeLast();
+      r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: u));
     } else if (roll < .40 && r.host.isMe && r.requests.length < 3) {
       final free = r.seats.where((s) => s.empty && !s.locked).firstOrNull;
       if (free != null) r.requests.add(MicRequest(_bot(), free.index));
@@ -629,5 +745,6 @@ class VoiceService extends ChangeNotifier {
     following.clear();
     bannedUsers.clear();
     micOn = false;
+    minimized = null;
   }
 }

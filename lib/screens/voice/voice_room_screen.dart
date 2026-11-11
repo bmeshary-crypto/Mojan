@@ -42,11 +42,27 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
   VoiceUser? _entryFx;
   int _entryKey = 0;
+
+  // أماكن الأشخاص على الشاشة لتطير الهدية إليها
+  final _stackKey = GlobalKey();
+  final _hostKey = GlobalKey();
+  final _peopleKey = GlobalKey();
+  final Map<int, GlobalKey> _seatKeys = {};
+  GlobalKey _seatKey(int i) => _seatKeys.putIfAbsent(i, GlobalKey.new);
+  final List<_Flight> _flights = [];
+  int _flightId = 0;
+
+  /// عند التصغير لا نخرج من الغرفة.
+  bool _minimizing = false;
   late int _seen = room.messages.length;
 
   @override
   void initState() {
     super.initState();
+    if (svc.minimized == room) {
+      // رجوع من الفقاعة المصغّرة
+      Future.microtask(svc.restore);
+    }
     // دخوليتي أنا عند فتح الغرفة
     final me = svc.me();
     if (me.entrance != null) {
@@ -58,8 +74,14 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       _timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
         if (!mounted) return;
         final g = svc.tick(room);
-        // نعرض هدايا الآخرين الكبيرة فقط حتى لا تزعج
-        if (g != null && g.gift!.price >= 99) _showGift(g);
+        // كل هدية تطير لصاحبها، والكبيرة فقط تظهر بشريطها في الوسط
+        if (g != null) {
+          if (g.gift!.price >= 99) {
+            _showGift(g);
+          } else {
+            _launch(g);
+          }
+        }
         _checkEntries();
       });
     }
@@ -69,7 +91,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final msgs = room.messages;
     final from = _seen.clamp(0, msgs.length);
     for (final m in msgs.skip(from)) {
-      if (m.kind == VoiceMsgKind.join && m.user?.entrance != null && _giftFx == null) {
+      if (m.kind == VoiceMsgKind.join &&
+          m.user?.entrance != null &&
+          _giftFx == null) {
         _showEntry(m.user!);
       }
     }
@@ -95,11 +119,57 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     // نخرج بعد انتهاء بناء الشجرة لأن الخروج ينبه المستمعين
     final r = room;
     final service = svc;
-    Future.microtask(() => service.leave(r));
+    if (!_minimizing) Future.microtask(() => service.leave(r));
     super.dispose();
   }
 
+  /// مكان الشخص على الشاشة: كرسيه، أو مقعد المضيف، أو صندوق الأشخاص.
+  GlobalKey _targetOf(VoiceUser u) {
+    if (u.id == room.host.id) return _hostKey;
+    for (final s in room.seats) {
+      if (s.user?.id == u.id) return _seatKey(s.index);
+    }
+    return _peopleKey;
+  }
+
+  Offset? _centerOf(GlobalKey k, RenderBox stack) {
+    final box = k.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return null;
+    return stack.globalToLocal(box.localToGlobal(box.size.center(Offset.zero)));
+  }
+
+  /// الهدية تكبر في الوسط ثم تطير إلى مكان كل مستلم.
+  void _launch(VoiceMessage m) {
+    final stack = _stackKey.currentContext?.findRenderObject() as RenderBox?;
+    if (stack == null || m.gift == null || m.to.isEmpty) return;
+    final from = stack.size.center(Offset.zero) - const Offset(0, 40);
+    final ids = <int>[];
+    for (final (i, u) in m.to.indexed) {
+      final to = _centerOf(_targetOf(u), stack) ?? from;
+      final f = _Flight(++_flightId, m.gift!.art, from, to, i * 110);
+      ids.add(f.id);
+      _flights.add(f);
+    }
+    setState(() {});
+    Future.delayed(Duration(milliseconds: 2300 + m.to.length * 110), () {
+      if (!mounted) return;
+      setState(() => _flights.removeWhere((f) => ids.contains(f.id)));
+    });
+  }
+
+  void _openUser(VoiceUser u) {
+    final seat = room.seats.where((s) => s.user?.id == u.id).firstOrNull;
+    showUserSheet(
+      context,
+      room,
+      u,
+      seat: seat?.index,
+      onGift: () => _gift(to: u),
+    );
+  }
+
   void _showGift(VoiceMessage m) {
+    _launch(m);
     setState(() {
       _giftFx = m;
       _giftKey++;
@@ -188,51 +258,99 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
   }
 
+  void _pop() {
+    if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+  }
+
   Future<void> _exit() async {
-    if (!svc.isHost(room) || room.closed) {
-      Navigator.maybePop(context);
+    if (room.closed) {
+      _pop();
       return;
     }
-    final close = await showDialog<bool>(
+    final host = svc.isHost(room);
+    final choice = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text(
-          'مغادرة غرفتك؟',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        content: const Text(
-          'تقدر تخلي الغرفة مفتوحة لأصحابك أو تغلقها للجميع.',
-        ),
-        actions: [
-          TextButton(
-            key: const ValueKey('exit-keep'),
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('اخرج وخلها مفتوحة'),
-          ),
-          FilledButton(
-            key: const ValueKey('exit-close'),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFFF5A5F),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('أغلق الغرفة'),
-          ),
-        ],
+      backgroundColor: const Color(0xFF1E1446),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
+      builder: (ctx) {
+        Widget opt(
+          String key,
+          IconData icon,
+          String title,
+          String sub,
+          Color c,
+        ) => ListTile(
+          key: ValueKey(key),
+          onTap: () => Navigator.pop(ctx, key),
+          leading: CircleAvatar(
+            backgroundColor: c.withValues(alpha: .18),
+            child: Icon(icon, color: c),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          subtitle: Text(
+            sub,
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+        );
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 14, 12, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  host ? 'مغادرة غرفتك؟' : 'مغادرة الغرفة؟',
+                  style: AppTheme.display.copyWith(fontSize: 20),
+                ),
+                const SizedBox(height: 8),
+                opt(
+                  'exit-minimize',
+                  Icons.picture_in_picture_alt_rounded,
+                  'تصغير الغرفة',
+                  'تبقى في الغرفة وتظهر كفقاعة عائمة ترجع لها متى شئت',
+                  const Color(0xFF7CC8FF),
+                ),
+                opt(
+                  host ? 'exit-keep' : 'exit-leave',
+                  Icons.logout_rounded,
+                  host ? 'اخرج وخلها مفتوحة' : 'خروج من الغرفة',
+                  host
+                      ? 'تخرج أنت والغرفة تبقى لأصحابك'
+                      : 'تنزل من المايك وتخرج',
+                  Colors.white,
+                ),
+                if (host)
+                  opt(
+                    'exit-close',
+                    Icons.power_settings_new_rounded,
+                    'أغلق الغرفة',
+                    'تُغلق للجميع',
+                    const Color(0xFFFF5A5F),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-    if (close == null || !mounted) return;
-    if (close) svc.close(room);
-    Navigator.maybePop(context);
+    if (choice == null || !mounted) return;
+    if (choice == 'exit-minimize') {
+      _minimizing = true;
+      svc.minimize(room);
+    } else if (choice == 'exit-close') {
+      svc.close(room);
+    }
+    _pop();
   }
 
   void _menu() {
     if (svc.isHost(room)) {
-      showRoomSettings(
-        context,
-        room,
-        onClose: () => Navigator.maybePop(context),
-      );
+      showRoomSettings(context, room, onClose: () => _pop());
       return;
     }
     showModalBottomSheet(
@@ -275,7 +393,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               ),
               onTap: () {
                 Navigator.pop(ctx);
-                Navigator.maybePop(context);
+                _pop();
               },
             ),
           ],
@@ -320,78 +438,95 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      body: ListenableBuilder(
-        listenable: svc,
-        builder: (context, _) {
-          final party = room.theme == VoiceTheme.party;
-          return Stack(
-            children: [
-              Positioned.fill(child: _background(party)),
-              SafeArea(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 520),
-                    child: Column(
-                  children: [
-                    _topBar(),
-                    _announcement(),
-                    if (room.closed)
-                      Expanded(
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('🔒', style: TextStyle(fontSize: 56)),
-                              const SizedBox(height: 8),
-                              Text(
-                                room.messages.last.text,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 18,
+    return PopScope(
+      canPop: false,
+      // زر الرجوع في الجهاز يعرض نفس خيارات المغادرة (تصغير/خروج)
+      onPopInvokedWithResult: (did, _) {
+        if (!did) _exit();
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
+        body: ListenableBuilder(
+          listenable: svc,
+          builder: (context, _) {
+            final party = room.theme == VoiceTheme.party;
+            return Stack(
+              key: _stackKey,
+              children: [
+                Positioned.fill(child: _background(party)),
+                SafeArea(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: Column(
+                        children: [
+                          _topBar(),
+                          _announcement(),
+                          if (room.closed)
+                            Expanded(
+                              child: Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      '🔒',
+                                      style: TextStyle(fontSize: 56),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      room.messages.last.text,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 18,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    FilledButton(
+                                      onPressed: () => _pop(),
+                                      child: const Text('رجوع'),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              FilledButton(
-                                onPressed: () => Navigator.maybePop(context),
-                                child: const Text('رجوع'),
+                            )
+                          else ...[
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (context, c) {
+                                  return SingleChildScrollView(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      4,
+                                      12,
+                                      8,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        _hostArea(party),
+                                        if (room.game != null) _gameHall(),
+                                        const SizedBox(height: 10),
+                                        _seatsGrid(c.maxWidth - 24, party),
+                                      ],
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else ...[
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, c) {
-                            return SingleChildScrollView(
-                              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-                              child: Column(
-                                children: [
-                                  _hostArea(party),
-                                  if (room.game != null) _gameHall(),
-                                  const SizedBox(height: 10),
-                                  _seatsGrid(c.maxWidth - 24, party),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
+                            ),
+                            _chatPanel(),
+                            _bottomBar(),
+                          ],
+                        ],
                       ),
-                      _chatPanel(),
-                      _bottomBar(),
-                    ],
-                  ],
                     ),
                   ),
                 ),
-              ),
-              if (_entryFx != null) _entryOverlay(_entryFx!),
-              if (_giftFx != null) _giftOverlay(_giftFx!),
-            ],
-          );
-        },
+                if (_entryFx != null) _entryOverlay(_entryFx!),
+                if (_giftFx != null) _giftOverlay(_giftFx!),
+                for (final f in _flights) _flight(f),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -466,19 +601,32 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      InfoChip(
-                        icon: const Icon(
-                          Icons.person_rounded,
-                          size: 14,
-                          color: Colors.white70,
+                      GestureDetector(
+                        key: const ValueKey('room-people'),
+                        onTap: () =>
+                            showAudienceSheet(context, room, onUser: _openUser),
+                        child: InfoChip(
+                          key: _peopleKey,
+                          icon: const Icon(
+                            Icons.groups_rounded,
+                            size: 15,
+                            color: Colors.white70,
+                          ),
+                          text: '${room.online}',
                         ),
-                        text: '${room.online}',
                       ),
                       const SizedBox(width: 8),
-                      InfoChip(
-                        icon: const Text('🔥', style: TextStyle(fontSize: 12)),
-                        text: fmtK(room.heat),
-                        color: const Color(0xFFFFB13D),
+                      GestureDetector(
+                        key: const ValueKey('room-heat'),
+                        onTap: () => showGiftStats(context, room),
+                        child: InfoChip(
+                          icon: const Text(
+                            '🔥',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          text: fmtK(room.heat),
+                          color: const Color(0xFFFFB13D),
+                        ),
                       ),
                       const SizedBox(width: 8),
                       Text(
@@ -522,6 +670,15 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
               ),
             ),
+          IconButton(
+            key: const ValueKey('room-stats'),
+            tooltip: 'إحصائيات الهدايا',
+            onPressed: () => showGiftStats(context, room),
+            icon: const Icon(
+              Icons.leaderboard_rounded,
+              color: Color(0xFFFFD66B),
+            ),
+          ),
           IconButton(
             key: const ValueKey('room-menu'),
             onPressed: _menu,
@@ -575,7 +732,14 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         padding: EdgeInsets.only(top: party ? 26 : 22),
         child: Column(
           children: [
-            VoiceAvatar(user: h, size: party ? 92 : 84, speaking: speaking),
+            KeyedSubtree(
+              key: _hostKey,
+              child: VoiceAvatar(
+                user: h,
+                size: party ? 92 : 84,
+                speaking: speaking,
+              ),
+            ),
             const SizedBox(height: 8),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -607,6 +771,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 3),
+            GiftBadge(room.receivedBy(h.id), key: const ValueKey('gifts-host')),
           ],
         ),
       ),
@@ -710,11 +876,15 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           SizedBox(
             width: width / cols,
             child: Center(
-              child: SeatTile(
-                seat: s,
-                size: size,
-                party: party,
-                onTap: () => _seatTap(s),
+              child: KeyedSubtree(
+                key: _seatKey(s.index),
+                child: SeatTile(
+                  seat: s,
+                  size: size,
+                  party: party,
+                  gifts: s.user == null ? 0 : room.receivedBy(s.user!.id),
+                  onTap: () => _seatTap(s),
+                ),
               ),
             ),
           ),
@@ -737,7 +907,17 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       child: ListView.builder(
         reverse: true,
         itemCount: msgs.length,
-        itemBuilder: (_, i) => _messageRow(msgs[i]),
+        itemBuilder: (_, i) {
+          final m = msgs[i];
+          final row = _messageRow(m);
+          if (m.user == null) return row;
+          return GestureDetector(
+            key: ValueKey('chat-user-$i'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openUser(m.user!),
+            child: row,
+          );
+        },
       ),
     );
   }
@@ -804,7 +984,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                             color: u.isMe
-                                ? (u.bubble != null ? Colors.white : AppColors.seeko)
+                                ? (u.bubble != null
+                                      ? Colors.white
+                                      : AppColors.seeko)
                                 : (u.bubble != null
                                       ? Colors.white
                                       : u.vip
@@ -944,14 +1126,18 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           _round(
             'btn-speaker',
             Icon(
-              svc.speakerOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+              svc.speakerOn
+                  ? Icons.volume_up_rounded
+                  : Icons.volume_off_rounded,
               color: svc.speakerOn ? Colors.white : const Color(0xFFFF7A7A),
             ),
             () {
               svc.toggleSpeaker();
               voiceToast(
                 context,
-                svc.speakerOn ? 'تم تشغيل صوت الغرفة' : 'تم كتم صوت الغرفة عندك',
+                svc.speakerOn
+                    ? 'تم تشغيل صوت الغرفة'
+                    : 'تم كتم صوت الغرفة عندك',
               );
             },
           ),
@@ -1025,17 +1211,28 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           padding: const EdgeInsets.fromLTRB(6, 4, 14, 4),
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xEEFFC23D), Color(0xEEFF4D9D), Color(0xEE8E6CFF)],
+                              colors: [
+                                Color(0xEEFFC23D),
+                                Color(0xEEFF4D9D),
+                                Color(0xEE8E6CFF),
+                              ],
                             ),
                             borderRadius: BorderRadius.circular(30),
                             boxShadow: const [
-                              BoxShadow(color: Color(0x88FF4D9D), blurRadius: 18),
+                              BoxShadow(
+                                color: Color(0x88FF4D9D),
+                                blurRadius: 18,
+                              ),
                             ],
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              PlayerAvatar(index: u.avatar, size: 30, ring: false),
+                              PlayerAvatar(
+                                index: u.avatar,
+                                size: 30,
+                                ring: false,
+                              ),
                               const SizedBox(width: 8),
                               Text(
                                 '${u.name} دخل بـ${entranceTitle(u.entrance!)}',
@@ -1058,9 +1255,19 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 child: artImage(entranceArt(u.entrance!), 150)
                     .animate(key: ValueKey('ev$_entryKey'))
                     // تدخل من اليسار وتقف في المنتصف ثم تخرج يميناً
-                    .moveX(begin: -w, end: 0, duration: 900.ms, curve: Curves.easeOutCubic)
+                    .moveX(
+                      begin: -w,
+                      end: 0,
+                      duration: 900.ms,
+                      curve: Curves.easeOutCubic,
+                    )
                     .then(delay: 1300.ms)
-                    .moveX(begin: 0, end: w, duration: 800.ms, curve: Curves.easeInCubic),
+                    .moveX(
+                      begin: 0,
+                      end: w,
+                      duration: 800.ms,
+                      curve: Curves.easeInCubic,
+                    ),
               ),
             ],
           ),
@@ -1070,7 +1277,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   }
 
   Widget _giftOverlay(VoiceMessage m) {
-    final g = m.gift!;
     return Positioned.fill(
       child: IgnorePointer(
         child: Container(
@@ -1079,19 +1285,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              artImage(g.art, 180)
-                  .animate(key: ValueKey(_giftKey))
-                  .scale(
-                    begin: const Offset(.2, .2),
-                    end: const Offset(1, 1),
-                    duration: 600.ms,
-                    curve: Curves.elasticOut,
-                  )
-                  .then(delay: 300.ms)
-                  .shake(hz: 3, duration: 500.ms)
-                  .then(delay: 700.ms)
-                  .fadeOut(duration: 400.ms),
-              const SizedBox(height: 10),
+              // الهدية نفسها ترسم في _flight وتطير للمستلم
+              const SizedBox(height: 170),
               Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -1119,6 +1314,59 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _Flight {
+  _Flight(this.id, this.art, this.from, this.to, this.delay);
+  final int id;
+  final String art;
+  final Offset from;
+  final Offset to;
+  final int delay;
+}
+
+extension on _VoiceRoomScreenState {
+  Widget _flight(_Flight f) {
+    const s = 130.0;
+    return Positioned(
+      key: ValueKey('flight-${f.id}'),
+      left: f.from.dx - s / 2,
+      top: f.from.dy - s / 2,
+      width: s,
+      height: s,
+      child: IgnorePointer(
+        child: artImage(f.art, s, fallback: Icons.card_giftcard_rounded)
+            .animate(delay: f.delay.ms)
+            .fadeIn(duration: 120.ms)
+            .scale(
+              begin: const Offset(.2, .2),
+              end: const Offset(1.15, 1.15),
+              duration: 550.ms,
+              curve: Curves.elasticOut,
+            )
+            .then(delay: 350.ms)
+            .move(
+              begin: Offset.zero,
+              end: f.to - f.from,
+              duration: 750.ms,
+              curve: Curves.easeInCubic,
+            )
+            .scale(
+              begin: const Offset(1, 1),
+              end: const Offset(.28, .28),
+              duration: 750.ms,
+              curve: Curves.easeIn,
+            )
+            .then()
+            .scale(
+              begin: const Offset(1, 1),
+              end: const Offset(1.6, 1.6),
+              duration: 220.ms,
+            )
+            .fadeOut(duration: 220.ms),
       ),
     );
   }

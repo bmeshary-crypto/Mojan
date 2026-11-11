@@ -5,8 +5,64 @@ import '../../core/theme.dart';
 import '../../core/voice/voice.dart';
 import '../../widgets/account_widgets.dart';
 
-String fmtK(int n) =>
-    n >= 1000 ? '${(n / 1000).toStringAsFixed(n >= 10000 ? 0 : 1)}k' : '$n';
+/// اختصار الأرقام الكبيرة: 950 ← 950، 1500 ← 1.5K، 2300000 ← 2.3M.
+String fmtK(int n) {
+  String f(double v, String u) {
+    final t = v >= 100 ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+    return '${t.endsWith('.0') ? t.substring(0, t.length - 2) : t}$u';
+  }
+
+  if (n >= 1000000000) return f(n / 1000000000, 'B');
+  if (n >= 1000000) return f(n / 1000000, 'M');
+  if (n >= 1000) return f(n / 1000, 'K');
+  return '$n';
+}
+
+/// شارة قيمة الهدايا المستلمة تحت اسم الشخص.
+class GiftBadge extends StatelessWidget {
+  const GiftBadge(this.value, {super.key, this.small = false});
+  final int value;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: small ? 5 : 7, vertical: 1.5),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xCCFF4D9D), Color(0xCC8E6CFF)],
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white24, width: .8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset(
+            'assets/images/gift_box.webp',
+            width: small ? 11 : 13,
+            height: small ? 11 : 13,
+            errorBuilder: (_, _, _) => Icon(
+              Icons.card_giftcard_rounded,
+              size: small ? 10 : 12,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 3),
+          Text(
+            fmtK(value),
+            style: TextStyle(
+              fontSize: small ? 9.5 : 11,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 Widget artImage(
   String name,
@@ -52,7 +108,9 @@ class VoiceAvatar extends StatelessWidget {
     final frameScale = shopFrame != null
         ? 1.8
         : (user.frame == SeatFrame.host ? 1.75 : 1.42);
-    final lift = shopFrame == null && user.frame == SeatFrame.host ? size * .1 : 0.0;
+    final lift = shopFrame == null && user.frame == SeatFrame.host
+        ? size * .1
+        : 0.0;
     final ripple = speaking && !muted;
     return SizedBox(
       width: size,
@@ -134,7 +192,11 @@ class SeatTile extends StatelessWidget {
     required this.size,
     required this.onTap,
     this.party = false,
+    this.gifts = 0,
   });
+
+  /// قيمة الهدايا التي استلمها الجالس في هذه الغرفة.
+  final int gifts;
   final VoiceSeat seat;
   final double size;
   final VoidCallback onTap;
@@ -202,6 +264,17 @@ class SeatTile extends StatelessWidget {
               ),
             ),
           ),
+          if (u != null) ...[
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: GiftBadge(
+                gifts,
+                small: true,
+                key: ValueKey('gifts-${seat.index}'),
+              ),
+            ),
+          ],
         ],
       ),
     );
