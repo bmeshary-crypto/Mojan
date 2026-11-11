@@ -4,6 +4,7 @@ import '../core/game_module.dart';
 import '../core/theme.dart';
 import '../screens/coming_soon_screen.dart';
 import '../widgets/game_icons.dart';
+import 'ludo/ludo_screen.dart';
 
 /// كل ألعاب MOJAN. لإضافة لعبة جديدة يكفي إضافة عنصر هنا.
 class GameRegistry {
@@ -16,7 +17,8 @@ class GameRegistry {
       players: '2-4',
       modes: const [PlayMode.vsComputer, PlayMode.local, PlayMode.online],
       iconBuilder: (_) => const LudoIcon(),
-      screenBuilder: (_, mode) => ComingSoonScreen(gameId: 'ludo', mode: mode),
+      screenBuilder: (_, mode) =>
+          mode == PlayMode.online ? ComingSoonScreen(gameId: 'ludo', mode: mode) : LudoScreen(mode: mode),
     ),
     GameModule(
       id: 'seeko',

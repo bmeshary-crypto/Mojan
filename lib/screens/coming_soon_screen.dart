@@ -24,7 +24,7 @@ class ComingSoonScreen extends StatelessWidget {
                 alignment: AlignmentDirectional.centerStart,
                 child: IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.arrow_forward_rounded, size: 30),
+                  icon: const Icon(Icons.arrow_back_rounded, size: 30),
                 ),
               ),
               const Spacer(),
