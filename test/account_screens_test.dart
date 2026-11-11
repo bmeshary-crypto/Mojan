@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mojan/screens/profile_tab.dart';
 import 'package:mojan/core/account/account.dart';
 import 'package:mojan/core/theme.dart';
 import 'package:mojan/screens/home_screen.dart';
@@ -81,6 +82,8 @@ void main() {
     await tester.tap(find.text('حسابي'));
     await wait(tester, 1200);
     expect(find.text('نورة'), findsWidgets);
+    await tester.ensureVisible(find.byKey(const ValueKey('claim-daily')));
+    await wait(tester, 300);
     await tester.tap(find.byKey(const ValueKey('claim-daily')));
     await wait(tester, 600);
     expect(find.byKey(const ValueKey('daily-day-7')), findsOneWidget);
@@ -92,6 +95,12 @@ void main() {
     await wait(tester, 600);
     expect(find.byKey(const ValueKey('claim-daily')), findsNothing);
 
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('edit-name')),
+      -300,
+      scrollable: find.descendant(of: find.byType(ProfileTab), matching: find.byType(Scrollable)).first,
+    );
+    await wait(tester, 300);
     await tester.tap(find.byKey(const ValueKey('edit-name')));
     await wait(tester, 500);
     await tester.enterText(find.byKey(const ValueKey('rename-field')), 'نورة الأولى');
@@ -99,6 +108,8 @@ void main() {
     await wait(tester, 500);
     expect(acc.profile!.name, 'نورة الأولى');
 
+    await tester.ensureVisible(find.byKey(const ValueKey('edit-avatar')));
+    await wait(tester, 300);
     await tester.tap(find.byKey(const ValueKey('edit-avatar')));
     await wait(tester, 600);
     await tester.tap(find.byKey(const ValueKey('pick-avatar-7')));
@@ -106,6 +117,12 @@ void main() {
     expect(acc.profile!.avatar, 7);
 
     // الإعدادات
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('open-settings')),
+      -300,
+      scrollable: find.descendant(of: find.byType(ProfileTab), matching: find.byType(Scrollable)).first,
+    );
+    await wait(tester, 300);
     await tester.tap(find.byKey(const ValueKey('open-settings')));
     await wait(tester, 600);
     await tester.tap(find.byKey(const ValueKey('haptics-switch')));

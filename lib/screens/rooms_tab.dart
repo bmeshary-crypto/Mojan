@@ -61,6 +61,7 @@ class _RoomsTabState extends State<RoomsTab> {
     PlayMode.local => 'مع أصحابك على نفس الجهاز',
     PlayMode.vsComputer => 'ضد الكمبيوتر',
     PlayMode.online => 'أونلاين',
+    PlayMode.live => 'جولات مباشرة مع الجميع',
   };
 
   void _open(GameModule g) {

@@ -6,6 +6,77 @@ import 'bouncy_button.dart';
 import 'account_widgets.dart';
 import '../core/account/account.dart';
 
+/// سؤال التأكيد الموحد قبل الانسحاب من أي لعبة.
+Future<bool> showLeaveDialog(
+  BuildContext context, {
+  String message = 'اللعبة ما خلصت، وإذا انسحبت تنحسب خسارة.',
+}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.surface,
+      icon: const Icon(Icons.exit_to_app_rounded, color: Color(0xFFFF7A7A), size: 44),
+      title: const Text('هل فعلاً تود الانسحاب من اللعب؟',
+          textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900)),
+      content: Text(message, textAlign: TextAlign.center, style: const TextStyle(height: 1.6)),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        FilledButton(
+          key: const ValueKey('cancel-leave'),
+          style: FilledButton.styleFrom(backgroundColor: AppColors.seeko, foregroundColor: AppColors.bgTop),
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('أكمل اللعب', style: TextStyle(fontWeight: FontWeight.w900)),
+        ),
+        OutlinedButton(
+          key: const ValueKey('confirm-leave'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFFFF7A7A),
+            side: const BorderSide(color: Color(0xFFFF7A7A)),
+          ),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('نعم، انسحب', style: TextStyle(fontWeight: FontWeight.w900)),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+/// يمنع الخروج من اللعبة (زر الرجوع أو السحب) قبل سؤال التأكيد.
+class LeaveGuard extends StatefulWidget {
+  const LeaveGuard({super.key, required this.child, this.enabled = true, this.message, this.onLeave});
+  final Widget child;
+  final bool enabled;
+  final String? message;
+
+  /// يُنفذ قبل الخروج (مثل تسجيل الخسارة).
+  final VoidCallback? onLeave;
+
+  @override
+  State<LeaveGuard> createState() => _LeaveGuardState();
+}
+
+class _LeaveGuardState extends State<LeaveGuard> {
+  bool _asking = false;
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+        canPop: !widget.enabled,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop || _asking) return;
+          _asking = true;
+          final ok = widget.message == null
+              ? await showLeaveDialog(context)
+              : await showLeaveDialog(context, message: widget.message!);
+          _asking = false;
+          if (!ok || !context.mounted) return;
+          widget.onLeave?.call();
+          Navigator.of(context).pop();
+        },
+        child: widget.child,
+      );
+}
+
 /// شريط علوي مشترك لشاشات الألعاب.
 class GameTopBar extends StatelessWidget {
   const GameTopBar({super.key, required this.title, this.subtitle, this.trailing});

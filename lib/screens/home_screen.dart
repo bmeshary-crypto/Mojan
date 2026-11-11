@@ -84,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                         sliver: SliverToBoxAdapter(
                           child: _TopBar(
-                            onProfile: () => setState(() => _tab = 3),
+                            onProfile: () => setState(() => _tab = 4),
                             onSettings: () => showSettingsSheet(context),
                             onShop: () => openShop(context),
                           ),
@@ -166,6 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const _TabFrame(child: RoomsTab()),
+              const _TabFrame(child: ShopScreen(embedded: true)),
               const _TabFrame(child: LeaderboardTab()),
               const _TabFrame(child: ProfileTab()),
             ],
@@ -465,6 +466,7 @@ class _BottomNav extends StatelessWidget {
   static const _items = [
     (Icons.home_rounded, 'الرئيسية'),
     (Icons.meeting_room_rounded, 'الغرف'),
+    (Icons.storefront_rounded, 'المتجر'),
     (Icons.emoji_events_rounded, 'المتصدرون'),
     (Icons.person_rounded, 'حسابي'),
   ];
@@ -495,12 +497,13 @@ class _BottomNav extends StatelessWidget {
               for (final (i, (icon, label)) in _items.indexed)
                 Expanded(
                   child: GestureDetector(
+                    key: ValueKey('nav-$i'),
                     behavior: HitTestBehavior.opaque,
                     onTap: () => onChanged(i),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOutBack,
-                      margin: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                       decoration: BoxDecoration(
                         color: i == index ? AppColors.gold : Colors.transparent,
                         borderRadius: BorderRadius.circular(18),

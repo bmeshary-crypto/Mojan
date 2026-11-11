@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/account/account.dart';
 import '../../core/game_module.dart';
 import '../../core/haptics.dart';
+import '../../core/shop.dart';
 import '../../core/theme.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
@@ -39,17 +40,51 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   VoiceMessage? _giftFx;
   int _giftKey = 0;
 
+  VoiceUser? _entryFx;
+  int _entryKey = 0;
+  late int _seen = room.messages.length;
+
   @override
   void initState() {
     super.initState();
+    // دخوليتي أنا عند فتح الغرفة
+    final me = svc.me();
+    if (me.entrance != null) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _showEntry(me);
+      });
+    }
     if (widget.simulate) {
       _timer = Timer.periodic(const Duration(milliseconds: 1600), (_) {
         if (!mounted) return;
         final g = svc.tick(room);
         // نعرض هدايا الآخرين الكبيرة فقط حتى لا تزعج
         if (g != null && g.gift!.price >= 99) _showGift(g);
+        _checkEntries();
       });
     }
+  }
+
+  void _checkEntries() {
+    final msgs = room.messages;
+    final from = _seen.clamp(0, msgs.length);
+    for (final m in msgs.skip(from)) {
+      if (m.kind == VoiceMsgKind.join && m.user?.entrance != null && _giftFx == null) {
+        _showEntry(m.user!);
+      }
+    }
+    _seen = msgs.length;
+  }
+
+  void _showEntry(VoiceUser u) {
+    setState(() {
+      _entryFx = u;
+      _entryKey++;
+    });
+    final k = _entryKey;
+    Future.delayed(const Duration(milliseconds: 3200), () {
+      if (mounted && _entryKey == k) setState(() => _entryFx = null);
+    });
   }
 
   @override
@@ -295,7 +330,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             children: [
               Positioned.fill(child: _background(party)),
               SafeArea(
-                child: Column(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Column(
                   children: [
                     _topBar(),
                     _announcement(),
@@ -345,8 +383,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       _bottomBar(),
                     ],
                   ],
+                    ),
+                  ),
                 ),
               ),
+              if (_entryFx != null) _entryOverlay(_entryFx!),
               if (_giftFx != null) _giftOverlay(_giftFx!),
             ],
           );
@@ -742,7 +783,17 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   decoration: BoxDecoration(
                     color: m.kind == VoiceMsgKind.gift
                         ? const Color(0x55FF4D9D)
-                        : Colors.white.withValues(alpha: .08),
+                        : (u.bubble == null
+                              ? Colors.white.withValues(alpha: .08)
+                              : null),
+                    gradient: m.kind != VoiceMsgKind.gift && u.bubble != null
+                        ? LinearGradient(
+                            colors: [
+                              for (final c in bubbleStyles[u.bubble]!)
+                                c.withValues(alpha: .75),
+                            ],
+                          )
+                        : null,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text.rich(
@@ -753,8 +804,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                             color: u.isMe
-                                ? AppColors.seeko
-                                : (u.vip
+                                ? (u.bubble != null ? Colors.white : AppColors.seeko)
+                                : (u.bubble != null
+                                      ? Colors.white
+                                      : u.vip
                                       ? AppColors.gold
                                       : const Color(0xFFB9A9E8)),
                           ),
@@ -889,6 +942,21 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           ),
           const SizedBox(width: 6),
           _round(
+            'btn-speaker',
+            Icon(
+              svc.speakerOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+              color: svc.speakerOn ? Colors.white : const Color(0xFFFF7A7A),
+            ),
+            () {
+              svc.toggleSpeaker();
+              voiceToast(
+                context,
+                svc.speakerOn ? 'تم تشغيل صوت الغرفة' : 'تم كتم صوت الغرفة عندك',
+              );
+            },
+          ),
+          const SizedBox(width: 6),
+          _round(
             'btn-emoji',
             const Icon(Icons.emoji_emotions_rounded, color: Color(0xFFFFD66B)),
             () => showEmojiSheet(context, room),
@@ -927,11 +995,76 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           const SizedBox(width: 6),
           _round(
             'btn-gift',
-            artImage('gift_heart', 30, fallback: Icons.card_giftcard_rounded),
+            artImage('gift_box', 34, fallback: Icons.card_giftcard_rounded),
             () => _gift(),
             colors: const [Color(0xFFFF7AB6), Color(0xFFFF4D9D)],
           ),
         ],
+      ),
+    );
+  }
+
+  /// دخولية مستخدم: المركبة تعبر الشاشة مع شريط اسمه.
+  Widget _entryOverlay(VoiceUser u) {
+    final w = MediaQuery.sizeOf(context).width;
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: MediaQuery.sizeOf(context).height * .28,
+      child: IgnorePointer(
+        key: const ValueKey('entry-fx'),
+        child: SizedBox(
+          height: 190,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned(
+                bottom: 6,
+                child:
+                    Container(
+                          padding: const EdgeInsets.fromLTRB(6, 4, 14, 4),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xEEFFC23D), Color(0xEEFF4D9D), Color(0xEE8E6CFF)],
+                            ),
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: const [
+                              BoxShadow(color: Color(0x88FF4D9D), blurRadius: 18),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              PlayerAvatar(index: u.avatar, size: 30, ring: false),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${u.name} دخل بـ${entranceTitle(u.entrance!)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                        .animate(key: ValueKey('eb$_entryKey'))
+                        .fadeIn(duration: 300.ms)
+                        .scaleXY(begin: .6, end: 1, curve: Curves.easeOutBack)
+                        .then(delay: 2200.ms)
+                        .fadeOut(),
+              ),
+              Positioned(
+                top: 0,
+                child: artImage(entranceArt(u.entrance!), 150)
+                    .animate(key: ValueKey('ev$_entryKey'))
+                    // تدخل من اليسار وتقف في المنتصف ثم تخرج يميناً
+                    .moveX(begin: -w, end: 0, duration: 900.ms, curve: Curves.easeOutCubic)
+                    .then(delay: 1300.ms)
+                    .moveX(begin: 0, end: w, duration: 800.ms, curve: Curves.easeInCubic),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

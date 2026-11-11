@@ -28,7 +28,57 @@ class PlayerAvatar extends StatelessWidget {
           gradient: RadialGradient(colors: [Color.lerp(Color(color), Colors.white, .35)!, Color(color)]),
         ),
         alignment: Alignment.center,
-        child: Text(emoji, style: TextStyle(fontSize: size * .5, height: 1.1)),
+        clipBehavior: Clip.antiAlias,
+        child: Image.asset(
+          'assets/images/av_${index % avatars.length}.webp',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          alignment: const Alignment(0, -.2),
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, _, _) =>
+              Text(emoji, style: TextStyle(fontSize: size * .5, height: 1.1)),
+        ),
+      ),
+    );
+  }
+}
+
+/// صورة اللاعب مع إطار المتجر (إن وجد).
+class FramedAvatar extends StatelessWidget {
+  const FramedAvatar({super.key, required this.index, required this.size, this.frame});
+  final int index;
+  final double size;
+
+  /// اسم إطار المتجر مثل angel، أو null/none بدون إطار.
+  final String? frame;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = frame == null || frame == 'none' ? null : frame;
+    if (f == null) return PlayerAvatar(index: index, size: size);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          PlayerAvatar(index: index, size: size * .86, ring: false),
+          Positioned(
+            left: -size * .4,
+            top: -size * .4,
+            width: size * 1.8,
+            height: size * 1.8,
+            child: IgnorePointer(
+              child: Image.asset(
+                'assets/images/fr_$f.webp',
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

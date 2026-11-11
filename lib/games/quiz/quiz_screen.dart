@@ -535,7 +535,12 @@ class _QuizPlayState extends State<_QuizPlay> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LeaveGuard(
+        message: 'المسابقة ما خلصت، وإذا انسحبت تضيع نقاطك.',
+        child: _body(context),
+      );
+
+  Widget _body(BuildContext context) {
     if (_phase == _Phase.countdown) {
       return Center(
         child: Text('$_countdown', key: ValueKey(_countdown), style: AppTheme.display.copyWith(fontSize: 140))

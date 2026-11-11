@@ -14,6 +14,17 @@ import '../widgets/animated_background.dart';
 import '../widgets/daily_bonus.dart';
 
 /// يفتح المتجر. [tab]: 0 عملات، 1 سكنات، 2 أدوات، 3 حقيبتي.
+/// أرقام تبويبات المتجر.
+abstract final class ShopTab {
+  static const coins = 0;
+  static const frames = 1;
+  static const entrances = 2;
+  static const bubbles = 3;
+  static const skins = 4;
+  static const items = 5;
+  static const bag = 6;
+}
+
 Future<void> openShop(BuildContext context, {int tab = 0}) =>
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => ShopScreen(initialTab: tab)));
 
@@ -21,8 +32,11 @@ Future<void> openShop(BuildContext context, {int tab = 0}) =>
 const coinPacks = [(5000, '4.99'), (12000, '9.99'), (30000, '19.99'), (80000, '44.99')];
 
 class ShopScreen extends StatefulWidget {
-  const ShopScreen({super.key, this.initialTab = 0});
+  const ShopScreen({super.key, this.initialTab = 0, this.embedded = false});
   final int initialTab;
+
+  /// داخل تبويب الصفحة الرئيسية (بدون زر رجوع وخلفية خاصة).
+  final bool embedded;
 
   @override
   State<ShopScreen> createState() => _ShopScreenState();
@@ -86,77 +100,186 @@ class _ShopScreenState extends State<ShopScreen> {
       return;
     }
     Haptics.heavyImpact();
-    final cosmetic = item.kind == ShopKind.dice || item.kind == ShopKind.board;
+    final cosmetic = item.kind != ShopKind.item && item.kind != ShopKind.bundle;
     if (cosmetic) acc.equip(item.id);
     _toast(cosmetic ? 'اشتريت ${item.title} وتم تركيبه ✨' : 'أضفنا ${item.title} لحقيبتك 🎒');
   }
 
   @override
   Widget build(BuildContext context) {
+    final body = ListenableBuilder(
+      listenable: Account.instance,
+      builder: (context, _) {
+        final p = Account.instance.profile;
+        if (p == null) {
+          return const Center(child: Text('سجّل دخولك لفتح المتجر'));
+        }
+        return Column(children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(widget.embedded ? 16 : 8, widget.embedded ? 12 : 4, 12, 0),
+            child: Row(children: [
+              if (!widget.embedded)
+                IconButton(
+                  onPressed: () => Navigator.maybePop(context),
+                  icon: const Icon(Icons.arrow_back_rounded, size: 28),
+                ),
+              Text('المتجر', style: AppTheme.display.copyWith(fontSize: 28)),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.fromLTRB(8, 5, 12, 5),
+                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const CoinIcon(size: 22),
+                  const SizedBox(width: 6),
+                  Text('${p.coins}',
+                      key: const ValueKey('shop-coins'),
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                ]),
+              ),
+            ]),
+          ),
+          const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            indicatorColor: AppColors.gold,
+            labelColor: AppColors.gold,
+            unselectedLabelColor: Colors.white70,
+            dividerColor: Colors.transparent,
+            labelStyle: TextStyle(fontWeight: FontWeight.w900, fontFamily: 'Cairo', fontSize: 14),
+            tabs: [
+              Tab(key: ValueKey('shop-tab-coins'), text: 'عملات'),
+              Tab(key: ValueKey('shop-tab-frames'), text: 'إطارات'),
+              Tab(key: ValueKey('shop-tab-entrances'), text: 'دخوليات'),
+              Tab(key: ValueKey('shop-tab-bubbles'), text: 'فقاعات'),
+              Tab(key: ValueKey('shop-tab-skins'), text: 'سكنات لودو'),
+              Tab(key: ValueKey('shop-tab-items'), text: 'أدوات'),
+              Tab(key: ValueKey('shop-tab-bag'), text: 'حقيبتي'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(children: [
+              _coinsTab(p),
+              _framesTab(p),
+              _entrancesTab(p),
+              _bubblesTab(p),
+              _skinsTab(p),
+              _itemsTab(p),
+              _bagTab(p),
+            ]),
+          ),
+        ]);
+      },
+    );
     return DefaultTabController(
-      length: 4,
+      length: 7,
       initialIndex: widget.initialTab,
-      child: Scaffold(
-        body: AnimatedBackground(
-          child: SafeArea(
-            child: ListenableBuilder(
-              listenable: Account.instance,
-              builder: (context, _) {
-                final p = Account.instance.profile;
-                if (p == null) {
-                  return const Center(child: Text('سجّل دخولك لفتح المتجر'));
-                }
-                return Column(children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 4, 12, 0),
-                    child: Row(children: [
-                      IconButton(
-                        onPressed: () => Navigator.maybePop(context),
-                        icon: const Icon(Icons.arrow_back_rounded, size: 28),
-                      ),
-                      Text('المتجر', style: AppTheme.display.copyWith(fontSize: 28)),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(8, 5, 12, 5),
-                        decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const CoinIcon(size: 22),
-                          const SizedBox(width: 6),
-                          Text('${p.coins}',
-                              key: const ValueKey('shop-coins'),
-                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                        ]),
-                      ),
-                    ]),
-                  ),
-                  const TabBar(
-                    isScrollable: false,
-                    indicatorColor: AppColors.gold,
-                    labelColor: AppColors.gold,
-                    unselectedLabelColor: Colors.white70,
-                    labelStyle: TextStyle(fontWeight: FontWeight.w900, fontFamily: 'Cairo', fontSize: 14),
-                    tabs: [
-                      Tab(key: ValueKey('shop-tab-coins'), text: 'عملات'),
-                      Tab(key: ValueKey('shop-tab-skins'), text: 'سكنات'),
-                      Tab(key: ValueKey('shop-tab-items'), text: 'أدوات'),
-                      Tab(key: ValueKey('shop-tab-bag'), text: 'حقيبتي'),
-                    ],
-                  ),
-                  Expanded(
-                    child: TabBarView(children: [
-                      _coinsTab(p),
-                      _skinsTab(p),
-                      _itemsTab(p),
-                      _bagTab(p),
-                    ]),
-                  ),
-                ]);
-              },
+      child: widget.embedded
+          ? body
+          : Scaffold(body: AnimatedBackground(child: SafeArea(child: body))),
+    );
+  }
+
+  // ---------- الإطارات والدخوليات والفقاعات ----------
+
+  Widget _styleCard(PlayerProfile p, ShopItem item, Widget preview) {
+    final name = item.id.split('.').last;
+    final equipped = switch (item.kind) {
+      ShopKind.frame => p.frame == name,
+      ShopKind.entrance => p.entrance == name,
+      _ => p.bubble == name,
+    };
+    return _skinCard(
+      key: ValueKey('style-${item.id}'),
+      preview: preview,
+      title: item.title,
+      owned: p.owns(item.id),
+      equipped: equipped,
+      price: item.price,
+      onTap: () => _skinTap(p, item.id),
+    );
+  }
+
+  Widget _unequip(PlayerProfile p, String kind, String current) => current == 'none'
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Center(
+            child: TextButton.icon(
+              key: ValueKey('unequip-$kind'),
+              onPressed: () => Account.instance.equip('$kind.none'),
+              icon: const Icon(Icons.remove_circle_outline_rounded, color: Colors.white70),
+              label: const Text('بدون (إزالة المركّب)', style: TextStyle(color: Colors.white70)),
             ),
           ),
-        ),
-      ),
-    );
+        );
+
+  Widget _intro(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(text, style: const TextStyle(color: AppColors.textMuted, height: 1.5)),
+      );
+
+  Widget _framesTab(PlayerProfile p) {
+    final frames = styleCatalog.where((i) => i.kind == ShopKind.frame);
+    return _list([
+      _intro('إطار حول صورتك في الغرف الصوتية والملف الشخصي.'),
+      _grid(ratio: .74, [
+        for (final f in frames)
+          _styleCard(
+            p,
+            f,
+            SizedBox(
+              width: 92,
+              height: 92,
+              child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
+                PlayerAvatar(index: p.avatar, size: 92 / 1.8 * .9, ring: false),
+                _art(frameArt(f.id.split('.').last), 92),
+              ]),
+            ),
+          ),
+      ]),
+      _unequip(p, 'frame', p.frame),
+    ]);
+  }
+
+  Widget _entrancesTab(PlayerProfile p) {
+    final list = styleCatalog.where((i) => i.kind == ShopKind.entrance);
+    return _list([
+      _intro('تظهر دخوليتك لكل الموجودين لما تدخل أي غرفة صوتية.'),
+      _grid(ratio: .78, [
+        for (final e in list)
+          _styleCard(
+            p,
+            e,
+            _art(entranceArt(e.id.split('.').last), 84)
+                .animate(onPlay: (c) => c.repeat(reverse: true))
+                .moveX(begin: -4, end: 4, duration: 1100.ms, curve: Curves.easeInOut),
+          ),
+      ]),
+      _unequip(p, 'entrance', p.entrance),
+    ]);
+  }
+
+  Widget _bubblesTab(PlayerProfile p) {
+    final list = styleCatalog.where((i) => i.kind == ShopKind.bubble);
+    return _list([
+      _intro('لون رسائلك في دردشة الغرف الصوتية.'),
+      _grid(ratio: .9, [
+        for (final b in list)
+          _styleCard(
+            p,
+            b,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: bubbleStyles[b.id.split('.').last]!),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Text('هلا والله 👋', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+            ),
+          ),
+      ]),
+      _unequip(p, 'bubble', p.bubble),
+    ]);
   }
 
   Widget _list(List<Widget> children) => Center(

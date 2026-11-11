@@ -162,7 +162,7 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
         },
         onHome: () {
           Navigator.pop(ctx);
-          Navigator.maybePop(context);
+          Navigator.pop(context);
         },
       ),
     );
@@ -182,12 +182,16 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
             ),
             child: KeyedSubtree(
               key: ValueKey(_stage),
-              child: switch (_stage) {
-                _Stage.setup => _setup(),
-                _Stage.spin => _spinView(),
-                _Stage.choose => _chooseView(),
-                _Stage.prompt => _promptView(),
-              },
+              child: LeaveGuard(
+                enabled: _stage != _Stage.setup,
+                message: 'اللعبة ما خلصت، وإذا خرجت تضيع الجولة على الجميع.',
+                child: switch (_stage) {
+                  _Stage.setup => _setup(),
+                  _Stage.spin => _spinView(),
+                  _Stage.choose => _chooseView(),
+                  _Stage.prompt => _promptView(),
+                },
+              ),
             ),
           ),
         ),

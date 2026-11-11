@@ -7,6 +7,7 @@ import '../widgets/game_icons.dart';
 import 'ludo/ludo_screen.dart';
 import 'quiz/quiz_screen.dart';
 import 'seeko/seeko_screen.dart';
+import 'sky_wheel/sky_wheel_screen.dart';
 import 'truth_dare/truth_dare_screen.dart';
 
 /// كل ألعاب MOJAN. لإضافة لعبة جديدة يكفي إضافة عنصر هنا.
@@ -55,6 +56,16 @@ class GameRegistry {
       screenBuilder: (_, mode) => mode == PlayMode.online
           ? ComingSoonScreen(gameId: 'truth_dare', mode: mode)
           : TruthDareScreen(mode: mode),
+    ),
+    GameModule(
+      id: 'sky_wheel',
+      title: 'عجلة السماء',
+      tagline: 'راهن على الكابينة والتاج أعلى ربح',
+      colors: const [Color(0xFF7CC8FF), Color(0xFF5B49C9), Color(0xFF2A1E6B)],
+      players: 'الكل',
+      modes: const [PlayMode.live],
+      iconBuilder: (_) => const GameArt('assets/images/sky_wheel.webp', fallback: Icon(Icons.attractions_rounded, size: 80)),
+      screenBuilder: (_, _) => const SkyWheelScreen(),
     ),
   ];
 

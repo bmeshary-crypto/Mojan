@@ -9,6 +9,7 @@ import '../../core/game_module.dart';
 import '../../core/haptics.dart';
 import '../../core/shop.dart';
 import '../../core/theme.dart';
+import '../../widgets/game_ui.dart';
 import '../../screens/shop_screen.dart';
 import '../../widgets/account_widgets.dart';
 import '../../widgets/animated_background.dart';
@@ -235,7 +236,7 @@ class _LudoScreenState extends State<LudoScreen> {
                       const SizedBox(height: 10),
                       _PowerKit(
                           bag: {for (final i in LudoItem.values) i: acc.profile?.itemCount(i) ?? 0},
-                          onShop: acc.signedIn ? () => openShop(context, tab: 2) : null),
+                          onShop: acc.signedIn ? () => openShop(context, tab: ShopTab.items) : null),
                     ],
                     if (_canBet) ...[
                       const SizedBox(height: 20),
@@ -810,6 +811,14 @@ class _LudoTableState extends State<_LudoTable> {
     if (result.playerFinished) {
       setState(() => _status = '${_nameOf(m.token.color)} أنهى كل القطع!');
       await _wait(900);
+    } else if (result.picked != null) {
+      Haptics.mediumImpact();
+      setState(() => _status = '🎁 ${_nameOf(m.token.color)} أخذ ${itemInfo[result.picked]!.$1}');
+      await _wait(900);
+      if (result.bonusRoll) {
+        setState(() => _status = '⭐ +1 رمية إضافية لـ${_nameOf(m.token.color)}');
+        await _wait(700);
+      }
     } else if (result.bonusRoll) {
       Haptics.mediumImpact();
       setState(() => _status = '⭐ +1 رمية إضافية لـ${_nameOf(m.token.color)}');
@@ -880,44 +889,16 @@ class _LudoTableState extends State<_LudoTable> {
     if (!_over) {
       _leaving = true;
       final bet = s.entry > 0 && _solo;
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          icon: const Icon(Icons.exit_to_app_rounded, color: Color(0xFFFF7A7A), size: 44),
-          title: const Text('هل فعلاً تود الانسحاب من اللعب؟',
-              textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900)),
-          content: Text(
-            bet
-                ? 'المباراة ما خلصت، وإذا انسحبت تخسر رسوم الدخول (${s.entry} عملة) وتنحسب خسارة.'
-                : _solo
-                    ? 'المباراة ما خلصت، وإذا انسحبت تنحسب خسارة.'
-                    : 'المباراة ما خلصت، وإذا انسحبت تضيع اللعبة على الجميع.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(height: 1.6),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            FilledButton(
-              key: const ValueKey('cancel-leave'),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.seeko, foregroundColor: AppColors.bgTop),
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('أكمل اللعب', style: TextStyle(fontWeight: FontWeight.w900)),
-            ),
-            OutlinedButton(
-              key: const ValueKey('confirm-leave'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFFF7A7A),
-                side: const BorderSide(color: Color(0xFFFF7A7A)),
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('نعم، انسحب', style: TextStyle(fontWeight: FontWeight.w900)),
-            ),
-          ],
-        ),
+      final ok = await showLeaveDialog(
+        context,
+        message: bet
+            ? 'المباراة ما خلصت، وإذا انسحبت تخسر رسوم الدخول (${s.entry} عملة) وتنحسب خسارة.'
+            : _solo
+                ? 'المباراة ما خلصت، وإذا انسحبت تنحسب خسارة.'
+                : 'المباراة ما خلصت، وإذا انسحبت تضيع اللعبة على الجميع.',
       );
       _leaving = false;
-      if (ok != true || !mounted) return;
+      if (!ok || !mounted) return;
       if (_solo) Account.instance.recordGame('ludo', won: false);
       // نسمح بالخروج بعد التأكيد (حتى لا يظهر السؤال مرة ثانية)
       setState(() => _over = true);
@@ -1226,6 +1207,20 @@ class _LudoTableState extends State<_LudoTable> {
                   painter: LudoBoardPainter(active: s.colors.toSet(), theme: _boardTheme, power: s.power),
                 ),
               ),
+              // أدوات الباور الموجودة على اللوح
+              for (final e in game.pickups.entries)
+                Positioned(
+                  key: ValueKey('pickup-${e.key}'),
+                  left: (LudoLayout.track[e.key].$1 + .5) * cs - cs * .48,
+                  top: (LudoLayout.track[e.key].$2 + .5) * cs - cs * .48,
+                  width: cs * .96,
+                  height: cs * .96,
+                  child: IgnorePointer(
+                    child: ItemArt(item: e.value, size: cs * .96)
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .scaleXY(begin: .86, end: 1.04, duration: 700.ms, curve: Curves.easeInOut),
+                  ),
+                ),
               for (final t in sorted) _tokenWidget(t, positions[t]!, groups, cs, movable.contains(t)),
             ],
           );

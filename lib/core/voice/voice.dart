@@ -55,8 +55,18 @@ class VoiceUser {
     this.frame = SeatFrame.none,
     this.isMe = false,
     this.isBot = true,
+    this.frameArt,
+    this.entrance,
+    this.bubble,
   });
   final String id;
+
+  /// إطار من المتجر (اسم مثل angel) يغطي الإطار الافتراضي.
+  String? frameArt;
+
+  /// دخولية الغرفة (مثل car) وفقاعة الدردشة (مثل gold).
+  String? entrance;
+  String? bubble;
   String name;
   int avatar;
   int level;
@@ -164,9 +174,13 @@ class VoiceRoom {
 }
 
 const _botNames = [
-  'سهرة', 'نورة', 'أحمد', 'كاتو', 'ريم', 'فيصل', 'جود', 'تركي', 'لمى', 'سلطان', 'دانة', 'يوسف',
+  'سهرة', 'أحمد', 'نورة', 'كاتو', 'ريم', 'فيصل', 'جود', 'تركي', 'لمى', 'سلطان', 'دانة', 'يوسف',
   'مها', 'راكان', 'غلا', 'عمر', 'هيا', 'ماجد', 'شهد', 'بندر', 'لين', 'سعود', 'رهف', 'ناصر',
 ];
+
+const _botFrames = ['angel', 'hearts', 'ice', 'fire', 'jungle', 'royal', 'rainbow', 'demon', 'ramadan'];
+const _botEntrances = ['car', 'scooter', 'horse', 'carpet', 'dragon', 'yacht', 'rocket', 'lion', 'jet'];
+const _botBubbles = ['pink', 'ocean', 'gold', 'neon'];
 
 const _botChat = [
   'صوتك جميل جداً ❤️', 'منورين يا جماعة', 'السلام عليكم', 'أبي مايك 🙋', 'كمّل كمّل 👏', 'هههههه',
@@ -188,7 +202,13 @@ class VoiceService extends ChangeNotifier {
 
   /// هل المايك مفتوح للمستخدم (يتطلب الجلوس على مقعد).
   bool micOn = false;
+
+  /// كتم صوت الغرفة عندي فقط (السماعة).
   bool speakerOn = true;
+  void toggleSpeaker() {
+    speakerOn = !speakerOn;
+    notifyListeners();
+  }
 
   void notify() => notifyListeners();
 
@@ -202,18 +222,29 @@ class VoiceService extends ChangeNotifier {
       isMe: true,
       isBot: false,
       frame: SeatFrame.vip,
+      frameArt: p == null || p.frame == 'none' ? null : p.frame,
+      entrance: p == null || p.entrance == 'none' ? null : p.entrance,
+      bubble: p == null || p.bubble == 'none' ? null : p.bubble,
     );
   }
 
   VoiceUser _bot([int? i]) {
     final n = i ?? _rng.nextInt(_botNames.length);
-    return VoiceUser(
+    final u = VoiceUser(
       id: 'bot$n-${_rng.nextInt(9999)}',
       name: _botNames[n % _botNames.length],
-      avatar: (n * 5 + 3) % avatars.length,
+      // الأسماء الزوجية بنات والفردية أولاد، ومثلها الصور.
+      avatar: 2 * ((n * 7 + 1) % 8) + n % 2,
       level: 1 + _rng.nextInt(40),
       vip: _rng.nextDouble() < .25,
     );
+    // بعض المستخدمين المميزين عندهم إطارات ودخوليات من المتجر
+    if (u.vip) {
+      u.frameArt = _botFrames[_rng.nextInt(_botFrames.length)];
+      u.entrance = _botEntrances[_rng.nextInt(_botEntrances.length)];
+      if (_rng.nextBool()) u.bubble = _botBubbles[_rng.nextInt(_botBubbles.length)];
+    }
+    return u;
   }
 
   String _newId() => (100000 + _rng.nextInt(899999)).toString();

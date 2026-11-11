@@ -5,7 +5,8 @@ enum PlayMode {
   vsComputer('ضد الكمبيوتر', Icons.smart_toy_rounded),
   local('على نفس الجهاز', Icons.groups_rounded),
   online('أونلاين', Icons.public_rounded),
-  rooms('غرف', Icons.meeting_room_rounded);
+  rooms('غرف', Icons.meeting_room_rounded),
+  live('جولات مباشرة', Icons.bolt_rounded);
 
   const PlayMode(this.label, this.icon);
   final String label;

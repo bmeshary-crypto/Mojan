@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../games/ludo/ludo_engine.dart';
 
-enum ShopKind { dice, board, item, bundle }
+enum ShopKind { dice, board, item, bundle, frame, entrance, bubble }
 
 /// سكن نرد: لون الوجه ولون النقاط.
 class DiceSkin {
@@ -75,7 +75,45 @@ const shopCatalog = <ShopItem>[
   ShopItem(id: 'bundle.power', kind: ShopKind.bundle, title: 'حزمة الباور', price: 3000, amount: 3, emoji: '⚡', description: '3 من كل أداة'),
 ];
 
-ShopItem shopItem(String id) => shopCatalog.firstWhere((i) => i.id == id);
+ShopItem shopItem(String id) => [...shopCatalog, ...styleCatalog].firstWhere((i) => i.id == id);
+
+/// إطارات الصورة ودخوليات الغرف الصوتية وفقاعات الدردشة.
+const styleCatalog = <ShopItem>[
+  ShopItem(id: 'frame.hearts', kind: ShopKind.frame, title: 'إطار القلوب', price: 1500),
+  ShopItem(id: 'frame.jungle', kind: ShopKind.frame, title: 'إطار الغابة', price: 1500),
+  ShopItem(id: 'frame.ice', kind: ShopKind.frame, title: 'إطار الجليد', price: 2000),
+  ShopItem(id: 'frame.rainbow', kind: ShopKind.frame, title: 'إطار قوس قزح', price: 2000),
+  ShopItem(id: 'frame.fire', kind: ShopKind.frame, title: 'إطار النار', price: 2500),
+  ShopItem(id: 'frame.demon', kind: ShopKind.frame, title: 'إطار القرون', price: 3000),
+  ShopItem(id: 'frame.ramadan', kind: ShopKind.frame, title: 'إطار رمضان', price: 3500),
+  ShopItem(id: 'frame.angel', kind: ShopKind.frame, title: 'إطار الأجنحة', price: 4000),
+  ShopItem(id: 'frame.royal', kind: ShopKind.frame, title: 'إطار ملكي', price: 5000),
+  ShopItem(id: 'entrance.scooter', kind: ShopKind.entrance, title: 'سكوتر القلوب', price: 1500),
+  ShopItem(id: 'entrance.car', kind: ShopKind.entrance, title: 'سيارة ذهبية', price: 3000),
+  ShopItem(id: 'entrance.carpet', kind: ShopKind.entrance, title: 'البساط الطائر', price: 4000),
+  ShopItem(id: 'entrance.horse', kind: ShopKind.entrance, title: 'الخيل العربي', price: 5000),
+  ShopItem(id: 'entrance.yacht', kind: ShopKind.entrance, title: 'اليخت', price: 6000),
+  ShopItem(id: 'entrance.rocket', kind: ShopKind.entrance, title: 'الصاروخ', price: 7000),
+  ShopItem(id: 'entrance.dragon', kind: ShopKind.entrance, title: 'التنين', price: 8000),
+  ShopItem(id: 'entrance.lion', kind: ShopKind.entrance, title: 'الأسد الملكي', price: 9000),
+  ShopItem(id: 'entrance.jet', kind: ShopKind.entrance, title: 'الطائرة الخاصة', price: 12000),
+  ShopItem(id: 'bubble.pink', kind: ShopKind.bubble, title: 'فقاعة وردية', price: 800),
+  ShopItem(id: 'bubble.ocean', kind: ShopKind.bubble, title: 'فقاعة المحيط', price: 800),
+  ShopItem(id: 'bubble.gold', kind: ShopKind.bubble, title: 'فقاعة ذهبية', price: 1500),
+  ShopItem(id: 'bubble.neon', kind: ShopKind.bubble, title: 'فقاعة نيون', price: 1500),
+];
+
+/// ألوان فقاعات الدردشة.
+const bubbleStyles = <String, List<Color>>{
+  'pink': [Color(0xFFFF7AB6), Color(0xFFFF4D9D)],
+  'ocean': [Color(0xFF3DB8FF), Color(0xFF1B6FD1)],
+  'gold': [Color(0xFFFFD66B), Color(0xFFE09B12)],
+  'neon': [Color(0xFF7CF5FF), Color(0xFFB86CFF)],
+};
+
+String frameArt(String name) => 'fr_$name';
+String entranceArt(String name) => 'ent_$name';
+String entranceTitle(String name) => shopItem('entrance.$name').title;
 
 /// هدايا البونص اليومي لسبعة أيام متتالية.
 class DailyGift {

@@ -312,7 +312,7 @@ class _SeekoTableState extends State<_SeekoTable> {
         },
         onHome: () {
           Navigator.pop(ctx);
-          Navigator.maybePop(context);
+          Navigator.pop(context);
         },
       ),
     );
@@ -320,6 +320,13 @@ class _SeekoTableState extends State<_SeekoTable> {
 
   @override
   Widget build(BuildContext context) {
+    return LeaveGuard(
+      enabled: game.phase != SeekoPhase.gameOver,
+      child: _table(context),
+    );
+  }
+
+  Widget _table(BuildContext context) {
     return Stack(
       children: [
         Column(

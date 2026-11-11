@@ -65,20 +65,71 @@ class MatchRecord {
 }
 
 /// الصور الرمزية المتاحة (رمز + لون).
+/// صور الشخصيات الكرتونية (assets/images/av_N.webp): من 0 إلى 15 الزوجي بنات
+/// والفردي أولاد، و16 و17 بنات.
 const avatars = [
-  ('🦁', 0xFFFFB13D),
-  ('🐯', 0xFFFF7A3D),
-  ('🦊', 0xFFFF5A5F),
-  ('🐼', 0xFF8E8E9E),
-  ('🐸', 0xFF2EBD59),
-  ('🦄', 0xFFB86CFF),
-  ('🐙', 0xFFFF4D9D),
-  ('🦅', 0xFF8D6E63),
-  ('🐺', 0xFF5C6BC0),
-  ('🐻', 0xFFA1665E),
-  ('🐨', 0xFF78909C),
-  ('🐲', 0xFF26A69A),
+  ('👧', 0xFF26A69A),
+  ('👦', 0xFFFFB13D),
+  ('👧', 0xFFFF4D9D),
+  ('👦', 0xFF5C6BC0),
+  ('👧', 0xFFB86CFF),
+  ('👦', 0xFF78909C),
+  ('👧', 0xFF26A69A),
+  ('👦', 0xFFFFB13D),
+  ('👧', 0xFFFF4D9D),
+  ('👦', 0xFF5C6BC0),
+  ('👧', 0xFFB86CFF),
+  ('👦', 0xFF78909C),
+  ('👧', 0xFF26A69A),
+  ('👦', 0xFFFFB13D),
+  ('👧', 0xFFFF4D9D),
+  ('👦', 0xFF5C6BC0),
+  ('👧', 0xFFB86CFF),
+  ('👦', 0xFF78909C),
 ];
+
+bool avatarIsGirl(int i) => i >= 16 || i % 2 == 0;
+
+/// منشور في الملف الشخصي.
+class ProfilePost {
+  ProfilePost({
+    required this.id,
+    required this.text,
+    this.mood = 0,
+    DateTime? at,
+    this.likes = 0,
+    this.liked = false,
+    this.comments = 0,
+  }) : at = at ?? DateTime.now();
+  final String id;
+  String text;
+
+  /// خلفية المنشور (رقم من postMoods).
+  int mood;
+  final DateTime at;
+  int likes;
+  bool liked;
+  int comments;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        't': text,
+        'm': mood,
+        'at': at.toIso8601String(),
+        'l': likes,
+        'ld': liked,
+        'c': comments,
+      };
+  factory ProfilePost.fromJson(Map<String, dynamic> j) => ProfilePost(
+        id: j['id'] ?? '',
+        text: j['t'] ?? '',
+        mood: j['m'] ?? 0,
+        at: DateTime.tryParse(j['at'] ?? ''),
+        likes: j['l'] ?? 0,
+        liked: j['ld'] ?? false,
+        comments: j['c'] ?? 0,
+      );
+}
 
 class PlayerProfile {
   PlayerProfile({
@@ -99,7 +150,13 @@ class PlayerProfile {
     this.diceSkin = 'classic',
     this.boardTheme = 'classic',
     this.lastChest,
-  })  : stats = stats ?? {},
+    this.frame = 'none',
+    this.entrance = 'none',
+    this.bubble = 'none',
+    this.bio = '',
+    List<ProfilePost>? posts,
+  })  : posts = posts ?? [],
+        stats = stats ?? {},
         unlocked = unlocked ?? {},
         inventory = inventory ?? {},
         owned = owned ?? {},
@@ -113,11 +170,20 @@ class PlayerProfile {
   String diceSkin;
   String boardTheme;
 
+  /// المظهر في الغرف الصوتية: الإطار والدخولية وفقاعة الدردشة ('none' = بدون).
+  String frame;
+  String entrance;
+  String bubble;
+
+  /// الملف الشخصي: النبذة والمنشورات.
+  String bio;
+  final List<ProfilePost> posts;
+
   /// آخر مرة فُتح فيها صندوق العملات المجاني.
   DateTime? lastChest;
 
   int itemCount(LudoItem i) => inventory[i.name] ?? 0;
-  bool owns(String id) => id.endsWith('.classic') || owned.contains(id);
+  bool owns(String id) => id.endsWith('.classic') || id.endsWith('.none') || owned.contains(id);
 
   final String id;
   String name;
@@ -174,6 +240,11 @@ class PlayerProfile {
         'diceSkin': diceSkin,
         'boardTheme': boardTheme,
         'lastChest': lastChest?.toIso8601String(),
+        'frame': frame,
+        'entrance': entrance,
+        'bubble': bubble,
+        'bio': bio,
+        'posts': posts.map((e) => e.toJson()).toList(),
       };
 
   factory PlayerProfile.fromJson(Map<String, dynamic> j) => PlayerProfile(
@@ -195,6 +266,14 @@ class PlayerProfile {
         diceSkin: j['diceSkin'] ?? 'classic',
         boardTheme: j['boardTheme'] ?? 'classic',
         lastChest: DateTime.tryParse(j['lastChest'] ?? ''),
+        frame: j['frame'] ?? 'none',
+        entrance: j['entrance'] ?? 'none',
+        bubble: j['bubble'] ?? 'none',
+        bio: j['bio'] ?? '',
+        posts: [
+          for (final e in (j['posts'] as List? ?? []))
+            ProfilePost.fromJson(e as Map<String, dynamic>),
+        ],
       );
 }
 
@@ -426,13 +505,16 @@ class Account extends ChangeNotifier {
   String? buy(ShopItem item) {
     final p = profile;
     if (p == null) return 'سجّل دخولك أولاً';
-    final cosmetic = item.kind == ShopKind.dice || item.kind == ShopKind.board;
+    final cosmetic = item.kind != ShopKind.item && item.kind != ShopKind.bundle;
     if (cosmetic && p.owns(item.id)) return 'تملكه بالفعل';
     if (p.coins < item.price) return 'عملاتك لا تكفي';
     p.coins -= item.price;
     switch (item.kind) {
       case ShopKind.dice:
       case ShopKind.board:
+      case ShopKind.frame:
+      case ShopKind.entrance:
+      case ShopKind.bubble:
         p.owned.add(item.id);
       case ShopKind.item:
         final i = LudoItem.values.byName(item.id.split('.').last);
@@ -452,7 +534,45 @@ class Account extends ChangeNotifier {
     final name = id.split('.').last;
     if (id.startsWith('dice.')) p.diceSkin = name;
     if (id.startsWith('board.')) p.boardTheme = name;
+    if (id.startsWith('frame.')) p.frame = name;
+    if (id.startsWith('entrance.')) p.entrance = name;
+    if (id.startsWith('bubble.')) p.bubble = name;
     _save();
+    notifyListeners();
+  }
+
+  // ---------- الملف الشخصي ----------
+
+  void setBio(String bio) {
+    final p = profile;
+    if (p == null) return;
+    p.bio = bio.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void addPost(String text, {int mood = 0}) {
+    final p = profile;
+    if (p == null || text.trim().isEmpty) return;
+    p.posts.insert(
+      0,
+      ProfilePost(id: DateTime.now().microsecondsSinceEpoch.toString(), text: text.trim(), mood: mood),
+    );
+    _save();
+    notifyListeners();
+  }
+
+  void deletePost(String id) {
+    profile?.posts.removeWhere((e) => e.id == id);
+    _save();
+    notifyListeners();
+  }
+
+  void toggleLike(ProfilePost post) {
+    post.liked = !post.liked;
+    post.likes += post.liked ? 1 : -1;
+    _save();
+    notifyListeners();
   }
 
   /// يستهلك أداة من الحقيبة (عند استخدامها في المباراة).

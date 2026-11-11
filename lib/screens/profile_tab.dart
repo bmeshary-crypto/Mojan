@@ -11,6 +11,8 @@ import '../widgets/account_widgets.dart';
 import '../widgets/bouncy_button.dart';
 import 'login_screen.dart';
 import 'settings_sheet.dart';
+import 'profile_posts.dart';
+import '../core/voice/voice.dart';
 
 /// تبويب "حسابي": الصورة والاسم والمستوى والإحصائيات والإنجازات.
 class ProfileTab extends StatelessWidget {
@@ -42,107 +44,125 @@ class ProfileTab extends StatelessWidget {
             GlassCard(
               child: Column(
                 children: [
+                  // غلاف الملف الشخصي مع الصورة والإطار
+                  SizedBox(
+                    height: 148,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.topCenter,
+                      children: [
+                        Container(
+                          height: 96,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF8E6CFF), Color(0xFFFF4D9D), Color(0xFFFFB13D)],
+                            ),
+                          ),
+                          child: Stack(children: [
+                            for (final (x, y, e) in const [
+                              (.08, .2, '✨'), (.3, .55, '🎲'), (.72, .18, '🎵'), (.9, .6, '⭐'), (.55, .7, '💜'),
+                            ])
+                              Align(
+                                alignment: Alignment(x * 2 - 1, y * 2 - 1),
+                                child: Text(e, style: const TextStyle(fontSize: 18)),
+                              ),
+                          ]),
+                        ),
+                        Positioned(
+                          top: 44,
+                          child: GestureDetector(
+                            key: const ValueKey('edit-avatar'),
+                            onTap: () => _pickAvatar(context, p.avatar),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                FramedAvatar(index: p.avatar, size: 96, frame: p.frame),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(5),
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.gold,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.edit_rounded, size: 14, color: AppColors.bgTop),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          p.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      IconButton(
+                        key: const ValueKey('edit-name'),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _rename(context, p.name),
+                        icon: const Icon(Icons.edit_rounded, size: 18, color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      _Tag(icon: _methodIcon(p.method), text: authMethodLabel(p.method)),
+                      GestureDetector(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: p.id));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('تم نسخ رقم اللاعب'), behavior: SnackBarBehavior.floating),
+                          );
+                        },
+                        child: _Tag(icon: Icons.tag_rounded, text: p.id),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // النبذة
+                  GestureDetector(
+                    key: const ValueKey('edit-bio'),
+                    onTap: () => _editBio(context, p.bio),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .06),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        p.bio.isEmpty ? '✍️ اكتب نبذة عنك…' : p.bio,
+                        key: const ValueKey('bio-text'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          height: 1.5,
+                          fontWeight: FontWeight.w600,
+                          color: p.bio.isEmpty ? AppColors.textMuted : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
-                      GestureDetector(
-                        key: const ValueKey('edit-avatar'),
-                        onTap: () => _pickAvatar(context, p.avatar),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            PlayerAvatar(index: p.avatar, size: 84),
-                            Positioned(
-                              bottom: -2,
-                              left: -2,
-                              child: Container(
-                                padding: const EdgeInsets.all(5),
-                                decoration: const BoxDecoration(
-                                  color: AppColors.gold,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.edit_rounded,
-                                  size: 14,
-                                  color: AppColors.bgTop,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    p.name,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ),
-                                IconButton(
-                                  key: const ValueKey('edit-name'),
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: () => _rename(context, p.name),
-                                  icon: const Icon(
-                                    Icons.edit_rounded,
-                                    size: 18,
-                                    color: AppColors.textMuted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 4,
-                              children: [
-                                _Tag(
-                                  icon: _methodIcon(p.method),
-                                  text: authMethodLabel(p.method),
-                                ),
-                                GestureDetector(
-                                  onTap: () {
-                                    Clipboard.setData(
-                                      ClipboardData(text: p.id),
-                                    );
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('تم نسخ رقم اللاعب'),
-                                        behavior: SnackBarBehavior.floating,
-                                      ),
-                                    );
-                                  },
-                                  child: _Tag(
-                                    icon: Icons.tag_rounded,
-                                    text: p.id,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (p.contact != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Directionality(
-                                  textDirection: TextDirection.ltr,
-                                  child: Text(
-                                    p.contact!,
-                                    style: const TextStyle(
-                                      color: AppColors.textMuted,
-                                      fontSize: 12.5,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
+                      _Count(value: p.posts.length, label: 'منشور'),
+                      _Count(value: 0, label: 'متابِع'),
+                      _Count(value: VoiceService.instance.following.length, label: 'أتابع'),
+                      _Count(value: p.posts.fold(0, (a, e) => a + e.likes), label: 'إعجاب'),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -271,7 +291,7 @@ class ProfileTab extends StatelessWidget {
             GlassCard(
               child: InkWell(
                 key: const ValueKey('profile-shop'),
-                onTap: () => openShop(context, tab: 3),
+                onTap: () => openShop(context, tab: ShopTab.bag),
                 child: const Row(
                   children: [
                     Text('🎒', style: TextStyle(fontSize: 32)),
@@ -281,7 +301,7 @@ class ProfileTab extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('المتجر والحقيبة', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                          Text('سكنات النرد واللوح وأدوات الباور',
+                          Text('الإطارات والدخوليات وسكنات لودو والأدوات',
                               style: TextStyle(color: AppColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w600)),
                         ],
                       ),
@@ -291,6 +311,8 @@ class ProfileTab extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 20),
+            ProfilePosts(profile: p),
             const SizedBox(height: 20),
             Text(
               'إحصائيات الألعاب',
@@ -412,6 +434,35 @@ class ProfileTab extends StatelessWidget {
     if (name != null) await Account.instance.rename(name);
   }
 
+  Future<void> _editBio(BuildContext context, String current) async {
+    final ctrl = TextEditingController(text: current);
+    final bio = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('نبذة عنك', style: TextStyle(fontWeight: FontWeight.w900)),
+        content: TextField(
+          key: const ValueKey('bio-field'),
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 120,
+          maxLines: 3,
+          decoration: const InputDecoration(hintText: 'مثال: أحب اللودو والسوالف 🎲'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          FilledButton(
+            key: const ValueKey('bio-save'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: const Text('حفظ', style: TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
+    );
+    if (bio != null) Account.instance.setBio(bio);
+  }
+
   void _pickAvatar(BuildContext context, int current) {
     showModalBottomSheet(
       context: context,
@@ -419,7 +470,8 @@ class ProfileTab extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (ctx) => Padding(
+      isScrollControlled: true,
+      builder: (ctx) => SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -514,6 +566,20 @@ class DailyRewardCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _Count extends StatelessWidget {
+  const _Count({required this.value, required this.label});
+  final int value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Column(children: [
+          Text('$value', style: AppTheme.display.copyWith(fontSize: 20)),
+          Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
+        ]),
+      );
 }
 
 class _Tag extends StatelessWidget {

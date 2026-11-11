@@ -95,8 +95,12 @@ class LudoMoveResult {
     required this.extraTurn,
     required this.playerFinished,
     this.bonusRoll = false,
+    this.picked,
   });
   final bool bonusRoll;
+
+  /// أداة التقطها اللاعب من على اللوح (وضع الباور).
+  final LudoItem? picked;
   final LudoMove move;
   final List<LudoToken> captured;
   final bool extraTurn;
@@ -121,6 +125,33 @@ class LudoGame {
       tokens[p] = List.generate(rules.tokensPerPlayer, (i) => LudoToken(p, i));
       this.items[p] = {for (final i in LudoItem.values) i: power ? (items?[p]?[i] ?? 0) : 0};
     }
+    if (power) {
+      for (var i = 0; i < pickupCount; i++) {
+        _spawnPickup(LudoItem.values[i % LudoItem.values.length]);
+      }
+    }
+  }
+
+  /// عدد الأدوات الموجودة على اللوح في نفس الوقت.
+  static const pickupCount = 3;
+
+  /// أدوات على المسار (رقم الخانة العامة ← الأداة). من يقف عليها يأخذها
+  /// ثم تظهر أداة جديدة في مكان آخر.
+  final Map<int, LudoItem> pickups = {};
+
+  void _spawnPickup([LudoItem? item]) {
+    final taken = {for (final t in allTokens) ?t.globalIndex};
+    final free = [
+      for (var g = 0; g < LudoGeo.trackLength; g++)
+        if (!LudoGeo.isSafeGlobal(g) &&
+            !LudoGeo.bonusIndices.contains(g) &&
+            !pickups.containsKey(g) &&
+            !taken.contains(g))
+          g,
+    ];
+    if (free.isEmpty) return;
+    pickups[free[_random.nextInt(free.length)]] =
+        item ?? LudoItem.values[_random.nextInt(LudoItem.values.length)];
   }
 
   /// 2 ضد 2: الأحمر والأصفر ضد الأخضر والأزرق (اللاعبان المتقابلان قطرياً).
@@ -249,6 +280,12 @@ class LudoGame {
       }
     }
     final bonus = power && g != null && LudoGeo.bonusIndices.contains(g) && m.from != LudoGeo.yard;
+    LudoItem? picked;
+    if (power && g != null && pickups.containsKey(g)) {
+      picked = pickups.remove(g)!;
+      items[t.color]![picked] = itemCount(t.color, picked) + 1;
+      _spawnPickup();
+    }
 
     var playerFinished = false;
     if (hasFinished(t.color) && !ranking.contains(t.color)) {
@@ -285,7 +322,7 @@ class LudoGame {
             (captured.isNotEmpty && rules.extraTurnOnCapture) ||
             (m.to == LudoGeo.finished && rules.extraTurnOnFinish));
     _endTurn(extra: extra);
-    return LudoMoveResult(move: m, captured: captured, extraTurn: extra, playerFinished: playerFinished, bonusRoll: bonus);
+    return LudoMoveResult(move: m, captured: captured, extraTurn: extra, playerFinished: playerFinished, bonusRoll: bonus, picked: picked);
   }
 
   LudoMoveResult _gameOver(LudoMove m, List<LudoToken> captured, bool playerFinished) {
@@ -377,6 +414,7 @@ class LudoGame {
     if (g != null) {
       final captures = allTokens.where((o) => !allies(o.color, c) && o.globalIndex == g && !isProtected(o)).toList();
       if (power && LudoGeo.bonusIndices.contains(g)) s += 25;
+      if (power && pickups.containsKey(g)) s += 22;
       if (captures.isNotEmpty && !LudoGeo.isSafeGlobal(g)) {
         s += 60 + captures.fold<int>(0, (a, o) => a + o.pos);
       }
