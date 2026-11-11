@@ -1,17 +1,38 @@
-# mojan
+# MOJAN
 
-A new Flutter project.
+منصة ألعاب وغرف صوتية عربية مبنية بـ Flutter (جوال + ويب):
+لودو، سيكو، أسئلة وأجوبة، صراحة أو جرأة، عجلة السماء، غرف صوتية، متجر، متصدرون، ولوحة إدارة.
 
-## Getting Started
+> **مهم:** هذه نسخة تجريبية. اللاعبون الآخرون والحضور في الغرف والهدايا التي يرسلها غيرك ما زالوا **محاكاة** على جهاز كل زائر،
+> لأنه لا يوجد سيرفر بعد. كل زائر يلعب ويحفظ حسابه وعملاته على متصفحه هو فقط.
 
-This project is a starting point for a Flutter application.
+## النشر على GitHub Pages
 
-A few resources to get you started if this is your first Flutter project:
+راجع الدليل الكامل: [docs/GITHUB-AR.md](docs/GITHUB-AR.md)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+باختصار:
+1. ارفع هذا المجلد كما هو إلى مستودع جديد على GitHub (فرع `main`).
+2. من **Settings ← Pages** اختر **Source: GitHub Actions**.
+3. بعد دقائق يصبح الرابط: `https://اسم-حسابك.github.io/اسم-المستودع/`
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+الملف `.github/workflows/deploy.yml` يبني نسخة الويب ويشغل الاختبارات وينشرها تلقائياً مع كل رفع.
+
+## تفعيل الحسابات الحقيقية
+
+راجع: [docs/ACCOUNTS-AR.md](docs/ACCOUNTS-AR.md)
+
+## التشغيل محلياً
+
+```bash
+flutter pub get
+flutter test
+flutter run -d chrome
+```
+
+بناء الويب يدوياً:
+
+```bash
+flutter build web --release --no-web-resources-cdn --no-tree-shake-icons
+```
+
+لوحة الإدارة التجريبية: الإعدادات ← لوحة تحكم الإدارة، الرمز `1234` (يتغير عند تفعيل السيرفر).

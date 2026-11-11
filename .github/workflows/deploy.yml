@@ -1,0 +1,49 @@
+# ينشر نسخة الويب من MOJAN على GitHub Pages تلقائياً مع كل رفع على main.
+name: Deploy MOJAN web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.9
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+      # بدون tree-shake للأيقونات حتى لا تختفي، وبدون CDN حتى يعمل كل شيء من نفس الموقع
+      - run: flutter build web --release --no-web-resources-cdn --no-tree-shake-icons
+      - name: Relative base href (works on any repo name)
+        run: |
+          sed -i 's|<base href="/">|<base href="./">|' build/web/index.html
+          sed -i 's|<title>[^<]*</title>|<title>MOJAN</title>|' build/web/index.html
+          cp build/web/index.html build/web/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
