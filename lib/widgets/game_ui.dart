@@ -21,7 +21,13 @@ class GameTopBar extends StatelessWidget {
             onPressed: () => Navigator.maybePop(context),
             icon: const Icon(Icons.arrow_back_rounded, size: 28),
           ),
-          Text(title, maxLines: 1, style: AppTheme.display.copyWith(fontSize: 28)),
+          Flexible(
+            flex: 10,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(title, maxLines: 1, style: AppTheme.display.copyWith(fontSize: 28)),
+            ),
+          ),
           if (subtitle != null) ...[
             const SizedBox(width: 8),
             Flexible(
