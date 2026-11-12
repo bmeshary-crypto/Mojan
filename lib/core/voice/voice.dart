@@ -201,6 +201,12 @@ class VoiceRoom {
   bool hostSpeaking = false;
   bool locked = false;
   bool closed = false;
+
+  /// آخر مرة كان فيها أحد داخل الغرفة (للغرف المحفوظة على السيرفر).
+  DateTime? lastActive;
+
+  /// الغرفة فيها أحد الآن (آخر ظهور أقل من 3 دقائق).
+  bool get active => system != null || lastActive == null || DateTime.now().difference(lastActive!).inMinutes < 3;
   bool chatMuted = false;
 
   /// لعبة الصالة إن تحولت الغرفة لصالة لعب.
@@ -707,7 +713,15 @@ class VoiceService extends ChangeNotifier {
     ));
   }
 
-  List<VoiceRoom> get live => rooms.where((r) => !r.closed).toList()
+  /// الغرف المحفوظة: غرف حقيقية لا أحد فيها الآن أو أغلقها مضيفها، غرفي أولاً ثم الأحدث ظهوراً.
+  List<VoiceRoom> get saved => rooms.where((r) => r.live && r.system == null && (r.closed || !r.active)).toList()
+    ..sort((a, b) {
+      final m = (a.host.isMe ? 0 : 1).compareTo(b.host.isMe ? 0 : 1);
+      if (m != 0) return m;
+      return (b.lastActive ?? DateTime(2000)).compareTo(a.lastActive ?? DateTime(2000));
+    });
+
+  List<VoiceRoom> get live => rooms.where((r) => !r.closed && r.active).toList()
     ..sort((a, b) {
       // غرفتا النظام دائماً في الأعلى
       final s = (a.system == null ? 1 : 0).compareTo(b.system == null ? 1 : 0);
@@ -746,13 +760,27 @@ class VoiceService extends ChangeNotifier {
     return room;
   }
 
+  /// حذف غرفة محفوظة (لصاحبها فقط).
+  void deleteSaved(VoiceRoom r) {
+    if (!isHost(r)) return;
+    if (r.live) LiveVoice.instance.deleteRoom(r);
+    rooms.remove(r);
+    notifyListeners();
+  }
+
   bool isHost(VoiceRoom r) => r.host.isMe;
   int? mySeat(VoiceRoom r) => r.seats.where((s) => s.user?.isMe == true).firstOrNull?.index;
   bool onMic(VoiceRoom r) => isHost(r) || mySeat(r) != null;
 
   /// الدخول للغرفة. يرجع رسالة خطأ إن لم يُسمح.
   String? join(VoiceRoom r) {
-    if (r.closed) return 'هذه الغرفة مغلقة';
+    if (r.closed) {
+      // المضيف يرجع لغرفته المحفوظة ويفتحها من جديد
+      if (!(r.live && isHost(r))) return 'الغرفة مغلقة الآن، تنفتح لما يرجع صاحبها';
+      r.closed = false;
+      r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: 'رجعت الغرفة مفتوحة 🎉'));
+      LiveVoice.instance.reopen(r);
+    }
     final id = me().id;
     if (bannedUsers.contains(me().name)) return 'حسابك موقوف من الغرف الصوتية';
     final limited = Restrictions.instance.check('rooms');
@@ -982,7 +1010,7 @@ class VoiceService extends ChangeNotifier {
   void close(VoiceRoom r, {String reason = 'أغلق المضيف الغرفة'}) {
     if (r.live) {
       LiveVoice.instance.close(r, reason);
-      LiveVoice.instance.exit(r, hostClose: false);
+      LiveVoice.instance.exit(r);
     }
     r.closed = true;
     if (minimized == r) minimized = null;

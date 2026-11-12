@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -23,13 +25,24 @@ class VoiceHome extends StatefulWidget {
 class _VoiceHomeState extends State<VoiceHome> {
   final svc = VoiceService.instance;
   _Filter _filter = _Filter.all;
+  Timer? _tick;
 
   @override
   void initState() {
     super.initState();
+    // نحدّث "آخر ظهور" والغرف التي هدأت كل دقيقة
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
     svc.ensureRooms();
     // الغرف الحقيقية من السيرفر تظهر أعلى القائمة
     LiveVoice.instance.startListing();
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
   }
 
   List<VoiceRoom> get _rooms {
@@ -50,7 +63,7 @@ class _VoiceHomeState extends State<VoiceHome> {
                   r.theme == VoiceTheme.party,
             )
             .toList(),
-      _Filter.fresh => svc.rooms.where((r) => !r.closed).toList(),
+      _Filter.fresh => [...all]..sort((a, b) => (b.lastActive ?? DateTime.now()).compareTo(a.lastActive ?? DateTime.now())),
       _Filter.popular => all.where((r) => r.heat >= 2000).toList(),
       _Filter.following =>
         all.where((r) => svc.following.contains(r.id)).toList(),
@@ -69,6 +82,7 @@ class _VoiceHomeState extends State<VoiceHome> {
       listenable: svc,
       builder: (context, _) {
         final rooms = _rooms;
+        final saved = _filter == _Filter.all ? svc.saved : <VoiceRoom>[];
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
           children: [
@@ -120,16 +134,57 @@ class _VoiceHomeState extends State<VoiceHome> {
                 room: r,
                 onTap: () => openVoiceRoom(context, r),
               ).animate().fadeIn(delay: (60 * i).ms).slideX(begin: .08, end: 0),
-            const SizedBox(height: 8),
-            const Text(
-              'الغرف والأشخاص فيها تجريبيون، والصوت الحقيقي يشتغل بعد ربط سيرفر الصوت.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
-            ),
+            if (saved.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Icon(Icons.bookmark_rounded, color: AppColors.gold, size: 20),
+                  const SizedBox(width: 6),
+                  Text('غرف محفوظة', style: AppTheme.display.copyWith(fontSize: 20)),
+                  const Spacer(),
+                  Text(
+                    '${saved.length} غرفة',
+                    style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'غرف ما فيها أحد الآن. ادخل أي غرفة مفتوحة وترجع حيّة، وصاحب الغرفة يقدر يفتحها من جديد.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              for (final r in saved)
+                _SavedCard(
+                  room: r,
+                  onTap: () => openVoiceRoom(context, r),
+                  onDelete: () => _delete(r),
+                ),
+            ],
           ],
         );
       },
     );
+  }
+
+  Future<void> _delete(VoiceRoom r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('حذف الغرفة؟'),
+        content: Text('تنحذف «${r.title}» نهائياً من الغرف المحفوظة.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('إلغاء')),
+          FilledButton(
+            key: const ValueKey('confirm-delete-room'),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF5A5F)),
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('احذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) svc.deleteSaved(r);
   }
 
   Widget _banner() => GestureDetector(
@@ -451,6 +506,112 @@ class _RoomCard extends StatelessWidget {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "آخر ظهور" بصيغة قصيرة.
+String lastSeenLabel(DateTime? t, {DateTime? now}) {
+  if (t == null) return 'الآن';
+  final d = (now ?? DateTime.now()).difference(t);
+  if (d.inMinutes < 1) return 'الآن';
+  if (d.inMinutes < 60) return 'قبل ${d.inMinutes} د';
+  if (d.inHours < 24) return 'قبل ${d.inHours} س';
+  if (d.inDays == 1) return 'أمس';
+  if (d.inDays < 30) return 'قبل ${d.inDays} يوم';
+  return 'قبل ${d.inDays ~/ 30} شهر';
+}
+
+class _SavedCard extends StatelessWidget {
+  const _SavedCard({required this.room, required this.onTap, required this.onDelete});
+  final VoiceRoom room;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final mine = room.host.isMe;
+    return GestureDetector(
+      key: ValueKey('saved-room-${room.id}'),
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .05),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: mine ? AppColors.gold.withValues(alpha: .5) : Colors.white10),
+        ),
+        child: Row(
+          children: [
+            Opacity(
+              opacity: room.closed ? .55 : .85,
+              child: VoiceAvatar(user: room.host, size: 42),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          room.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                        ),
+                      ),
+                      if (mine) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(8)),
+                          child: const Text('غرفتك',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const Icon(Icons.history_rounded, size: 13, color: AppColors.textMuted),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(
+                          'آخر ظهور ${lastSeenLabel(room.lastActive)} · ${room.host.name}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (room.closed)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(10)),
+                child: Text(mine ? 'افتحها' : 'مغلقة',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: mine ? AppColors.gold : AppColors.textMuted)),
+              )
+            else
+              const Icon(Icons.login_rounded, color: Color(0xFF8E9BFF), size: 20),
+            if (mine)
+              IconButton(
+                key: ValueKey('delete-room-${room.id}'),
+                tooltip: 'حذف',
+                visualDensity: VisualDensity.compact,
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.textMuted),
+              ),
           ],
         ),
       ),

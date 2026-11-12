@@ -48,18 +48,20 @@ class LiveVoice {
 
   void startListing() {
     if (!enabled || _listSub != null) return;
-    _listSub = _db.collection('rooms').where('open', isEqualTo: true).limit(40).snapshots().listen((snap) {
-      final now = DateTime.now();
+    // كل الغرف المحفوظة (النشطة وغير النشطة) مرتبة بآخر ظهور
+    _listSub = _db.collection('rooms').orderBy('lastActive', descending: true).limit(80).snapshots().listen((snap) {
       final alive = <String>{};
       for (final d in snap.docs) {
         final data = d.data();
-        final last = (data['lastActive'] as Timestamp?)?.toDate();
-        // غرفة غاب مضيفها أكثر من 3 دقائق لا تظهر
-        if (last != null && now.difference(last).inMinutes >= 3 && data['host'] != _me) continue;
+        if (data['system'] != null) continue;
         alive.add(d.id);
         final r = _svc.byId(d.id) ?? _newRoom(d.id, data);
-        if (!_svc.rooms.contains(r)) _svc.rooms.insert(0, r);
-        if (r != _room) _applyRoom(r, data);
+        if (!_svc.rooms.contains(r)) _svc.rooms.add(r);
+        r.lastActive = (data['lastActive'] as Timestamp?)?.toDate() ?? r.lastActive;
+        if (r != _room) {
+          r.closed = data['open'] == false;
+          _applyRoom(r, data);
+        }
       }
       _svc.rooms.removeWhere((r) => r.live && r.system == null && !alive.contains(r.id) && r != _room);
       _svc.notify();
@@ -253,7 +255,11 @@ class LiveVoice {
     Future<void> beat() async {
       try {
         await peopleRef.set({..._meMap(), 'session': _session, 'at': FieldValue.serverTimestamp()});
-        if (_svc.isHost(r)) await ref.update({'lastActive': FieldValue.serverTimestamp()});
+        // أي شخص داخل الغرفة يبقيها نشطة ويحدّث آخر ظهور لها
+        if (r.system == null) {
+          r.lastActive = DateTime.now();
+          await ref.update({'lastActive': FieldValue.serverTimestamp()});
+        }
       } catch (e) {
         debugPrint('beat: $e');
       }
@@ -292,7 +298,7 @@ class LiveVoice {
     _levels = Timer.periodic(const Duration(milliseconds: 350), (_) => _updateLevels(r));
   }
 
-  Future<void> exit(VoiceRoom r, {bool hostClose = true}) async {
+  Future<void> exit(VoiceRoom r) async {
     if (_room != r) return;
     _room = null;
     for (final s in _subs) {
@@ -315,7 +321,6 @@ class LiveVoice {
       for (final i in mine) {
         await ref.update({'seats.$i': FieldValue.delete()});
       }
-      if (r.host.isMe && hostClose) await ref.update({'open': false});
     } catch (e) {
       debugPrint('exit: $e');
     }
@@ -496,6 +501,24 @@ class LiveVoice {
       });
 
   Future<void> close(VoiceRoom r, String reason) => _ref(r).update({'open': false, 'closeReason': reason});
+
+  /// المضيف يحذف غرفته المحفوظة نهائياً.
+  Future<void> deleteRoom(VoiceRoom r) async {
+    try {
+      await _ref(r).delete();
+    } catch (e) {
+      debugPrint('delete room: $e');
+    }
+  }
+
+  /// المضيف يعيد فتح غرفته المحفوظة.
+  Future<void> reopen(VoiceRoom r) async {
+    try {
+      await _ref(r).update({'open': true, 'closeReason': FieldValue.delete(), 'lastActive': FieldValue.serverTimestamp()});
+    } catch (e) {
+      debugPrint('reopen: $e');
+    }
+  }
 
   // ---------- الصوت ----------
 

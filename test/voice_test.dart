@@ -108,7 +108,7 @@ void main() {
     // الأدمن يغلق غرفة
     AdminService.instance.closeRoom(other);
     expect(other.closed, isTrue);
-    expect(svc.join(other), 'هذه الغرفة مغلقة');
+    expect(svc.join(other), 'الغرفة مغلقة الآن، تنفتح لما يرجع صاحبها');
     expect(AdminService.instance.log, isNotEmpty);
   });
 

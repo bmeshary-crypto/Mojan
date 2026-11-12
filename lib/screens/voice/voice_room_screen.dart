@@ -394,7 +394,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     'exit-close',
                     Icons.power_settings_new_rounded,
                     'أغلق الغرفة',
-                    'تُغلق للجميع',
+                    'تُغلق للجميع وتبقى في غرفك المحفوظة',
                     const Color(0xFFFF5A5F),
                   ),
               ],
