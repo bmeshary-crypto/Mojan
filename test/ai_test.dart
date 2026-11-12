@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mojan/core/account/account.dart';
 import 'package:mojan/core/ai/ai_brain.dart';
+import 'package:mojan/core/voice/system_rooms.dart';
 import 'package:mojan/core/voice/voice.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,8 +23,9 @@ void main() {
       return 'نورة: هلا موكا، نورت الغرفة 🌹';
     };
     final svc = VoiceService.instance;
-    final r = svc.create(title: 'سهرة', category: VoiceCategory.chat);
-    expect(svc.aiOnMics(r).single.name, contains('نورة'));
+    svc.ensureRooms();
+    final r = svc.byId(SystemRooms.welcomeId)!;
+    expect(svc.aiOnMics(r).map((u) => u.name).join(), allOf(contains('نورة'), contains('منى')));
     svc.sendMessage(r, 'هلا نورة كيفك؟');
     await Future.delayed(const Duration(seconds: 3));
     final reply = r.messages.lastWhere((m) => m.user?.isAi == true);

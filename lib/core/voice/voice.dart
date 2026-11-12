@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../ai/ai_brain.dart';
 import '../ai/speech.dart';
 import 'live_voice.dart';
+import 'system_rooms.dart';
 
 import '../account/account.dart';
 import '../admin/admin.dart';
@@ -174,6 +175,16 @@ class VoiceRoom {
 
   /// غرفة حقيقية على السيرفر بصوت حقيقي (وليست محاكاة).
   bool live = false;
+
+  /// غرف النظام الثابتة: 'welcome' (الترحيب بالأعضاء الجدد) أو 'podcast' (بودكاست موجان).
+  String? system;
+  bool get isPodcast => system == 'podcast';
+  bool get isWelcome => system == 'welcome';
+
+  /// ما يُقال الآن في البودكاست (يظهر كترجمة تحت المذيعين).
+  String? caption;
+  VoiceUser? captionBy;
+  String? topic;
   String title;
   VoiceUser host;
   VoiceCategory category;
@@ -471,7 +482,14 @@ class VoiceService extends ChangeNotifier {
 
   String _newId() => (100000 + _rng.nextInt(899999)).toString();
 
-  /// غرف تجريبية تملأ القائمة حتى يشتغل السيرفر.
+  /// غرفتا النظام (الترحيب والبودكاست). باقي الغرف ينشئها المستخدمون فقط.
+  void ensureRooms() {
+    for (final r in SystemRooms.instance.build()) {
+      if (byId(r.id) == null) rooms.add(r);
+    }
+  }
+
+  /// غرف وهمية للاختبارات فقط.
   void ensureDemo() {
     if (rooms.isNotEmpty) return;
     final specs = [
@@ -529,7 +547,12 @@ class VoiceService extends ChangeNotifier {
     ));
   }
 
-  List<VoiceRoom> get live => rooms.where((r) => !r.closed).toList()..sort((a, b) => b.heat.compareTo(a.heat));
+  List<VoiceRoom> get live => rooms.where((r) => !r.closed).toList()
+    ..sort((a, b) {
+      // غرفتا النظام دائماً في الأعلى
+      final s = (a.system == null ? 1 : 0).compareTo(b.system == null ? 1 : 0);
+      return s != 0 ? s : b.heat.compareTo(a.heat);
+    });
 
   VoiceRoom? byId(String id) => rooms.where((r) => r.id == id).firstOrNull;
 
@@ -551,10 +574,7 @@ class VoiceService extends ChangeNotifier {
       theme: theme,
       announcement: announcement?.trim().isNotEmpty == true ? announcement!.trim() : 'أهلاً بالجميع، احترموا بعض واستمتعوا 🌹',
     );
-    room.seats[0].user = aiUser(aiPersonas.first);
     room.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: room.announcement));
-    room.messages.add(VoiceMessage(
-        kind: VoiceMsgKind.system, text: '🤖 ${aiPersonas.first.name} (ذكاء اصطناعي) على المايك، كلّمها بالكتابة أو بصوتك'));
     rooms.insert(0, room);
     if (live) {
       room.live = true;
@@ -577,12 +597,14 @@ class VoiceService extends ChangeNotifier {
     if (limited != null) return limited;
     if (r.kicked.contains(id)) return 'تم طردك من هذه الغرفة';
     if (r.locked && !isHost(r)) return 'الغرفة مقفلة من المضيف';
+    if (r.system != null) r.live = LiveVoice.instance.enabled;
     if (r.live) {
       LiveVoice.instance.enter(r);
     } else if (!isHost(r)) {
       r.listeners++;
       r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: me()));
     }
+    if (r.system != null) SystemRooms.instance.entered(r);
     notifyListeners();
     return null;
   }
@@ -590,6 +612,7 @@ class VoiceService extends ChangeNotifier {
   void leave(VoiceRoom r) {
     if (minimized == r) minimized = null;
     if (r.live) LiveVoice.instance.exit(r);
+    if (r.system != null) SystemRooms.instance.left(r);
     final s = mySeat(r);
     if (s != null) r.seats[s].user = null;
     micOn = false;
@@ -601,6 +624,7 @@ class VoiceService extends ChangeNotifier {
 
   /// الجلوس على مقعد. المضيف يجلس مباشرة، الآخرون يجلسون على المقاعد الفارغة غير المقفلة.
   String? takeSeat(VoiceRoom r, int i) {
+    if (r.isPodcast) return 'المايكات في البودكاست للمذيعين فقط 🎙️ اكتب لهم في الدردشة';
     final seat = r.seats[i];
     if (!seat.empty) return 'المقعد مشغول';
     if (seat.locked && !isHost(r)) return 'المقعد مقفل';
@@ -706,15 +730,8 @@ class VoiceService extends ChangeNotifier {
   void invite(VoiceRoom r) {
     final free = r.seats.where((s) => s.empty && !s.locked).firstOrNull;
     if (free == null) return;
-    if (r.live) {
-      // في الغرف الحقيقية ندعو شخصية AI بدل المحاكاة
-      final p = aiPersonas.where((p) => !aiOnMics(r).any((u) => u.aiId == p.id)).firstOrNull;
-      if (p == null) return;
-      free.user = aiUser(p);
-      LiveVoice.instance.seatAi(r, free.index, p);
-      notifyListeners();
-      return;
-    }
+    // في الغرف الحقيقية يصعد الناس بأنفسهم (شخصيات الـ AI في غرفتي الترحيب والبودكاست فقط)
+    if (r.live || r.system != null) return;
     free.user = _bot()..frame = r.theme == VoiceTheme.party ? SeatFrame.party : SeatFrame.none;
     if (r.listeners > 0) r.listeners--;
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: '${free.user!.name} صعد للمايك ${free.index + 1}'));
@@ -822,7 +839,11 @@ class VoiceService extends ChangeNotifier {
     }
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: t, user: me()));
     notifyListeners();
-    aiRespond(r, t);
+    if (r.system != null) {
+      SystemRooms.instance.onMyChat(r, t);
+    } else {
+      aiRespond(r, t);
+    }
     return null;
   }
 
@@ -853,7 +874,11 @@ class VoiceService extends ChangeNotifier {
     r.recordGift(from, to, g, count);
     final names = to.length == 1 ? to.first.name : 'كل من على المايك (${to.length})';
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.gift, text: 'أرسل ${g.title} ×$count إلى $names', user: from, gift: g, count: count, to: to));
-    if (r.live) LiveVoice.instance.sendGift(r, g, to, count, 'أرسل ${g.title} ×$count إلى $names');
+    if (r.live) {
+      LiveVoice.instance.sendGift(r, g, to, count, 'أرسل ${g.title} ×$count إلى $names');
+    } else if (r.system != null) {
+      SystemRooms.instance.onMyGift(r, r.messages.last);
+    }
     notifyListeners();
     return null;
   }
@@ -873,8 +898,8 @@ class VoiceService extends ChangeNotifier {
   /// يرجع الهدية إن أرسل أحدهم هدية (لعرض التأثير).
   VoiceMessage? tick(VoiceRoom r) {
     if (r.closed) return null;
-    if (r.live) {
-      // غرفة حقيقية: لا محاكاة، فقط هدايا وصلت من الآخرين
+    if (r.live || r.system != null) {
+      // غرفة حقيقية (أو غرفة نظام): لا محاكاة، فقط هدايا وصلت من الآخرين
       final fx = LiveVoice.instance.incomingFx;
       return fx.isEmpty ? null : fx.removeAt(0);
     }

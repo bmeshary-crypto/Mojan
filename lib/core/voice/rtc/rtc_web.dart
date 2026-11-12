@@ -5,9 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
 
 class _Peer {
-  _Peer(this.pc, this.sender);
+  _Peer(this.pc);
   final web.RTCPeerConnection pc;
-  final web.RTCRtpSender sender;
+  web.RTCRtpSender? sender;
   web.HTMLAudioElement? audio;
   web.AnalyserNode? analyser;
 }
@@ -34,6 +34,12 @@ class RtcMesh {
   static final _config = web.RTCConfiguration(
     iceServers: [
       web.RTCIceServer(urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'].map((e) => e.toJS).toList().toJS),
+      // خادم TURN عام مجاني كاحتياط للشبكات التي تمنع الاتصال المباشر (شبكات الجوال غالباً)
+      web.RTCIceServer(
+        urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'].map((e) => e.toJS).toList().toJS,
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      ),
     ].toJS,
   );
 
@@ -48,7 +54,7 @@ class RtcMesh {
       _myAnalyser = _analyse(_mic!);
       setMic(_micOn);
       for (final p in _peers.values) {
-        await p.sender.replaceTrack(_micOn ? _track : null).toDart;
+        await p.sender?.replaceTrack(_micOn ? _track : null).toDart;
       }
       return true;
     } catch (e) {
@@ -66,7 +72,7 @@ class RtcMesh {
     _micOn = on;
     _track?.enabled = on;
     for (final p in _peers.values) {
-      p.sender.replaceTrack(on ? _track : null);
+      p.sender?.replaceTrack(on ? _track : null);
     }
   }
 
@@ -105,25 +111,44 @@ class RtcMesh {
   bool has(String peer) => _peers.containsKey(peer);
   String state(String peer) => _peers[peer]?.pc.connectionState ?? 'none';
 
+  /// [offerer]: الطرف الذي يبدأ يضيف قناة الصوت بنفسه. الطرف المجيب يستخدم القناة التي وصلت في العرض،
+  /// وإلا صار مايكه على قناة غير متفق عليها ولا يصل صوته للطرف الآخر.
   _Peer _create(String peer) {
     close(peer);
     final pc = web.RTCPeerConnection(_config);
-    final t = pc.addTransceiver('audio'.toJS, web.RTCRtpTransceiverInit(direction: 'sendrecv'));
-    final p = _Peer(pc, t.sender);
-    if (_micOn && _track != null) p.sender.replaceTrack(_track);
+    final p = _Peer(pc);
     pc.ontrack = ((web.RTCTrackEvent e) {
       final streams = e.streams.toDart;
       final stream = streams.isNotEmpty ? streams.first : web.MediaStream([e.track].toJS);
+      p.audio?.remove();
       final el = web.HTMLAudioElement()
         ..autoplay = true
         ..srcObject = stream
         ..muted = !_speaker;
+      el.setAttribute('playsinline', '');
+      el.style.display = 'none';
+      // بعض المتصفحات لا تشغل الصوت إلا إذا كان العنصر داخل الصفحة
+      web.document.body?.append(el);
       el.play().toDart.catchError((_) => null);
       p.audio = el;
       p.analyser = _analyse(stream);
     }).toJS;
     _peers[peer] = p;
     return p;
+  }
+
+  void _attachMic(_Peer p) {
+    if (_micOn && _track != null) p.sender?.replaceTrack(_track);
+  }
+
+  /// يعيد تشغيل الأصوات الواردة (بعد لمسة من المستخدم إذا منع المتصفح التشغيل التلقائي).
+  void resume() {
+    try {
+      if (_ctx?.state == 'suspended') _ctx!.resume();
+    } catch (_) {}
+    for (final p in _peers.values) {
+      p.audio?.play().toDart.catchError((_) => null);
+    }
   }
 
   /// ننتظر جمع عناوين الشبكة (بدون trickle) ثم نرسل الوصف كاملاً مرة واحدة.
@@ -141,6 +166,8 @@ class RtcMesh {
   Future<String?> offer(String peer) async {
     try {
       final p = _create(peer);
+      p.sender = p.pc.addTransceiver('audio'.toJS, web.RTCRtpTransceiverInit(direction: 'sendrecv')).sender;
+      _attachMic(p);
       // بدون وسيط: المتصفح ينشئ العرض بنفسه
       await p.pc.setLocalDescription().toDart;
       return await _local(p.pc);
@@ -154,6 +181,14 @@ class RtcMesh {
     try {
       final p = _create(peer);
       await p.pc.setRemoteDescription(web.RTCSessionDescriptionInit(type: 'offer', sdp: offer)).toDart;
+      final ts = p.pc.getTransceivers().toDart;
+      if (ts.isNotEmpty) {
+        ts.first.direction = 'sendrecv';
+        p.sender = ts.first.sender;
+      } else {
+        p.sender = p.pc.addTransceiver('audio'.toJS, web.RTCRtpTransceiverInit(direction: 'sendrecv')).sender;
+      }
+      _attachMic(p);
       await p.pc.setLocalDescription().toDart;
       return await _local(p.pc);
     } catch (e) {
@@ -177,6 +212,7 @@ class RtcMesh {
     if (p == null) return;
     p.audio?.pause();
     p.audio?.srcObject = null;
+    p.audio?.remove();
     p.pc.close();
   }
 

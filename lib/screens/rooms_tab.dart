@@ -30,7 +30,7 @@ class _RoomsTabState extends State<RoomsTab> {
 
   void _join() {
     if (_code.text.length != 6) return;
-    VoiceService.instance.ensureDemo();
+    VoiceService.instance.ensureRooms();
     final room = VoiceService.instance.byId(_code.text);
     if (room != null) {
       openVoiceRoom(context, room);

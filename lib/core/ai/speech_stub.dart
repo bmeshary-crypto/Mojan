@@ -8,6 +8,7 @@ class Speech {
   bool get canSpeak => false;
   bool get canListen => false;
   bool get listening => false;
+  int get pending => 0;
   void speak(String text, {bool female = true, double pitch = 1, String? voice, bool egyptian = false}) {}
   void stopSpeaking() {}
   void listen(void Function(String text) onText) {}

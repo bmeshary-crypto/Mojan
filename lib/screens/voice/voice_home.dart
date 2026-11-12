@@ -27,7 +27,7 @@ class _VoiceHomeState extends State<VoiceHome> {
   @override
   void initState() {
     super.initState();
-    svc.ensureDemo();
+    svc.ensureRooms();
     // الغرف الحقيقية من السيرفر تظهر أعلى القائمة
     LiveVoice.instance.startListing();
   }

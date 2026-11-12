@@ -14,6 +14,7 @@ class RtcMesh {
   String state(String peer) => 'none';
   void close(String peer) {}
   void closeAll() {}
+  void resume() {}
   double level(String peer) => 0;
   double myLevel() => 0;
 }

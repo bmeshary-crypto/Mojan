@@ -125,7 +125,7 @@ class AiBrain {
   bool get online => override != null || (Cloud.instance.enabled && !_cooldown);
 
   /// رد شخصية على محادثة. [about] وصف المكان (غرفة صوتية، لعبة صراحة...).
-  Future<String> reply(AiPersona p, {required String about, List<AiLine> history = const [], String? ask, int maxWords = 25}) async {
+  Future<String> reply(AiPersona p, {required String about, List<AiLine> history = const [], String? ask, int maxWords = 25, int maxTokens = 120}) async {
     final system = 'أنت "${p.name}"، شخصية ذكاء اصطناعي داخل تطبيق الألعاب الاجتماعي MOJAN. '
         'شخصيتك: ${p.style}. المكان: $about. '
         'تكلم باللهجة ${p.dialect} وبجمل قصيرة جداً (حد أقصى $maxWords كلمة)، كأنك تتكلم في الدردشة. '
@@ -136,15 +136,18 @@ class AiBrain {
       if (lines.isNotEmpty) 'آخر المحادثة:\n${lines.map((l) => '${l.name}: ${l.text}').join('\n')}',
       ask ?? 'اكتب ردك الآن على آخر رسالة.',
     ].join('\n\n');
-    final text = await _generate(system, prompt);
-    return _clean(text, p) ?? p.fallback[_rng.nextInt(p.fallback.length)];
+    final text = await _generate(system, prompt, maxTokens: maxTokens);
+    return _clean(text, p, maxTokens > 120 ? 420 : 220) ?? p.fallback[_rng.nextInt(p.fallback.length)];
   }
 
   /// طلب حر (مثل إجابة سؤال صراحة) بنفس الشخصية.
-  Future<String> say(AiPersona p, {required String about, required String ask, int maxWords = 30}) =>
-      reply(p, about: about, ask: ask, maxWords: maxWords);
+  Future<String> say(AiPersona p, {required String about, required String ask, int maxWords = 30, int maxTokens = 120}) =>
+      reply(p, about: about, ask: ask, maxWords: maxWords, maxTokens: maxTokens);
 
-  Future<String?> _generate(String system, String prompt) async {
+  /// نص طويل بصيغة JSON (مثل حلقة بودكاست). يرجع null عند الفشل.
+  Future<String?> json(String system, String prompt, {int maxTokens = 2500}) => _generate(system, prompt, maxTokens: maxTokens, json: true);
+
+  Future<String?> _generate(String system, String prompt, {int maxTokens = 120, bool json = false}) async {
     if (override != null) return override!(system, prompt);
     if (!online) return null;
     // حماية الحصة المجانية: طلب واحد كل 4 ثوانٍ على الأكثر من هذا الجهاز
@@ -155,9 +158,9 @@ class AiBrain {
       final m = FirebaseAI.googleAI().generativeModel(
         model: model,
         systemInstruction: Content.system(system),
-        generationConfig: GenerationConfig(maxOutputTokens: 120, temperature: .9),
+        generationConfig: GenerationConfig(maxOutputTokens: maxTokens, temperature: .9, responseMimeType: json ? 'application/json' : null),
       );
-      final res = await m.generateContent([Content.text(prompt)]).timeout(const Duration(seconds: 15));
+      final res = await m.generateContent([Content.text(prompt)]).timeout(Duration(seconds: json ? 60 : 15));
       return res.text;
     } catch (e) {
       debugPrint('AiBrain failed: $e');
@@ -207,11 +210,11 @@ class AiBrain {
     return null;
   }
 
-  String? _clean(String? t, AiPersona p) {
+  String? _clean(String? t, AiPersona p, [int max = 220]) {
     if (t == null) return null;
     var s = t.trim().replaceAll('"', '').replaceAll('*', '');
     if (s.startsWith('${p.name}:')) s = s.substring(p.name.length + 1).trim();
     if (s.isEmpty) return null;
-    return s.length > 220 ? '${s.substring(0, 217)}…' : s;
+    return s.length > max ? '${s.substring(0, max - 3)}…' : s;
   }
 }

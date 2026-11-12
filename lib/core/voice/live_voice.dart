@@ -8,6 +8,7 @@ import '../ai/ai_brain.dart';
 import '../ai/speech.dart';
 import '../firebase/cloud.dart';
 import 'rtc/rtc.dart';
+import 'system_rooms.dart';
 import 'voice.dart';
 
 /// الغرف الصوتية الحقيقية: حالة الغرفة والدردشة في Firestore، والصوت مباشرة بين المتصفحات (WebRTC).
@@ -60,7 +61,7 @@ class LiveVoice {
         if (!_svc.rooms.contains(r)) _svc.rooms.insert(0, r);
         if (r != _room) _applyRoom(r, data);
       }
-      _svc.rooms.removeWhere((r) => r.live && !alive.contains(r.id) && r != _room);
+      _svc.rooms.removeWhere((r) => r.live && r.system == null && !alive.contains(r.id) && r != _room);
       _svc.notify();
     }, onError: (e) => debugPrint('rooms list: $e'));
   }
@@ -128,6 +129,27 @@ class LiveVoice {
   }
 
   void _applyRoom(VoiceRoom r, Map<String, dynamic> data) {
+    if (r.system != null) {
+      // غرف النظام: العنوان والمضيف ثابتة، نأخذ فقط المقاعد والشعبية
+      r.heat = (data['heat'] as num?)?.toInt() ?? r.heat;
+      final seats = (data['seats'] as Map?) ?? {};
+      for (final s in r.seats) {
+        final m = seats['${s.index}'] as Map?;
+        if (m == null) {
+          s.user = null;
+          s.muted = false;
+          continue;
+        }
+        final keep = s.user != null && (s.user!.id == m['uid'] || (m['ai'] != null && s.user!.aiId == m['ai']));
+        s.user = keep ? s.user : _userFrom(m);
+        s.muted = m['muted'] == true;
+        s.user!.mic = m['mic'] == true;
+      }
+      SystemRooms.instance.pin(r);
+      SystemRooms.instance.onDoc(r, data);
+      if (r == _room) _syncMic();
+      return;
+    }
     r.title = data['title'] ?? r.title;
     r.announcement = data['announcement'] ?? r.announcement;
     r.theme = VoiceTheme.values.firstWhere((t) => t.name == data['theme'], orElse: () => r.theme);
@@ -195,6 +217,30 @@ class LiveVoice {
     _seenMsgs.clear();
     final ref = _db.collection('rooms').doc(r.id);
     final peopleRef = ref.collection('people').doc(_me);
+    if (r.system != null) {
+      // غرفة النظام تُنشأ على السيرفر أول مرة يدخلها أحد
+      try {
+        final snap = await ref.get();
+        if (!snap.exists) {
+          await ref.set({
+            'system': r.system,
+            'title': r.title,
+            'host': _me,
+            'seatCount': r.seats.length,
+            'heat': 0,
+            'seats': SystemRooms.instance.aiSeats(r),
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } else {
+          final seats = (snap.data()?['seats'] as Map?) ?? {};
+          for (final e in SystemRooms.instance.aiSeats(r).entries) {
+            if ((seats[e.key] as Map?)?['ai'] != (e.value as Map)['ai']) await ref.update({'seats.${e.key}': e.value});
+          }
+        }
+      } catch (e) {
+        debugPrint('system room: $e');
+      }
+    }
     Future<void> beat() async {
       try {
         await peopleRef.set({..._meMap(), 'session': _session, 'at': FieldValue.serverTimestamp()});
@@ -213,6 +259,8 @@ class LiveVoice {
       final data = d.data();
       if (data == null) return;
       _applyRoom(r, data);
+      // من صعد أو نزل من المايك: نتصل به فوراً بدون انتظار نبضة الحضور
+      _connectPeers(r);
       _svc.notify();
     }));
     _subs.add(ref.collection('messages').orderBy('at', descending: true).limit(60).snapshots().listen((snap) {
@@ -272,7 +320,39 @@ class LiveVoice {
   Future<void> sendChat(VoiceRoom r, String text) => _post(r, {'kind': 'chat', 'text': text});
 
   /// رسالة شخصية AI (يرسلها جهاز المضيف فقط).
-  Future<void> postAi(VoiceRoom r, AiPersona p, String text) => _post(r, {'kind': 'chat', 'text': text, 'ai': p.id});
+  /// [quiet]: يظهر كتابةً في التعليقات فقط ولا يُنطق (ردود البودكاست على المستمعين).
+  Future<void> postAi(VoiceRoom r, AiPersona p, String text, {bool quiet = false}) =>
+      _post(r, {'kind': 'chat', 'text': text, 'ai': p.id, if (quiet) 'quiet': true});
+
+  /// يحجز توليد حلقة البودكاست لهذا اليوم (حتى لا يولدها أكثر من جهاز).
+  Future<bool> claimPodcast(VoiceRoom r, int day) async {
+    try {
+      return await _db.runTransaction((tx) async {
+        final snap = await tx.get(_ref(r));
+        final d = snap.data() ?? {};
+        final pod = d['pod'];
+        if (pod is Map && pod['day'] == day) return false;
+        final g = d['podGen'];
+        if (g is Map && g['day'] == day) {
+          final at = (g['at'] as Timestamp?)?.toDate();
+          if (at != null && DateTime.now().difference(at).inMinutes < 3) return false;
+        }
+        tx.update(_ref(r), {'podGen': {'day': day, 'by': _me, 'at': FieldValue.serverTimestamp()}});
+        return true;
+      });
+    } catch (e) {
+      debugPrint('podcast claim: $e');
+      return false;
+    }
+  }
+
+  Future<void> savePodcast(VoiceRoom r, int day, List<Map<String, dynamic>> episodes) async {
+    try {
+      await _ref(r).update({'pod': {'day': day, 'episodes': episodes}});
+    } catch (e) {
+      debugPrint('podcast save: $e');
+    }
+  }
 
   Future<void> sendGift(VoiceRoom r, VoiceGift g, List<VoiceUser> to, int count, String text) async {
     await _post(r, {
@@ -282,7 +362,11 @@ class LiveVoice {
       'count': count,
       'to': [for (final u in to) {'uid': u.id, 'name': u.name, 'avatar': u.avatar, 'ai': ?u.aiId}],
     });
-    await _db.collection('rooms').doc(r.id).update({'heat': FieldValue.increment(g.price * count * to.length)});
+    try {
+      await _db.collection('rooms').doc(r.id).update({'heat': FieldValue.increment(g.price * count * to.length)});
+    } catch (e) {
+      debugPrint('heat: $e');
+    }
   }
 
   void _applyMessages(VoiceRoom r, List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
@@ -302,14 +386,22 @@ class LiveVoice {
       if (gift != null) r.recordGift(user, to, gift, count);
       final fresh = _seenMsgs.add(d.id) && !_firstMessages;
       if (!fresh) continue;
-      // كل الأجهزة تنطق رد الـ AI بصوتها
-      if (m['ai'] != null && _svc.speakerOn) {
+      // كل الأجهزة تنطق رد الـ AI بصوتها (إلا ردود التعليقات الصامتة)
+      if (m['ai'] != null && m['quiet'] != true) {
         final p = personaById(m['ai'] as String);
-        if (p != null) Speech.instance.speak(vm.text, female: p.female, voice: p.voice, egyptian: p.egyptian);
+        if (p != null) {
+          if (_svc.speakerOn) Speech.instance.speak(vm.text, female: p.female, voice: p.voice, egyptian: p.egyptian);
+          SystemRooms.instance.glow(r, p.id, vm.text);
+        }
       }
       if (gift != null && !user.isMe) incomingFx.add(vm);
-      // جهاز المضيف فقط يشغّل شخصيات الـ AI حتى لا يرد أكثر من مرة
-      if (r.host.isMe && kind == VoiceMsgKind.chat && m['ai'] == null) {
+      final mine = m['uid'] == _me && m['ai'] == null;
+      if (r.system != null) {
+        // غرف النظام بلا مضيف بشري: جهاز كاتب الرسالة هو من يطلب رد الـ AI
+        if (mine && kind == VoiceMsgKind.chat) unawaited(SystemRooms.instance.onMyChat(r, vm.text.replaceFirst('🎤 ', '')));
+        if (mine && gift != null) unawaited(SystemRooms.instance.onMyGift(r, vm));
+      } else if (r.host.isMe && kind == VoiceMsgKind.chat && m['ai'] == null) {
+        // جهاز المضيف فقط يشغّل شخصيات الـ AI حتى لا يرد أكثر من مرة
         _svc.aiRespond(r, vm.text.replaceFirst('🎤 ', ''));
       }
     }

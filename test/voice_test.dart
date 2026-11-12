@@ -55,7 +55,7 @@ void main() {
     svc.ensureDemo();
     expect(svc.live, isNotEmpty);
     final r = svc.create(title: 'غرفتي', category: VoiceCategory.music, seats: 8);
-    expect(r.seats[0].user?.isAi, isTrue, reason: 'new rooms start with an AI persona');
+    expect(r.seats.every((s) => s.user == null), isTrue, reason: 'user rooms start without AI personas');
     r.seats[0].user = null;
     expect(svc.isHost(r), isTrue);
     expect(svc.takeSeat(r, 0), isNotNull, reason: 'host has own seat');
@@ -129,9 +129,12 @@ void main() {
   testWidgets('voice home: filters, create a party room, use every room control', (tester) async {
     await pumpApp(tester, const VoiceHome());
     expect(find.text('اكتشف غرف جديدة'), findsOneWidget);
+    // لا غرف وهمية: فقط غرفتا الترحيب والبودكاست
+    expect(find.text('الترحيب بالأعضاء الجدد 🌹'), findsOneWidget);
+    expect(find.text('بودكاست موجان 🎙️'), findsOneWidget);
+    expect(find.text('سهرة طرب'), findsNothing);
     await tapKey(tester, 'voice-cat-music');
-    expect(find.text('سهرة طرب'), findsOneWidget);
-    expect(find.text('صوتك أحلى'), findsNothing);
+    expect(find.text('الترحيب بالأعضاء الجدد 🌹'), findsNothing);
     await tapKey(tester, 'voice-cat-all');
 
     await tapKey(tester, 'voice-create', 800);

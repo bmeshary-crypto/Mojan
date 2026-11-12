@@ -432,6 +432,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   }
 
   void _raiseHand() {
+    if (room.isPodcast) {
+      voiceToast(context, 'المايكات في البودكاست للمذيعين فقط 🎙️ اكتب لهم في الدردشة');
+      return;
+    }
     final free = room.seats.where((s) => s.empty && !s.locked).firstOrNull;
     if (free == null) {
       voiceToast(context, 'كل المايكات مشغولة');
@@ -527,6 +531,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                         if (room.game != null) _gameHall(),
                                         const SizedBox(height: 10),
                                         _seatsGrid(c.maxWidth - 24, party),
+                                        if (room.isPodcast) _podcastCard(),
                                       ],
                                     ),
                                   );
@@ -651,7 +656,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'ID ${room.id}',
+                        room.system != null ? 'غرفة رسمية' : 'ID ${room.id}',
                         style: const TextStyle(
                           fontSize: 11,
                           color: AppColors.textMuted,
@@ -712,6 +717,63 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               Icons.power_settings_new_rounded,
               color: Color(0xFFFF7A7A),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// بطاقة البودكاست: موضوع الحلقة وما يقوله المذيع الآن.
+  Widget _podcastCard() {
+    final by = room.captionBy;
+    return Container(
+      key: const ValueKey('podcast-card'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Color(0xCC3A1C7A), Color(0xCC1B2A6B)]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.gold.withValues(alpha: .4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.podcasts_rounded, color: AppColors.gold, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'موضوع الحلقة: ${room.topic ?? ''}',
+                  key: const ValueKey('podcast-topic'),
+                  style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.gold, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: room.caption == null
+                ? const Text(
+                    '⏸️ استراحة قصيرة… الحلقة تكمل بعد لحظات',
+                    key: ValueKey('podcast-pause'),
+                    style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 12.5),
+                  )
+                : Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${by?.name ?? ''}: ',
+                          style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFB9A9E8)),
+                        ),
+                        TextSpan(text: room.caption),
+                      ],
+                    ),
+                    key: ValueKey(room.caption),
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, height: 1.5),
+                  ),
           ),
         ],
       ),

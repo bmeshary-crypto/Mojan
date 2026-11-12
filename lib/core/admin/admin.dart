@@ -57,7 +57,7 @@ class AdminService extends ChangeNotifier {
   }
 
   void _seed() {
-    VoiceService.instance.ensureDemo();
+    VoiceService.instance.ensureRooms();
     if (matches.isNotEmpty) return;
     final r = Random(7);
     const names = ['نورة', 'فيصل', 'جود', 'تركي', 'لمى', 'سلطان', 'ريم', 'خالد', 'هيا', 'ماجد'];

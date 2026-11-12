@@ -32,6 +32,9 @@ class Speech {
   web.AudioBufferSourceNode? _src;
   Future<void> _queue = Future.value();
   int _gen = 0;
+
+  /// عدد الجمل التي تنتظر أو تُقال الآن.
+  int pending = 0;
   /// على الجوال المتصفح يطلع صوت «تسجيل» مع كل بداية ونهاية استماع، فنوقفه هناك.
   bool get canListen {
     if (!web.window.has('webkitSpeechRecognition')) return false;
@@ -68,6 +71,7 @@ class Speech {
     final gen = _gen;
     // نطلب الصوت فوراً (بالتوازي) ونشغله بالدور
     final pcm = (voice != null && natural != null) ? natural!(clean, voice, egyptian) : Future<Uint8List?>.value(null);
+    pending++;
     _queue = _queue.then((_) async {
       if (gen != _gen) return;
       Uint8List? data;
@@ -80,6 +84,8 @@ class Speech {
       } else {
         await _browserSpeak(clean, female, pitch);
       }
+    }).whenComplete(() {
+      if (gen == _gen && pending > 0) pending--;
     });
   }
 
@@ -128,6 +134,7 @@ class Speech {
 
   void stopSpeaking() {
     _gen++;
+    pending = 0;
     _queue = Future.value();
     try {
       _src?.stop();
