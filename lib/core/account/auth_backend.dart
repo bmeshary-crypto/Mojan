@@ -1,3 +1,5 @@
+import 'dart:math';
+
 /// نتيجة تسجيل الدخول من مزود خارجي.
 class AuthIdentity {
   const AuthIdentity({required this.uid, required this.name, this.contact});
@@ -13,12 +15,20 @@ class AuthError implements Exception {
   String toString() => message;
 }
 
-/// واجهة مزود تسجيل الدخول. عند ربط Firebase نضيف تنفيذاً حقيقياً لها
-/// (firebase_auth + google_sign_in) دون تغيير الشاشات.
+/// واجهة مزود تسجيل الدخول. التنفيذ الحقيقي في core/firebase/cloud.dart.
 abstract class AuthBackend {
-  /// true في وضع التجربة قبل ربط السيرفر.
+  /// true في وضع التجربة (بدون سيرفر).
   bool get isDemo;
+
+  /// هل الدخول برقم الهاتف متاح.
+  bool get phoneEnabled;
   Future<AuthIdentity> signInWithGoogle();
+
+  /// ربط حساب الضيف الحالي بجوجل مع الاحتفاظ بنفس المعرّف.
+  Future<AuthIdentity> linkGoogle();
+
+  /// دخول كضيف.
+  Future<AuthIdentity> signInGuest();
   Future<void> sendPhoneCode(String phone);
   Future<AuthIdentity> verifyPhoneCode(String phone, String code);
 }
@@ -33,9 +43,28 @@ class DemoAuthBackend implements AuthBackend {
   bool get isDemo => true;
 
   @override
+  bool get phoneEnabled => true;
+
+  @override
+  Future<AuthIdentity> linkGoogle() => signInWithGoogle();
+
+  @override
+  Future<AuthIdentity> signInGuest() async {
+    final r = Random();
+    return AuthIdentity(
+      uid: List.generate(8, (_) => r.nextInt(10)).join(),
+      name: '',
+    );
+  }
+
+  @override
   Future<AuthIdentity> signInWithGoogle() async {
     await Future.delayed(delay);
-    return const AuthIdentity(uid: 'google-demo', name: 'لاعب جوجل', contact: 'حساب جوجل (تجريبي)');
+    return const AuthIdentity(
+      uid: 'google-demo',
+      name: 'لاعب جوجل',
+      contact: 'حساب جوجل (تجريبي)',
+    );
   }
 
   @override
@@ -48,7 +77,11 @@ class DemoAuthBackend implements AuthBackend {
   Future<AuthIdentity> verifyPhoneCode(String phone, String code) async {
     await Future.delayed(delay);
     if (code != demoCode) throw const AuthError('رمز التحقق غير صحيح');
-    return AuthIdentity(uid: 'phone-$phone', name: 'لاعب ${phone.substring(phone.length - 4)}', contact: phone);
+    return AuthIdentity(
+      uid: 'phone-$phone',
+      name: 'لاعب ${phone.substring(phone.length - 4)}',
+      contact: phone,
+    );
   }
 }
 

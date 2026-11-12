@@ -95,12 +95,15 @@ Future<void> showSettingsSheet(BuildContext context) {
                     ctx,
                     'عن MOJAN',
                     'منصة ألعاب جماعية: لودو، سيكو، أسئلة وأجوبة، وصراحة أو جرأة. والمزيد قريباً.'
-                        '${authBackend.isDemo ? '\n\nتسجيل الدخول يعمل حالياً في وضع التجربة حتى ربط السيرفر.' : ''}',
+                        '${authBackend.isDemo ? '\n\nتسجيل الدخول يعمل هنا في وضع التجربة، والحسابات الحقيقية تعمل من موقع MOJAN الرسمي.' : ''}',
                   ),
                 ),
                 ListTile(
                   key: const ValueKey('open-admin'),
-                  leading: const Icon(Icons.admin_panel_settings_rounded, color: AppColors.gold),
+                  leading: const Icon(
+                    Icons.admin_panel_settings_rounded,
+                    color: AppColors.gold,
+                  ),
                   title: const Text(
                     'لوحة تحكم الإدارة',
                     style: TextStyle(fontWeight: FontWeight.w800),
@@ -166,7 +169,7 @@ Future<void> _signOut(BuildContext context) async {
       ),
       content: Text(
         guest
-            ? 'تقدمك محفوظ على هذا الجهاز فقط حالياً، وتسجيل الخروج يحذفه نهائياً.'
+            ? 'حساب الضيف لا يمكن استرجاعه بعد الخروج، وسيضيع تقدمك وعملاتك. اربطه بجوجل أولاً لتحفظه.'
             : 'يمكنك الدخول مرة أخرى في أي وقت.',
       ),
       actions: [

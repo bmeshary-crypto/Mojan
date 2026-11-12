@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/account/account.dart';
 import '../core/account/leaderboard.dart';
+import '../core/firebase/cloud.dart';
 import '../core/theme.dart';
 import '../widgets/account_widgets.dart';
 
@@ -18,16 +19,51 @@ class _LeaderboardTabState extends State<LeaderboardTab> {
   String? _game;
   bool _weekly = false;
 
+  /// نتائج السيرفر لكل لوحة (لعبة + فترة).
+  final _cloud = <String, List<LeaderEntry>>{};
+  bool _loading = false;
+
+  bool get _online => Cloud.instance.enabled;
+  String get _key => '${_game ?? 'all'}-$_weekly';
+
+  @override
+  void initState() {
+    super.initState();
+    Cloud.instance.ready.then((_) {
+      if (mounted) _fetch();
+    });
+  }
+
+  void _select({String? game, bool? weekly, bool keepGame = false}) {
+    setState(() {
+      if (!keepGame) _game = game;
+      if (weekly != null) _weekly = weekly;
+    });
+    _fetch();
+  }
+
+  Future<void> _fetch({bool force = false}) async {
+    if (!_online || (_cloud.containsKey(_key) && !force)) return;
+    final key = _key;
+    setState(() => _loading = true);
+    final res = await Cloud.instance.topPlayers(game: _game, weekly: _weekly);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (res != null) _cloud[key] = res;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Account.instance,
       builder: (context, _) {
-        final list = Leaderboard.build(
-          Account.instance.profile,
-          game: _game,
-          weekly: _weekly,
-        );
+        final me = Account.instance.profile;
+        final cloud = _cloud[_key];
+        final list = cloud != null
+            ? Leaderboard.merge(cloud, me, game: _game, weekly: _weekly)
+            : Leaderboard.build(me, game: _game, weekly: _weekly);
         final myRank = list.indexWhere((e) => e.isMe);
         return Column(
           children: [
@@ -48,7 +84,7 @@ class _LeaderboardTabState extends State<LeaderboardTab> {
                   ),
                   _PeriodToggle(
                     weekly: _weekly,
-                    onChanged: (v) => setState(() => _weekly = v),
+                    onChanged: (v) => _select(weekly: v, keepGame: true),
                   ),
                 ],
               ),
@@ -80,31 +116,44 @@ class _LeaderboardTabState extends State<LeaderboardTab> {
                         backgroundColor: Colors.white.withValues(alpha: .08),
                         showCheckmark: false,
                         side: BorderSide.none,
-                        onSelected: (_) => setState(() => _game = id),
+                        onSelected: (_) => _select(game: id),
                       ),
                     ),
                 ],
               ),
             ),
+            if (_loading)
+              const LinearProgressIndicator(
+                minHeight: 2,
+                color: AppColors.gold,
+              ),
             Expanded(
-              child: ListView(
-                key: ValueKey('$_game-$_weekly'),
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 190),
-                children: [
-                  _Podium(top: list.take(3).toList()),
-                  const SizedBox(height: 14),
-                  for (var i = 3; i < list.length; i++)
-                    _Row(rank: i + 1, e: list[i])
-                        .animate()
-                        .fadeIn(delay: (40 * (i - 3)).ms)
-                        .slideX(begin: .15, end: 0),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'المنافسون الظاهرون تجريبيون حتى تشغيل السيرفر، ونتيجتك حقيقية من مبارياتك.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-                  ),
-                ],
+              child: RefreshIndicator(
+                onRefresh: () => _fetch(force: true),
+                child: ListView(
+                  key: ValueKey('$_game-$_weekly'),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 190),
+                  children: [
+                    _Podium(top: list.take(3).toList()),
+                    const SizedBox(height: 14),
+                    for (var i = 3; i < list.length; i++)
+                      _Row(rank: i + 1, e: list[i])
+                          .animate()
+                          .fadeIn(delay: (40 * (i - 3)).ms)
+                          .slideX(begin: .15, end: 0),
+                    const SizedBox(height: 10),
+                    Text(
+                      cloud != null
+                          ? 'لاعبون حقيقيون على MOJAN. اسحب للأسفل للتحديث.'
+                          : 'المنافسون الظاهرون تجريبيون، ونتيجتك حقيقية من مبارياتك. الترتيب الحقيقي يظهر على موقع MOJAN الرسمي.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             if (myRank >= 0)
@@ -161,71 +210,73 @@ class _Podium extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (top.length < 3) return const SizedBox.shrink();
-    Widget col(LeaderEntry e, int place, double h, Color c) => Expanded(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          if (place == 1)
-            const Text('👑', style: TextStyle(fontSize: 26))
-                .animate(onPlay: (a) => a.repeat(reverse: true))
-                .moveY(begin: 0, end: -4, duration: 900.ms),
-          PlayerAvatar(index: e.avatar, size: place == 1 ? 72 : 58),
-          const SizedBox(height: 4),
-          Text(
-            e.isMe ? '${e.name} (أنت)' : e.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w900),
-          ),
-          Text(
-            '${e.points}',
-            style: const TextStyle(
-              color: AppColors.gold,
-              fontWeight: FontWeight.w900,
+    if (top.isEmpty) return const SizedBox.shrink();
+    Widget col(LeaderEntry? e, int place, double h, Color c) => e == null
+        ? const Expanded(child: SizedBox())
+        : Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (place == 1)
+                  const Text('👑', style: TextStyle(fontSize: 26))
+                      .animate(onPlay: (a) => a.repeat(reverse: true))
+                      .moveY(begin: 0, end: -4, duration: 900.ms),
+                PlayerAvatar(index: e.avatar, size: place == 1 ? 72 : 58),
+                const SizedBox(height: 4),
+                Text(
+                  e.isMe ? '${e.name} (أنت)' : e.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  '${e.points}',
+                  style: const TextStyle(
+                    color: AppColors.gold,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  height: h,
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [c, c.withValues(alpha: .4)],
+                    ),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$place',
+                    style: AppTheme.display.copyWith(
+                      fontSize: 34,
+                      color: Colors.white,
+                    ),
+                  ),
+                ).animate().scaleY(
+                  begin: 0,
+                  end: 1,
+                  alignment: Alignment.bottomCenter,
+                  duration: 600.ms,
+                  delay: (place * 120).ms,
+                  curve: Curves.easeOutBack,
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          Container(
-            height: h,
-            margin: const EdgeInsets.symmetric(horizontal: 6),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [c, c.withValues(alpha: .4)],
-              ),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
-              ),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              '$place',
-              style: AppTheme.display.copyWith(
-                fontSize: 34,
-                color: Colors.white,
-              ),
-            ),
-          ).animate().scaleY(
-            begin: 0,
-            end: 1,
-            alignment: Alignment.bottomCenter,
-            duration: 600.ms,
-            delay: (place * 120).ms,
-            curve: Curves.easeOutBack,
-          ),
-        ],
-      ),
-    );
+          );
     return SizedBox(
       height: 272,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          col(top[1], 2, 80, const Color(0xFFB8C2D9)),
+          col(top.length > 1 ? top[1] : null, 2, 80, const Color(0xFFB8C2D9)),
           col(top[0], 1, 110, AppColors.gold),
-          col(top[2], 3, 60, const Color(0xFFD28C55)),
+          col(top.length > 2 ? top[2] : null, 3, 60, const Color(0xFFD28C55)),
         ],
       ),
     );

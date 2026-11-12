@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../games/ludo/ludo_engine.dart';
+import '../firebase/cloud.dart';
 import '../shop.dart';
 
 enum AuthMethod { guest, google, phone }
@@ -19,14 +20,29 @@ class GameStats {
 
   double get winRate => played == 0 ? 0 : wins / played;
 
-  Map<String, dynamic> toJson() => {'p': played, 'w': wins, 'pt': points, 'b': best};
-  factory GameStats.fromJson(Map<String, dynamic> j) =>
-      GameStats(played: j['p'] ?? 0, wins: j['w'] ?? 0, points: j['pt'] ?? 0, best: j['b'] ?? 0);
+  Map<String, dynamic> toJson() => {
+    'p': played,
+    'w': wins,
+    'pt': points,
+    'b': best,
+  };
+  factory GameStats.fromJson(Map<String, dynamic> j) => GameStats(
+    played: j['p'] ?? 0,
+    wins: j['w'] ?? 0,
+    points: j['pt'] ?? 0,
+    best: j['b'] ?? 0,
+  );
 }
 
 /// إنجاز يفتح عند تحقق شرط على الملف الشخصي.
 class Achievement {
-  const Achievement(this.id, this.emoji, this.title, this.description, this.test);
+  const Achievement(
+    this.id,
+    this.emoji,
+    this.title,
+    this.description,
+    this.test,
+  );
   final String id;
   final String emoji;
   final String title;
@@ -47,21 +63,83 @@ const gameTitles = {
 const coinGames = {'sky_wheel'};
 
 final achievements = <Achievement>[
-  Achievement('first_game', '🎮', 'البداية', 'العب أول مباراة', (p) => p.totalPlayed >= 1),
-  Achievement('first_win', '🏅', 'أول فوز', 'افز في أي لعبة', (p) => p.totalWins >= 1),
-  Achievement('wins_10', '🔥', 'لا يُهزم', 'اجمع 10 انتصارات', (p) => p.totalWins >= 10),
-  Achievement('ludo_5', '🎲', 'ملك اللودو', 'افز 5 مرات في لودو', (p) => p.statsFor('ludo').wins >= 5),
-  Achievement('seeko_5', '🃏', 'خبير سيكو', 'افز 5 مرات في سيكو', (p) => p.statsFor('seeko').wins >= 5),
-  Achievement('quiz_5', '🧠', 'العبقري', 'افز 5 مسابقات أسئلة', (p) => p.statsFor('quiz').wins >= 5),
-  Achievement('brave', '⚡', 'الجريء', 'العب 5 جولات صراحة أو جرأة', (p) => p.statsFor('truth_dare').played >= 5),
-  Achievement('all_games', '🌟', 'متعدد المواهب', 'العب كل الألعاب', (p) => gameTitles.keys.where((g) => !coinGames.contains(g)).every((g) => p.statsFor(g).played > 0)),
+  Achievement(
+    'first_game',
+    '🎮',
+    'البداية',
+    'العب أول مباراة',
+    (p) => p.totalPlayed >= 1,
+  ),
+  Achievement(
+    'first_win',
+    '🏅',
+    'أول فوز',
+    'افز في أي لعبة',
+    (p) => p.totalWins >= 1,
+  ),
+  Achievement(
+    'wins_10',
+    '🔥',
+    'لا يُهزم',
+    'اجمع 10 انتصارات',
+    (p) => p.totalWins >= 10,
+  ),
+  Achievement(
+    'ludo_5',
+    '🎲',
+    'ملك اللودو',
+    'افز 5 مرات في لودو',
+    (p) => p.statsFor('ludo').wins >= 5,
+  ),
+  Achievement(
+    'seeko_5',
+    '🃏',
+    'خبير سيكو',
+    'افز 5 مرات في سيكو',
+    (p) => p.statsFor('seeko').wins >= 5,
+  ),
+  Achievement(
+    'quiz_5',
+    '🧠',
+    'العبقري',
+    'افز 5 مسابقات أسئلة',
+    (p) => p.statsFor('quiz').wins >= 5,
+  ),
+  Achievement(
+    'brave',
+    '⚡',
+    'الجريء',
+    'العب 5 جولات صراحة أو جرأة',
+    (p) => p.statsFor('truth_dare').played >= 5,
+  ),
+  Achievement(
+    'all_games',
+    '🌟',
+    'متعدد المواهب',
+    'العب كل الألعاب',
+    (p) => gameTitles.keys
+        .where((g) => !coinGames.contains(g))
+        .every((g) => p.statsFor(g).played > 0),
+  ),
   Achievement('level_5', '🚀', 'صاعد', 'صل للمستوى 5', (p) => p.level >= 5),
-  Achievement('daily_7', '📅', 'وفيّ', 'اجمع الهدية اليومية 7 أيام متتالية', (p) => p.dailyStreak >= 7),
+  Achievement(
+    'daily_7',
+    '📅',
+    'وفيّ',
+    'اجمع الهدية اليومية 7 أيام متتالية',
+    (p) => p.dailyStreak >= 7,
+  ),
 ];
 
 /// مباراة منتهية في سجل الجهاز.
 class MatchRecord {
-  const MatchRecord({required this.game, required this.player, required this.won, required this.points, required this.at});
+  const MatchRecord({
+    required this.game,
+    required this.player,
+    required this.won,
+    required this.points,
+    required this.at,
+  });
   final String game;
   final String player;
   final bool won;
@@ -117,23 +195,23 @@ class ProfilePost {
   int comments;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        't': text,
-        'm': mood,
-        'at': at.toIso8601String(),
-        'l': likes,
-        'ld': liked,
-        'c': comments,
-      };
+    'id': id,
+    't': text,
+    'm': mood,
+    'at': at.toIso8601String(),
+    'l': likes,
+    'ld': liked,
+    'c': comments,
+  };
   factory ProfilePost.fromJson(Map<String, dynamic> j) => ProfilePost(
-        id: j['id'] ?? '',
-        text: j['t'] ?? '',
-        mood: j['m'] ?? 0,
-        at: DateTime.tryParse(j['at'] ?? ''),
-        likes: j['l'] ?? 0,
-        liked: j['ld'] ?? false,
-        comments: j['c'] ?? 0,
-      );
+    id: j['id'] ?? '',
+    text: j['t'] ?? '',
+    mood: j['m'] ?? 0,
+    at: DateTime.tryParse(j['at'] ?? ''),
+    likes: j['l'] ?? 0,
+    liked: j['ld'] ?? false,
+    comments: j['c'] ?? 0,
+  );
 }
 
 class PlayerProfile {
@@ -160,12 +238,12 @@ class PlayerProfile {
     this.bubble = 'none',
     this.bio = '',
     List<ProfilePost>? posts,
-  })  : posts = posts ?? [],
-        stats = stats ?? {},
-        unlocked = unlocked ?? {},
-        inventory = inventory ?? {},
-        owned = owned ?? {},
-        createdAt = createdAt ?? DateTime.now();
+  }) : posts = posts ?? [],
+       stats = stats ?? {},
+       unlocked = unlocked ?? {},
+       inventory = inventory ?? {},
+       owned = owned ?? {},
+       createdAt = createdAt ?? DateTime.now();
 
   /// الأدوات المملوكة (حقيبة اللاعب) حسب اسم الأداة.
   final Map<String, int> inventory;
@@ -188,7 +266,8 @@ class PlayerProfile {
   DateTime? lastChest;
 
   int itemCount(LudoItem i) => inventory[i.name] ?? 0;
-  bool owns(String id) => id.endsWith('.classic') || id.endsWith('.none') || owned.contains(id);
+  bool owns(String id) =>
+      id.endsWith('.classic') || id.endsWith('.none') || owned.contains(id);
 
   final String id;
   String name;
@@ -206,8 +285,9 @@ class PlayerProfile {
   final DateTime createdAt;
 
   GameStats statsFor(String game) => stats.putIfAbsent(game, GameStats.new);
-  Iterable<GameStats> get _skillStats =>
-      stats.entries.where((e) => !coinGames.contains(e.key)).map((e) => e.value);
+  Iterable<GameStats> get _skillStats => stats.entries
+      .where((e) => !coinGames.contains(e.key))
+      .map((e) => e.value);
   int get totalPlayed => _skillStats.fold(0, (a, s) => a + s.played);
   int get totalWins => _skillStats.fold(0, (a, s) => a + s.wins);
   int get totalPoints => _skillStats.fold(0, (a, s) => a + s.points);
@@ -230,63 +310,72 @@ class PlayerProfile {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'method': method.name,
-        'avatar': avatar,
-        'contact': contact,
-        'coins': coins,
-        'xp': xp,
-        'stats': stats.map((k, v) => MapEntry(k, v.toJson())),
-        'unlocked': unlocked.toList(),
-        'dailyStreak': dailyStreak,
-        'lastDaily': lastDaily,
-        'createdAt': createdAt.toIso8601String(),
-        'inventory': inventory,
-        'owned': owned.toList(),
-        'diceSkin': diceSkin,
-        'boardTheme': boardTheme,
-        'lastChest': lastChest?.toIso8601String(),
-        'frame': frame,
-        'entrance': entrance,
-        'bubble': bubble,
-        'bio': bio,
-        'posts': posts.map((e) => e.toJson()).toList(),
-      };
+    'id': id,
+    'name': name,
+    'method': method.name,
+    'avatar': avatar,
+    'contact': contact,
+    'coins': coins,
+    'xp': xp,
+    'stats': stats.map((k, v) => MapEntry(k, v.toJson())),
+    'unlocked': unlocked.toList(),
+    'dailyStreak': dailyStreak,
+    'lastDaily': lastDaily,
+    'createdAt': createdAt.toIso8601String(),
+    'inventory': inventory,
+    'owned': owned.toList(),
+    'diceSkin': diceSkin,
+    'boardTheme': boardTheme,
+    'lastChest': lastChest?.toIso8601String(),
+    'frame': frame,
+    'entrance': entrance,
+    'bubble': bubble,
+    'bio': bio,
+    'posts': posts.map((e) => e.toJson()).toList(),
+  };
 
   factory PlayerProfile.fromJson(Map<String, dynamic> j) => PlayerProfile(
-        id: j['id'],
-        name: j['name'],
-        method: AuthMethod.values.byName(j['method'] ?? 'guest'),
-        avatar: j['avatar'] ?? 0,
-        contact: j['contact'],
-        coins: j['coins'] ?? 0,
-        xp: j['xp'] ?? 0,
-        stats: (j['stats'] as Map<String, dynamic>? ?? {})
-            .map((k, v) => MapEntry(k, GameStats.fromJson(v as Map<String, dynamic>))),
-        unlocked: {...(j['unlocked'] as List? ?? []).cast<String>()},
-        dailyStreak: j['dailyStreak'] ?? 0,
-        lastDaily: j['lastDaily'],
-        createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
-        inventory: (j['inventory'] as Map<String, dynamic>? ?? {}).map((k, v) => MapEntry(k, v as int)),
-        owned: {...(j['owned'] as List? ?? []).cast<String>()},
-        diceSkin: j['diceSkin'] ?? 'classic',
-        boardTheme: j['boardTheme'] ?? 'classic',
-        lastChest: DateTime.tryParse(j['lastChest'] ?? ''),
-        frame: j['frame'] ?? 'none',
-        entrance: j['entrance'] ?? 'none',
-        bubble: j['bubble'] ?? 'none',
-        bio: j['bio'] ?? '',
-        posts: [
-          for (final e in (j['posts'] as List? ?? []))
-            ProfilePost.fromJson(e as Map<String, dynamic>),
-        ],
-      );
+    id: j['id'],
+    name: j['name'],
+    method: AuthMethod.values.byName(j['method'] ?? 'guest'),
+    avatar: j['avatar'] ?? 0,
+    contact: j['contact'],
+    coins: j['coins'] ?? 0,
+    xp: j['xp'] ?? 0,
+    stats: (j['stats'] as Map<String, dynamic>? ?? {}).map(
+      (k, v) => MapEntry(k, GameStats.fromJson(v as Map<String, dynamic>)),
+    ),
+    unlocked: {...(j['unlocked'] as List? ?? []).cast<String>()},
+    dailyStreak: j['dailyStreak'] ?? 0,
+    lastDaily: j['lastDaily'],
+    createdAt: DateTime.tryParse(j['createdAt'] ?? ''),
+    inventory: (j['inventory'] as Map<String, dynamic>? ?? {}).map(
+      (k, v) => MapEntry(k, v as int),
+    ),
+    owned: {...(j['owned'] as List? ?? []).cast<String>()},
+    diceSkin: j['diceSkin'] ?? 'classic',
+    boardTheme: j['boardTheme'] ?? 'classic',
+    lastChest: DateTime.tryParse(j['lastChest'] ?? ''),
+    frame: j['frame'] ?? 'none',
+    entrance: j['entrance'] ?? 'none',
+    bubble: j['bubble'] ?? 'none',
+    bio: j['bio'] ?? '',
+    posts: [
+      for (final e in (j['posts'] as List? ?? []))
+        ProfilePost.fromJson(e as Map<String, dynamic>),
+    ],
+  );
 }
 
 /// ما يكسبه اللاعب بعد مباراة.
 class Reward {
-  const Reward({required this.xp, required this.coins, required this.levelUp, required this.newLevel, required this.unlocked});
+  const Reward({
+    required this.xp,
+    required this.coins,
+    required this.levelUp,
+    required this.newLevel,
+    required this.unlocked,
+  });
   final int xp;
   final int coins;
   final bool levelUp;
@@ -335,11 +424,58 @@ class Account extends ChangeNotifier {
         await prefs.remove(_profileKey);
       } else {
         await prefs.setString(_profileKey, jsonEncode(profile!.toJson()));
+        Cloud.instance.scheduleSave(profile!);
       }
-      await prefs.setString(_settingsKey, jsonEncode({'haptics': haptics, 'sounds': sounds}));
+      await prefs.setString(
+        _settingsKey,
+        jsonEncode({'haptics': haptics, 'sounds': sounds}),
+      );
     } catch (e) {
       debugPrint('Account.save failed: $e');
     }
+  }
+
+  static PlayerProfile _fromCloud(Map<String, dynamic> j, String id) =>
+      PlayerProfile.fromJson({
+        ...jsonDecode(jsonEncode(j)) as Map<String, dynamic>,
+        'id': id,
+      });
+
+  /// بعد تشغيل Firebase: ربط الملف المحلي بحساب السيرفر.
+  /// - لا يوجد ملف محلي لكن المتصفح ما زال مسجلاً: نسترجع الملف من السيرفر.
+  /// - يوجد ملف محلي: نسجل دخولاً صامتاً كضيف إن لزم ونرفع التقدم بنفس المعرّف.
+  Future<void> attachCloud() async {
+    final cloud = Cloud.instance;
+    if (!cloud.enabled) return;
+    if (profile == null) {
+      final uid = cloud.uid;
+      if (uid == null) return;
+      final saved = await cloud.fetchProfile(uid);
+      if (saved != null) {
+        profile = _fromCloud(saved, uid);
+        await _save();
+      }
+      return;
+    }
+    final uid = await cloud.ensureUser();
+    if (uid == null) return;
+    final saved = await cloud.fetchProfile(uid);
+    if (profile!.id != uid) {
+      profile = saved != null
+          ? _fromCloud(saved, uid)
+          : _fromCloud(profile!.toJson(), uid);
+    }
+    await _save();
+    await cloud.saveNow(profile!);
+  }
+
+  /// استرجاع ملف لاعب سبق له الدخول بهذا الحساب (من جهاز آخر مثلاً).
+  Future<bool> restore(String uid) async {
+    final saved = await Cloud.instance.fetchProfile(uid);
+    if (saved == null) return false;
+    profile = _fromCloud(saved, uid);
+    await _save();
+    return true;
   }
 
   static String _newId() {
@@ -347,15 +483,24 @@ class Account extends ChangeNotifier {
     return List.generate(8, (_) => r.nextInt(10)).join();
   }
 
-  Future<void> signIn({required AuthMethod method, required String name, String? contact, String? id}) async {
+  Future<void> signIn({
+    required AuthMethod method,
+    required String name,
+    String? contact,
+    String? id,
+  }) async {
     profile = PlayerProfile(
       id: id ?? _newId(),
-      name: name.trim().isEmpty ? 'لاعب ${_newId().substring(0, 4)}' : name.trim(),
+      name: name.trim().isEmpty
+          ? 'لاعب ${_newId().substring(0, 4)}'
+          : name.trim(),
       method: method,
       contact: contact,
       avatar: Random().nextInt(avatars.length),
     );
     await _save();
+    // أول حفظ على السيرفر مباشرة ليظهر اللاعب في المتصدرين
+    await Cloud.instance.saveNow(profile!);
   }
 
   /// ربط حساب الضيف بجوجل أو الهاتف مع الاحتفاظ بالتقدم.
@@ -369,12 +514,15 @@ class Account extends ChangeNotifier {
 
   Future<void> signOut() async {
     profile = null;
+    await Cloud.instance.signOut();
     await _save();
   }
 
   Future<void> rename(String name) async {
     if (profile == null || name.trim().isEmpty) return;
-    profile!.name = name.trim().length > 18 ? name.trim().substring(0, 18) : name.trim();
+    profile!.name = name.trim().length > 18
+        ? name.trim().substring(0, 18)
+        : name.trim();
     await _save();
   }
 
@@ -407,7 +555,16 @@ class Account extends ChangeNotifier {
     if (won) s.wins += 1;
     if (points > s.best) s.best = points;
 
-    matchLog.insert(0, MatchRecord(game: game, player: p.name, won: won, points: points, at: DateTime.now()));
+    matchLog.insert(
+      0,
+      MatchRecord(
+        game: game,
+        player: p.name,
+        won: won,
+        points: points,
+        at: DateTime.now(),
+      ),
+    );
     if (matchLog.length > 100) matchLog.removeLast();
 
     final before = p.level;
@@ -417,7 +574,13 @@ class Account extends ChangeNotifier {
     p.coins += coins;
     final unlocked = _checkAchievements();
     _save();
-    return Reward(xp: xp, coins: coins, levelUp: p.level > before, newLevel: p.level, unlocked: unlocked);
+    return Reward(
+      xp: xp,
+      coins: coins,
+      levelUp: p.level > before,
+      newLevel: p.level,
+      unlocked: unlocked,
+    );
   }
 
   List<Achievement> _checkAchievements() {
@@ -435,7 +598,8 @@ class Account extends ChangeNotifier {
 
   static String _day(DateTime d) => '${d.year}-${d.month}-${d.day}';
 
-  bool get dailyAvailable => profile != null && profile!.lastDaily != _day(DateTime.now());
+  bool get dailyAvailable =>
+      profile != null && profile!.lastDaily != _day(DateTime.now());
 
   /// يوم البونص القادم في دورة الأيام السبعة (0..6).
   int get nextDailyIndex {
@@ -575,7 +739,11 @@ class Account extends ChangeNotifier {
     if (p == null || text.trim().isEmpty) return;
     p.posts.insert(
       0,
-      ProfilePost(id: DateTime.now().microsecondsSinceEpoch.toString(), text: text.trim(), mood: mood),
+      ProfilePost(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        text: text.trim(),
+        mood: mood,
+      ),
     );
     _save();
     notifyListeners();

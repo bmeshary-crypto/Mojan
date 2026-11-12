@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/account/account.dart';
+import '../core/firebase/cloud.dart';
 import '../core/account/auth_backend.dart';
 import '../core/theme.dart';
 import '../widgets/account_widgets.dart';
@@ -82,12 +83,28 @@ class _LoginScreenState extends State<LoginScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// ننتظر تشغيل Firebase إن كان ما زال يحمّل.
+  Future<void> _cloudReady() => Cloud.instance.ready.timeout(
+    const Duration(seconds: 12),
+    onTimeout: () {},
+  );
+
   void _google() => _run(() async {
-    final id = await authBackend.signInWithGoogle();
+    await _cloudReady();
+    final id = widget.link
+        ? await authBackend.linkGoogle()
+        : await authBackend.signInWithGoogle();
     _method = AuthMethod.google;
     _contact = id.contact;
     _uid = id.uid;
     _name.text = id.name;
+    // لاعب دخل بهذا الحساب من قبل: نسترجع تقدمه ونذهب للرئيسية مباشرة
+    if (!widget.link &&
+        !authBackend.isDemo &&
+        await Account.instance.restore(id.uid)) {
+      _goHome();
+      return;
+    }
     await _afterIdentity();
   });
 
@@ -126,13 +143,18 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _step = _Step.setup);
   }
 
-  void _guest() {
+  void _guest() => _run(() async {
     _method = AuthMethod.guest;
     _contact = null;
-    _uid = null;
     _name.text = '';
-    setState(() => _step = _Step.setup);
-  }
+    await _cloudReady();
+    try {
+      _uid = (await authBackend.signInGuest()).uid;
+    } catch (_) {
+      _uid = null; // بدون اتصال: نلعب محلياً ونرفع التقدم لاحقاً
+    }
+    if (mounted) setState(() => _step = _Step.setup);
+  });
 
   Future<void> _finish() async {
     await Account.instance.signIn(
@@ -142,6 +164,10 @@ class _LoginScreenState extends State<LoginScreen> {
       id: _uid,
     );
     await Account.instance.setAvatar(_avatar);
+    _goHome();
+  }
+
+  void _goHome() {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
@@ -269,7 +295,7 @@ class _LoginScreenState extends State<LoginScreen> {
             border: Border.all(color: AppColors.gold.withValues(alpha: .4)),
           ),
           child: const Text(
-            'وضع التجربة: الدخول الحقيقي بجوجل والرسائل يعمل بعد ربط Firebase. رمز التحقق الآن 000000.',
+            'وضع التجربة: الدخول الحقيقي يعمل من موقع MOJAN الرسمي. رمز التحقق هنا 000000.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12.5,
@@ -306,17 +332,21 @@ class _LoginScreenState extends State<LoginScreen> {
           onTap: _google,
         ).animate().fadeIn(delay: 150.ms).slideY(begin: .4, end: 0),
         const SizedBox(height: 12),
-        _AuthButton(
-          key: const ValueKey('login-phone'),
-          label: 'الدخول برقم الهاتف',
-          background: AppColors.seeko,
-          foreground: AppColors.bgTop,
-          icon: const Icon(Icons.phone_iphone_rounded, color: AppColors.bgTop),
-          onTap: () => setState(() {
-            _error = null;
-            _step = _Step.phone;
-          }),
-        ).animate().fadeIn(delay: 250.ms).slideY(begin: .4, end: 0),
+        if (authBackend.phoneEnabled)
+          _AuthButton(
+            key: const ValueKey('login-phone'),
+            label: 'الدخول برقم الهاتف',
+            background: AppColors.seeko,
+            foreground: AppColors.bgTop,
+            icon: const Icon(
+              Icons.phone_iphone_rounded,
+              color: AppColors.bgTop,
+            ),
+            onTap: () => setState(() {
+              _error = null;
+              _step = _Step.phone;
+            }),
+          ).animate().fadeIn(delay: 250.ms).slideY(begin: .4, end: 0),
         if (!widget.link) ...[
           const SizedBox(height: 22),
           Row(
