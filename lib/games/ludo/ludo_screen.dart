@@ -1516,19 +1516,11 @@ class _LudoTableState extends State<_LudoTable> {
         return rank(a).compareTo(rank(b));
       });
 
-    final theme = boardThemes[_boardTheme] ?? boardThemes['classic']!;
-    return Container(
-      width: size,
-      height: size,
-      padding: EdgeInsets.all(size * .025),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(size * .05),
-        gradient: LinearGradient(colors: theme.frame),
-        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 12))],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(size * .03),
-        child: LayoutBuilder(builder: (context, c) {
+    return BoardSurface(
+      theme: _boardTheme,
+      size: size,
+      child: Builder(
+        builder: (_) => LayoutBuilder(builder: (context, c) {
           final cs = c.maxWidth / LudoLayout.grid;
           return Stack(
             children: [

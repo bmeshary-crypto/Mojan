@@ -98,6 +98,35 @@ class LudoLayout {
   }
 }
 
+/// إطار اللوح: تدرج لوني، أو الرسمة كاملة بإطارها المزخرف للألواح المرسومة.
+class BoardSurface extends StatelessWidget {
+  const BoardSurface({super.key, required this.theme, required this.size, required this.child, this.shadow = true});
+  final String theme;
+  final double size;
+  final Widget child;
+  final bool shadow;
+
+  @override
+  Widget build(BuildContext context) {
+    final th = boardThemes[theme] ?? boardThemes['classic']!;
+    final art = th.art;
+    return Container(
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * (art != null ? .075 : .025)),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * .05),
+        gradient: art == null ? LinearGradient(colors: th.frame) : null,
+        image: art == null
+            ? null
+            : DecorationImage(image: AssetImage('assets/images/$art.webp'), fit: BoxFit.cover),
+        boxShadow: shadow ? const [BoxShadow(color: Colors.black54, blurRadius: 24, offset: Offset(0, 12))] : null,
+      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(size * .02), child: child),
+    );
+  }
+}
+
 /// يرسم اللوح الثابت: الساحات والمسار والنجوم والوسط.
 class LudoBoardPainter extends CustomPainter {
   LudoBoardPainter({required this.active, this.theme = 'classic', this.power = false});
@@ -113,7 +142,15 @@ class LudoBoardPainter extends CustomPainter {
     Rect cell((int, int) c) => Rect.fromLTWH(c.$1 * s, c.$2 * s, s, s);
 
     final th = boardThemes[theme] ?? boardThemes['classic']!;
-    canvas.drawRect(Offset.zero & size, Paint()..color = th.cell);
+    // الألواح المرسومة: الخلفية تبان من تحت، والخانات شبه شفافة
+    final art = th.art != null;
+    if (!art) canvas.drawRect(Offset.zero & size, Paint()..color = th.cell);
+    if (art) {
+      final glass = Paint()..color = th.cell.withValues(alpha: .8);
+      for (final c in LudoLayout.track) {
+        canvas.drawRect(cell(c), glass);
+      }
+    }
 
     // خانات المسار
     final line = Paint()
@@ -127,7 +164,8 @@ class LudoBoardPainter extends CustomPainter {
     for (final color in LudoColor.values) {
       final base = ludoColors[color]!;
       final dim0 = active.contains(color) ? base : Color.lerp(base, th.cell, .55)!;
-      final dim = Color.lerp(dim0, Colors.black, th.yardTint)!;
+      final dim1 = Color.lerp(dim0, Colors.black, th.yardTint)!;
+      final dim = art ? dim1.withValues(alpha: .9) : dim1;
 
       // ممر البيت وخانة البداية
       for (final c in LudoLayout.homeColumn(color)) {
@@ -141,9 +179,23 @@ class LudoBoardPainter extends CustomPainter {
       // الساحة
       final (ox, oy) = LudoLayout.yardOrigin(color);
       final yard = Rect.fromLTWH(ox * s, oy * s, 6 * s, 6 * s);
-      canvas.drawRect(yard, Paint()..color = dim);
       final inner = RRect.fromRectAndRadius(yard.deflate(s * .9), Radius.circular(s * 1.2));
-      canvas.drawRRect(inner, Paint()..color = Colors.white.withValues(alpha: .25));
+      if (art) {
+        // الرسمة تبان في الساحة، مع إطار بلون اللاعب وصبغة خفيفة
+        final ry = RRect.fromRectAndRadius(yard.deflate(s * .12), Radius.circular(s * .8));
+        canvas.drawRRect(ry, Paint()..color = dim1.withValues(alpha: .22));
+        canvas.drawRRect(
+          ry,
+          Paint()
+            ..color = dim1
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = s * .28,
+        );
+        canvas.drawRRect(inner, Paint()..color = Colors.black.withValues(alpha: .28));
+      } else {
+        canvas.drawRect(yard, Paint()..color = dim);
+        canvas.drawRRect(inner, Paint()..color = Colors.white.withValues(alpha: .25));
+      }
       canvas.drawRRect(
         inner,
         Paint()
@@ -154,7 +206,17 @@ class LudoBoardPainter extends CustomPainter {
       for (var i = 0; i < 4; i++) {
         final ctr = LudoLayout.tokenCenter(color, i, LudoGeo.yard) * s;
         canvas.drawCircle(ctr, s * .62, Paint()..color = Colors.black.withValues(alpha: .12));
-        canvas.drawCircle(ctr, s * .55, Paint()..color = Colors.white.withValues(alpha: .35));
+        canvas.drawCircle(ctr, s * .55, Paint()..color = art ? dim1.withValues(alpha: .55) : Colors.white.withValues(alpha: .35));
+        if (art) {
+          canvas.drawCircle(
+            ctr,
+            s * .55,
+            Paint()
+              ..color = Colors.white.withValues(alpha: .7)
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = s * .06,
+          );
+        }
       }
     }
 
@@ -178,7 +240,7 @@ class LudoBoardPainter extends CustomPainter {
     for (final g in LudoGeo.safeIndices) {
       if (LudoGeo.startIndex.containsValue(g)) continue;
       final r = cell(LudoLayout.track[g]);
-      canvas.drawRect(r, Paint()..color = Color.lerp(th.cell, const Color(0xFF9AA1AE), .18)!);
+      canvas.drawRect(r, Paint()..color = Color.lerp(th.cell, const Color(0xFF9AA1AE), .18)!.withValues(alpha: art ? .85 : 1));
       canvas.drawRect(r, line);
       _star(canvas, r.center, s * .34, Paint()..color = const Color(0xFF9AA1AE));
     }

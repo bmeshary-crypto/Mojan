@@ -714,21 +714,13 @@ class _ShopScreenState extends State<ShopScreen> {
         for (final name in boardThemes.keys)
           _skinCard(
             key: ValueKey('skin-board.$name'),
-            preview: AspectRatio(
-              aspectRatio: 1,
-              child: Container(
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: boardThemes[name]!.frame),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(7),
-                  child: CustomPaint(painter: LudoBoardPainter(active: LudoColor.values.toSet(), theme: name)),
-                ),
-              ),
+            preview: BoardSurface(
+              theme: name,
+              size: 92,
+              shadow: false,
+              child: CustomPaint(size: Size.infinite, painter: LudoBoardPainter(active: LudoColor.values.toSet(), theme: name)),
             ),
-            title: 'لوح ${_skinNames[name]}',
+            title: name == 'classic' ? 'لوح كلاسيك' : shopItem('board.$name').title,
             owned: p.owns('board.$name'),
             equipped: p.boardTheme == name,
             price: name == 'classic' ? null : Account.instance.priceFor(shopItem('board.$name')),

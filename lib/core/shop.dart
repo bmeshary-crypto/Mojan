@@ -14,11 +14,14 @@ class DiceSkin {
 
 /// ثيم لوح لودو: لون الخانات والخطوط والإطار.
 class BoardTheme {
-  const BoardTheme({required this.cell, required this.line, required this.frame, required this.yardTint});
+  const BoardTheme({required this.cell, required this.line, required this.frame, required this.yardTint, this.art});
   final Color cell;
   final Color line;
   final List<Color> frame;
   final double yardTint;
+
+  /// صورة خلفية مرسومة (Gemini) تبان من تحت المسار والساحات، مع إطارها المزخرف.
+  final String? art;
 }
 
 class ShopItem {
@@ -53,6 +56,14 @@ const boardThemes = <String, BoardTheme>{
   'classic': BoardTheme(cell: Colors.white, line: Color(0xFFCFD3DC), frame: [Color(0xFFB9824A), Color(0xFF7A4B22)], yardTint: 0),
   'night': BoardTheme(cell: Color(0xFF2B2353), line: Color(0xFF453B7A), frame: [Color(0xFF6C4DFF), Color(0xFF2D1B69)], yardTint: .2),
   'desert': BoardTheme(cell: Color(0xFFFFF2D6), line: Color(0xFFE2C79A), frame: [Color(0xFFE0A35A), Color(0xFF9C5F24)], yardTint: .1),
+  'space': BoardTheme(cell: Color(0xFF1C1640), line: Color(0xFF7C6CFF), frame: [Color(0xFFFFD66B), Color(0xFF8E6CFF)], yardTint: 0, art: 'bd_space'),
+  'reef': BoardTheme(cell: Color(0xFFE6FBFF), line: Color(0xFF5FC7D9), frame: [Color(0xFFDDE7EE), Color(0xFF2AA8C4)], yardTint: 0, art: 'bd_reef'),
+  'candy': BoardTheme(cell: Color(0xFFFFF4FA), line: Color(0xFFF7A8C8), frame: [Color(0xFFFF7AB6), Color(0xFF7FE0C2)], yardTint: 0, art: 'bd_candy'),
+  'pharaoh': BoardTheme(cell: Color(0xFFFFF0C9), line: Color(0xFFC9A04A), frame: [Color(0xFFFFD66B), Color(0xFF1E8C8C)], yardTint: 0, art: 'bd_pharaoh'),
+  'lava': BoardTheme(cell: Color(0xFF241A18), line: Color(0xFFFF7A1A), frame: [Color(0xFFFF7A1A), Color(0xFF3A1A10)], yardTint: 0, art: 'bd_lava'),
+  'arabian': BoardTheme(cell: Color(0xFF14204F), line: Color(0xFFD9B45A), frame: [Color(0xFFE0B85A), Color(0xFF1B2A6B)], yardTint: 0, art: 'bd_arabian'),
+  'jungle': BoardTheme(cell: Color(0xFFEAF8DC), line: Color(0xFF7FBF5A), frame: [Color(0xFF7FBF5A), Color(0xFF3B2A16)], yardTint: 0, art: 'bd_jungle'),
+  'neon': BoardTheme(cell: Color(0xFF10102A), line: Color(0xFFFF4DD8), frame: [Color(0xFF3DE0FF), Color(0xFFFF4DD8)], yardTint: 0, art: 'bd_neon'),
 };
 
 const itemInfo = <LudoItem, (String, String, IconData, Color)>{
@@ -69,6 +80,14 @@ const shopCatalog = <ShopItem>[
   ShopItem(id: 'dice.galaxy', kind: ShopKind.dice, title: 'نرد المجرة', price: 3000),
   ShopItem(id: 'board.night', kind: ShopKind.board, title: 'لوح الليل', price: 2500),
   ShopItem(id: 'board.desert', kind: ShopKind.board, title: 'لوح الصحراء', price: 2500),
+  ShopItem(id: 'board.space', kind: ShopKind.board, title: 'لوح الفضاء', price: 5000),
+  ShopItem(id: 'board.reef', kind: ShopKind.board, title: 'لوح أعماق البحر', price: 5000),
+  ShopItem(id: 'board.candy', kind: ShopKind.board, title: 'لوح الحلويات', price: 4500),
+  ShopItem(id: 'board.jungle', kind: ShopKind.board, title: 'لوح الغابة السحرية', price: 5500),
+  ShopItem(id: 'board.lava', kind: ShopKind.board, title: 'لوح البركان', price: 6000),
+  ShopItem(id: 'board.neon', kind: ShopKind.board, title: 'لوح النيون', price: 6000),
+  ShopItem(id: 'board.pharaoh', kind: ShopKind.board, title: 'لوح الفراعنة', price: 7500),
+  ShopItem(id: 'board.arabian', kind: ShopKind.board, title: 'لوح ألف ليلة', price: 8000),
   ShopItem(id: 'item.doubleDistance', kind: ShopKind.item, title: 'مسافة مضاعفة', price: 300, description: 'تحرك ضعف رقم النرد'),
   ShopItem(id: 'item.diceControl', kind: ShopKind.item, title: 'تحكم بالنرد', price: 500, description: 'اختر رقم النرد'),
   ShopItem(id: 'item.shield', kind: ShopKind.item, title: 'درع حماية', price: 400, description: 'حماية لدور كامل'),
