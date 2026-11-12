@@ -184,8 +184,8 @@ List<String> specialIdIdeas(int digits) {
   final seq = '123456789'.substring(0, digits.clamp(2, 9));
   out.insert(2, seq);
   out.add('1'.padRight(digits, '0'));
-  if (digits >= 4) out.add(('${7 * 11}' * digits).substring(0, digits));
-  return out;
+  if (digits >= 4) out.add(('78' * digits).substring(0, digits));
+  return out.toSet().toList();
 }
 
 /// شارة الـ ID: ذهبية مع 💎 للمميز، وعادية للباقي.
