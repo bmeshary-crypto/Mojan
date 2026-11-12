@@ -787,6 +787,23 @@ class _LudoTableState extends State<_LudoTable> {
   }
   bool get _humanTurn => widget.humans.contains(game.current);
   LudoColor get _me => widget.humans.first;
+
+  /// كل لاعب يشوف لونه في الركن تحت يسار (مكان الأحمر الطبيعي)، فنلف اللوح على حسب لونه.
+  /// في اللعب على نفس الجهاز بين أكثر من شخص يفضل اللوح ثابت.
+  static int _cornerOf(LudoColor c) => switch (c) {
+        LudoColor.green => 0,
+        LudoColor.yellow => 1,
+        LudoColor.blue => 2,
+        LudoColor.red => 3,
+      };
+  int get _turns => (_online || _solo) ? (3 - _cornerOf(_me)) % 4 : 0;
+  LudoColor _colorAt(int corner) => LudoColor.values.firstWhere((c) => (_cornerOf(c) + _turns) % 4 == corner);
+  Offset _rot(Offset p) {
+    for (var i = 0; i < _turns; i++) {
+      p = Offset(LudoLayout.grid - p.dy, p.dx);
+    }
+    return p;
+  }
   String get _diceSkin => Account.instance.profile?.diceSkin ?? 'classic';
   String get _boardTheme => Account.instance.profile?.boardTheme ?? 'classic';
 
@@ -1263,11 +1280,11 @@ class _LudoTableState extends State<_LudoTable> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _playersRow(LudoColor.green, LudoColor.yellow),
+                        _playersRow(_colorAt(0), _colorAt(1)),
                         const SizedBox(height: 10),
                         _board(boardSize),
                         const SizedBox(height: 10),
-                        _playersRow(LudoColor.red, LudoColor.blue),
+                        _playersRow(_colorAt(3), _colorAt(2)),
                         const SizedBox(height: 10),
                         Directionality(
                           textDirection: TextDirection.rtl,
@@ -1505,7 +1522,7 @@ class _LudoTableState extends State<_LudoTable> {
     final groups = <String, List<LudoToken>>{};
     for (final t in game.allTokens) {
       final pos = _shown[t] ?? t.pos;
-      final ctr = LudoLayout.tokenCenter(t.color, t.id, pos);
+      final ctr = _rot(LudoLayout.tokenCenter(t.color, t.id, pos));
       positions[t] = ctr;
       if (pos != LudoGeo.yard) groups.putIfAbsent('${ctr.dx},${ctr.dy}', () => []).add(t);
     }
@@ -1525,16 +1542,19 @@ class _LudoTableState extends State<_LudoTable> {
           return Stack(
             children: [
               Positioned.fill(
-                child: CustomPaint(
-                  painter: LudoBoardPainter(active: s.colors.toSet(), theme: _boardTheme, power: s.power),
+                child: RotatedBox(
+                  quarterTurns: _turns,
+                  child: CustomPaint(
+                    painter: LudoBoardPainter(active: s.colors.toSet(), theme: _boardTheme, power: s.power),
+                  ),
                 ),
               ),
               // أدوات الباور الموجودة على اللوح
               for (final e in game.pickups.entries)
                 Positioned(
                   key: ValueKey('pickup-${e.key}'),
-                  left: (LudoLayout.track[e.key].$1 + .5) * cs - cs * .48,
-                  top: (LudoLayout.track[e.key].$2 + .5) * cs - cs * .48,
+                  left: _rot(Offset(LudoLayout.track[e.key].$1 + .5, LudoLayout.track[e.key].$2 + .5)).dx * cs - cs * .48,
+                  top: _rot(Offset(LudoLayout.track[e.key].$1 + .5, LudoLayout.track[e.key].$2 + .5)).dy * cs - cs * .48,
                   width: cs * .96,
                   height: cs * .96,
                   child: IgnorePointer(
@@ -1547,8 +1567,8 @@ class _LudoTableState extends State<_LudoTable> {
               for (final e in _bursts.entries)
                 Positioned(
                   key: ValueKey('burst-${e.key}'),
-                  left: LudoLayout.finishSpot(e.value).dx * cs - cs * 3,
-                  top: LudoLayout.finishSpot(e.value).dy * cs - cs * 3,
+                  left: _rot(LudoLayout.finishSpot(e.value)).dx * cs - cs * 3,
+                  top: _rot(LudoLayout.finishSpot(e.value)).dy * cs - cs * 3,
                   width: cs * 6,
                   height: cs * 6,
                   child: HomeBurst(
