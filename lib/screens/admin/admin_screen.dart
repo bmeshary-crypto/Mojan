@@ -12,6 +12,7 @@ import '../../core/firebase/cloud.dart';
 import '../../core/firebase/firebase_config.dart';
 import '../../core/firebase/support.dart';
 import '../../core/theme.dart';
+import '../../core/vip.dart';
 import '../../core/voice/voice.dart';
 import '../../widgets/account_widgets.dart';
 import '../support_screen.dart';
@@ -850,6 +851,8 @@ class _CloudUsersState extends State<_CloudUsers> {
     final name = TextEditingController(text: '${u['name'] ?? ''}');
     final bio = TextEditingController(text: '${(u['profile'] as Map?)?['bio'] ?? ''}');
     var resetAvatar = false;
+    final vipAdd = TextEditingController();
+    final vp = ((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0;
     final device = u['device'] as String?;
     final ok = await showDialog<String>(
       context: context,
@@ -861,6 +864,15 @@ class _CloudUsersState extends State<_CloudUsers> {
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               TextField(key: const ValueKey('edit-name'), controller: name, maxLength: 18, decoration: const InputDecoration(labelText: 'الاسم')),
               TextField(key: const ValueKey('edit-bio'), controller: bio, maxLength: 80, decoration: const InputDecoration(labelText: 'النبذة')),
+              TextField(
+                key: const ValueKey('edit-vip'),
+                controller: vipAdd,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'إضافة نقاط VIP',
+                  helperText: 'الحالي: $vp نقطة (VIP${vipLevelFor(vp)}). VIP1 = 5000، VIP3 = 60000، VIP5 = 400000',
+                ),
+              ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: resetAvatar,
@@ -895,6 +907,7 @@ class _CloudUsersState extends State<_CloudUsers> {
           name: name.text.trim().isEmpty ? null : name.text.trim(),
           bio: bio.text.trim(),
           avatar: resetAvatar ? 0 : null,
+          vipAdd: int.tryParse(vipAdd.text.trim()),
         );
         _snack('تم الحفظ، يتحدث ملف اللاعب عند فتحه التطبيق ✅');
       } else if (ok == 'ban-device' && device != null) {
@@ -972,6 +985,7 @@ class _CloudUsersState extends State<_CloudUsers> {
                         ),
                         Text(
                           '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}'
+                          '${vipLevelFor(((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0) > 0 ? '  •  👑 VIP${vipLevelFor(((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0)}' : ''}'
                           '${_pendingGrants(u) > 0 ? '  •  ⏳ ${_pendingGrants(u)} شحن بانتظار دخول اللاعب' : ''}'
                           '${same(u) > 1 ? '  •  ⚠️ ${same(u)} حسابات بنفس الجهاز' : ''}${_banOf(u) == null ? '' : '  •  ${_banOf(u)!.full ? '🚫 محظور' : '⛔ مقيد'} (${_banOf(u)!.remaining()})'}',
                           style: const TextStyle(color: AppColors.textMuted, fontSize: 12),

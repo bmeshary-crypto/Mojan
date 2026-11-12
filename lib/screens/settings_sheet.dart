@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import 'login_screen.dart';
 import 'admin/admin_screen.dart';
 import 'support_screen.dart';
+import 'vip_screen.dart';
 
 const appVersion = '0.7.0';
 
@@ -110,6 +111,16 @@ Future<void> showSettingsSheet(BuildContext context) {
                     'منصة ألعاب جماعية: لودو، سيكو، أسئلة وأجوبة، وصراحة أو جرأة. والمزيد قريباً.'
                         '${authBackend.isDemo ? '\n\nتسجيل الدخول يعمل هنا في وضع التجربة، والحسابات الحقيقية تعمل من موقع MOJAN الرسمي.' : ''}',
                   ),
+                ),
+                ListTile(
+                  key: const ValueKey('open-vip'),
+                  leading: const Icon(Icons.workspace_premium_rounded, color: AppColors.gold),
+                  title: const Text('نادي VIP', style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text(acc.profile == null || acc.profile!.vipLevel == 0
+                      ? 'مستويات ومزايا ومكافأة يومية'
+                      : 'مستواك VIP${acc.profile!.vipLevel}'),
+                  trailing: const Icon(Icons.chevron_left_rounded),
+                  onTap: () => openVip(ctx),
                 ),
                 if (!AdminService.instance.isAdmin)
                   ListTile(

@@ -7,6 +7,7 @@ import '../ai/speech.dart';
 import 'live_voice.dart';
 
 import '../account/account.dart';
+import '../admin/admin.dart';
 import '../ban.dart';
 
 /// أقسام الغرف الصوتية.
@@ -56,7 +57,7 @@ class VoiceUser {
     required this.name,
     required this.avatar,
     this.level = 1,
-    this.vip = false,
+    this.vipLevel = 0,
     this.frame = SeatFrame.none,
     this.isMe = false,
     this.isBot = true,
@@ -84,7 +85,10 @@ class VoiceUser {
   String name;
   int avatar;
   int level;
-  bool vip;
+
+  /// مستوى VIP (0 = عادي).
+  int vipLevel;
+  bool get vip => vipLevel > 0;
   SeatFrame frame;
   final bool isMe;
   final bool isBot;
@@ -324,6 +328,7 @@ class VoiceService extends ChangeNotifier {
       entrance: p == null || p.entrance == 'none' ? null : p.entrance,
       bubble: p == null || p.bubble == 'none' ? null : p.bubble,
       bio: p?.bio ?? '',
+      vipLevel: p?.vipLevel ?? 0,
     );
   }
 
@@ -335,7 +340,7 @@ class VoiceService extends ChangeNotifier {
       // الأسماء الزوجية بنات والفردية أولاد، ومثلها الصور.
       avatar: 2 * ((n * 7 + 1) % 8) + n % 2,
       level: 1 + _rng.nextInt(40),
-      vip: _rng.nextDouble() < .25,
+      vipLevel: _rng.nextDouble() < .25 ? 1 + _rng.nextInt(_rng.nextDouble() < .2 ? 8 : 4) : 0,
       bio: _botBios[(n + _rng.nextInt(3)) % _botBios.length],
     );
     // بعض المستخدمين المميزين عندهم إطارات ودخوليات من المتجر
@@ -668,7 +673,10 @@ class VoiceService extends ChangeNotifier {
   }
 
   /// طرد من الغرفة.
-  void kick(VoiceRoom r, VoiceUser u) {
+  String? kick(VoiceRoom r, VoiceUser u) {
+    if (u.vipLevel >= 5 && !AdminService.instance.isAdmin) {
+      return '${u.name} عنده VIP${u.vipLevel} ومحمي من الطرد';
+    }
     for (final s in r.seats) {
       if (s.user?.id == u.id) {
         s.user = null;
@@ -679,6 +687,7 @@ class VoiceService extends ChangeNotifier {
     if (r.live) LiveVoice.instance.kick(r, u);
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: 'تم طرد ${u.name} من الغرفة'));
     notifyListeners();
+    return null;
   }
 
   /// دعوة مستمع للمايك (يجلس بوت على أول مقعد فارغ).
@@ -698,6 +707,16 @@ class VoiceService extends ChangeNotifier {
     if (r.listeners > 0) r.listeners--;
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: '${free.user!.name} صعد للمايك ${free.index + 1}'));
     notifyListeners();
+  }
+
+  /// طلب مايك جديد. أصحاب VIP7 فأعلى يتقدمون الطابور.
+  void addRequest(VoiceRoom r, MicRequest q) {
+    if (q.user.vipLevel >= 7) {
+      final i = r.requests.indexWhere((x) => x.user.vipLevel < 7);
+      r.requests.insert(i < 0 ? r.requests.length : i, q);
+    } else {
+      r.requests.add(q);
+    }
   }
 
   void acceptRequest(VoiceRoom r, MicRequest q) {
@@ -816,6 +835,7 @@ class VoiceService extends ChangeNotifier {
     if (noCoins != null) return noCoins;
     final cost = g.price * count * to.length;
     if (!Account.instance.spend(cost)) return 'عملاتك لا تكفي';
+    Account.instance.addVip(cost);
     r.heat += cost;
     final from = me();
     r.recordGift(from, to, g, count);
@@ -881,7 +901,7 @@ class VoiceService extends ChangeNotifier {
       r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: u));
     } else if (roll < .40 && r.host.isMe && r.requests.length < 3) {
       final free = r.seats.where((s) => s.empty && !s.locked).firstOrNull;
-      if (free != null) r.requests.add(MicRequest(_bot(), free.index));
+      if (free != null) addRequest(r, MicRequest(_bot(), free.index));
     }
     if (r.messages.length > 80) r.messages.removeRange(0, r.messages.length - 80);
     notifyListeners();

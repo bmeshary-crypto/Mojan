@@ -8,6 +8,7 @@ import '../../games/ludo/ludo_engine.dart';
 import '../ban.dart';
 import '../firebase/cloud.dart';
 import '../shop.dart';
+import '../vip.dart';
 
 enum AuthMethod { guest, google, phone }
 
@@ -243,6 +244,8 @@ class PlayerProfile {
     this.bubble = 'none',
     this.bio = '',
     List<ProfilePost>? posts,
+    this.vipPoints = 0,
+    this.lastVipDaily,
   }) : posts = posts ?? [],
        stats = stats ?? {},
        unlocked = unlocked ?? {},
@@ -262,6 +265,11 @@ class PlayerProfile {
   String frame;
   String entrance;
   String bubble;
+
+  /// نقاط VIP (من الشحن والهدايا والمتجر) وآخر يوم استُلمت فيه مكافأة VIP اليومية.
+  int vipPoints;
+  String? lastVipDaily;
+  int get vipLevel => vipLevelFor(vipPoints);
 
   /// الملف الشخصي: النبذة والمنشورات.
   String bio;
@@ -337,6 +345,8 @@ class PlayerProfile {
     'bubble': bubble,
     'bio': bio,
     'posts': posts.map((e) => e.toJson()).toList(),
+    'vp': vipPoints,
+    'vd': lastVipDaily,
   };
 
   factory PlayerProfile.fromJson(Map<String, dynamic> j) => PlayerProfile(
@@ -369,6 +379,8 @@ class PlayerProfile {
       for (final e in (j['posts'] as List? ?? []))
         ProfilePost.fromJson(e as Map<String, dynamic>),
     ],
+    vipPoints: (j['vp'] as num?)?.toInt() ?? 0,
+    lastVipDaily: j['vd'] as String?,
   );
 }
 
@@ -704,6 +716,67 @@ class Account extends ChangeNotifier {
     _save();
   }
 
+  /// سعر غرض المتجر بعد خصم VIP.
+  int priceFor(ShopItem item) {
+    final d = vipTier(profile?.vipLevel ?? 0)?.discount ?? 0;
+    return d == 0 ? item.price : (item.price * (100 - d) / 100).round();
+  }
+
+  /// إضافة نقاط VIP. عند الترقية تُفتح مظاهر المستوى مجاناً.
+  /// يرجع المستوى الجديد لو صار ترقية، وإلا null.
+  int? addVip(int points, {bool save = true}) {
+    final p = profile;
+    if (p == null || points <= 0) return null;
+    final before = p.vipLevel;
+    p.vipPoints += points;
+    final after = p.vipLevel;
+    _grantVipUnlocks(p);
+    if (save) _save();
+    if (after > before) {
+      vipUp.value = after;
+      return after;
+    }
+    return null;
+  }
+
+  /// ترقية VIP جديدة (للاحتفال في الواجهة).
+  final vipUp = ValueNotifier<int?>(null);
+
+  void _grantVipUnlocks(PlayerProfile p) {
+    for (final t in vipTiers) {
+      if (t.level > p.vipLevel) continue;
+      for (final id in t.unlocks) {
+        if (!p.owned.add(id)) continue;
+        // يلبس الهدية تلقائياً لو ما عنده شي من نفس النوع.
+        final name = id.split('.').last;
+        if (id.startsWith('frame.') && p.frame == 'none') p.frame = name;
+        if (id.startsWith('entrance.') && p.entrance == 'none') p.entrance = name;
+        if (id.startsWith('bubble.') && p.bubble == 'none') p.bubble = name;
+      }
+    }
+  }
+
+  String _today([DateTime? now]) {
+    final d = now ?? DateTime.now();
+    return '${d.year}-${d.month}-${d.day}';
+  }
+
+  bool get vipDailyReady {
+    final p = profile;
+    return p != null && p.vipLevel > 0 && p.lastVipDaily != _today();
+  }
+
+  /// استلام مكافأة VIP اليومية. يرجع العملات أو null لو ما يحق.
+  int? claimVipDaily({DateTime? now}) {
+    final p = profile;
+    if (p == null || p.vipLevel == 0 || p.lastVipDaily == _today(now)) return null;
+    final coins = vipTier(p.vipLevel)!.daily;
+    p.lastVipDaily = _today(now);
+    p.coins += coins;
+    _save();
+    return coins;
+  }
+
   /// شراء من المتجر. يرجع رسالة خطأ أو null عند النجاح.
   String? buy(ShopItem item) {
     final p = profile;
@@ -712,8 +785,10 @@ class Account extends ChangeNotifier {
     if (limited != null) return limited;
     final cosmetic = item.kind != ShopKind.item && item.kind != ShopKind.bundle;
     if (cosmetic && p.owns(item.id)) return 'تملكه بالفعل';
-    if (p.coins < item.price) return 'عملاتك لا تكفي';
-    p.coins -= item.price;
+    final price = priceFor(item);
+    if (p.coins < price) return 'عملاتك لا تكفي';
+    p.coins -= price;
+    addVip(price, save: false);
     switch (item.kind) {
       case ShopKind.dice:
       case ShopKind.board:

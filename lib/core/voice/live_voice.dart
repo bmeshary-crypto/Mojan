@@ -107,6 +107,7 @@ class LiveVoice {
           bubble: m['bubble'] as String?,
           entrance: m['entrance'] as String?,
           bio: m['bio'] as String? ?? '',
+          vipLevel: (m['vip'] as num?)?.toInt() ?? 0,
         );
   }
 
@@ -120,6 +121,7 @@ class LiveVoice {
       'bubble': ?u.bubble,
       'entrance': ?u.entrance,
       'bio': u.bio,
+      'vip': u.vipLevel,
     };
   }
 

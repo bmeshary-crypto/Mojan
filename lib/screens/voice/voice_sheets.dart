@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/theme.dart';
+import '../../core/vip.dart';
 import '../../core/firebase/support.dart';
 import '../../core/screenshot.dart';
 import '../../core/voice/voice.dart';
@@ -425,26 +426,7 @@ Future<void> showUserSheet(
               Text(u.name, style: AppTheme.display.copyWith(fontSize: 22)),
               if (u.vip) ...[
                 const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFFE27A), AppColors.goldDeep],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'VIP',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.bgTop,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
+                VipBadge(u.vipLevel),
               ],
             ],
           ),
@@ -587,7 +569,10 @@ Future<void> showUserSheet(
                   'host-kick',
                   Icons.person_remove_rounded,
                   'طرد',
-                  () => svc.kick(room, u),
+                  () {
+                    final err = svc.kick(room, u);
+                    if (err != null) voiceToast(context, err);
+                  },
                   color: const Color(0xFFFF7A7A),
                 ),
               ],

@@ -16,6 +16,8 @@ import 'profile_tab.dart';
 import 'rooms_tab.dart';
 import 'settings_sheet.dart';
 import 'shop_screen.dart';
+import 'vip_screen.dart';
+import '../core/vip.dart';
 import 'support_screen.dart';
 import '../widgets/daily_bonus.dart';
 
@@ -217,13 +219,37 @@ class _TopBar extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        Text(
-                          'المستوى ${p?.level ?? 1}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textMuted,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                'المستوى ${p?.level ?? 1}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textMuted,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            GestureDetector(
+                              key: const ValueKey('top-vip'),
+                              onTap: () => openVip(context),
+                              child: (p?.vipLevel ?? 0) > 0
+                                  ? VipBadge(p!.vipLevel, size: 10)
+                                  : Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: AppColors.gold.withValues(alpha: .7)),
+                                      ),
+                                      child: const Text('VIP', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.gold)),
+                                    ),
+                            ),
+                          ],
                         ),
                       ],
                     ),

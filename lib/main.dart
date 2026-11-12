@@ -13,6 +13,7 @@ import 'core/screenshot.dart';
 import 'core/sfx.dart';
 import 'core/update_check.dart';
 import 'core/theme.dart';
+import 'screens/vip_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/voice/mini_room_bubble.dart';
 
@@ -87,6 +88,7 @@ class MojanApp extends StatelessWidget {
               valueListenable: Cloud.instance.notice,
               builder: (_, text, _) => text == null ? const SizedBox.shrink() : _AdminNotice(text: text),
             ),
+            const VipUpOverlay(),
             ValueListenableBuilder<bool>(
               valueListenable: Restrictions.instance.fullBan,
               builder: (_, banned, _) => banned

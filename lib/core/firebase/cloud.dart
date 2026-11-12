@@ -65,6 +65,7 @@ class Cloud {
           if (edit['name'] is String) await acc.rename(edit['name'] as String);
           if (edit['bio'] is String) acc.setBio(edit['bio'] as String);
           if (edit['avatar'] is num) await acc.setAvatar((edit['avatar'] as num).toInt());
+          if (edit['vipAdd'] is num) acc.addVip((edit['vipAdd'] as num).toInt());
         } catch (e) {
           debugPrint('edit failed: $e');
         }
@@ -99,6 +100,7 @@ class Cloud {
       });
       if (total > 0) {
         acc.earn(total);
+        acc.addVip(total);
         await saveNow(acc.profile!);
         notice.value = 'تم شحن حسابك بـ $total عملة 🪙\nاستمتعوا باللعب! 🎉';
       }
@@ -143,8 +145,8 @@ class Cloud {
   }
 
   /// تعديل ملف لاعب: يُطبق على جهازه عند فتح التطبيق.
-  Future<void> adminEdit(String id, {String? name, String? bio, int? avatar}) => _db.collection('users').doc(id).set({
-        'edit': {'name': ?name, 'bio': ?bio, 'avatar': ?avatar},
+  Future<void> adminEdit(String id, {String? name, String? bio, int? avatar, int? vipAdd}) => _db.collection('users').doc(id).set({
+        'edit': {'name': ?name, 'bio': ?bio, 'avatar': ?avatar, 'vipAdd': ?vipAdd},
         'name': ?name,
         'avatar': ?avatar,
       }, SetOptions(merge: true));

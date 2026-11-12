@@ -5,6 +5,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../core/account/account.dart';
 import '../widgets/daily_bonus.dart';
 import 'shop_screen.dart';
+import 'vip_screen.dart';
+import '../core/vip.dart';
 import '../core/theme.dart';
 import '../games/game_registry.dart';
 import '../widgets/account_widgets.dart';
@@ -106,6 +108,21 @@ class ProfileTab extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
                         ),
+                      ),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        key: const ValueKey('profile-vip'),
+                        onTap: () => openVip(context),
+                        child: p.vipLevel > 0
+                            ? VipBadge(p.vipLevel, size: 13)
+                            : Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(9),
+                                  border: Border.all(color: AppColors.gold.withValues(alpha: .7)),
+                                ),
+                                child: const Text('VIP', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: AppColors.gold)),
+                              ),
                       ),
                       IconButton(
                         key: const ValueKey('edit-name'),

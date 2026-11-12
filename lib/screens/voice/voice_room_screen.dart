@@ -10,6 +10,7 @@ import '../../core/game_module.dart';
 import '../../core/haptics.dart';
 import '../../core/shop.dart';
 import '../../core/theme.dart';
+import '../../core/vip.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
 import '../../games/sky_wheel/sky_wheel_screen.dart';
@@ -998,6 +999,14 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   child: Text.rich(
                     TextSpan(
                       children: [
+                        if (u.vip)
+                          WidgetSpan(
+                            alignment: PlaceholderAlignment.middle,
+                            child: Padding(
+                              padding: const EdgeInsetsDirectional.only(end: 4),
+                              child: VipBadge(u.vipLevel, size: 9),
+                            ),
+                          ),
                         TextSpan(
                           text: '${u.name}: ',
                           style: TextStyle(
@@ -1261,6 +1270,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                 ring: false,
                               ),
                               const SizedBox(width: 8),
+                              if (u.vipLevel >= 4) ...[
+                                VipBadge(u.vipLevel, size: 11),
+                                const SizedBox(width: 6),
+                              ],
                               Text(
                                 '${u.name} دخل بـ${entranceTitle(u.entrance!)}',
                                 style: const TextStyle(
