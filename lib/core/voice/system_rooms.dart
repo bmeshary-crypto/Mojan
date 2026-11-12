@@ -4,6 +4,7 @@ import 'dart:math';
 
 import '../ai/ai_brain.dart';
 import '../ai/speech.dart';
+import '../firebase/cloud.dart';
 import '../rounds/shared_rounds.dart';
 import 'live_voice.dart';
 import 'podcast_content.dart';
@@ -108,7 +109,7 @@ class SystemRooms {
     }
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: text, user: _svc.aiUser(p)));
     if (!quiet) {
-      if (_svc.speakerOn) Speech.instance.speak(text, female: p.female, voice: p.voice, egyptian: p.egyptian);
+      if (_svc.speakerOn) Speech.instance.speak(text, female: p.female, voice: p.voice, egyptian: p.egyptian, naturalOnly: r.isWelcome);
       glow(r, p.id, text);
     }
     _svc.notify();
@@ -284,9 +285,69 @@ class SystemRooms {
   void _stopPodcast() {
     _tick?.cancel();
     _tick = null;
+    if (_radioOn) Speech.instance.stopStream();
+    _radioOn = false;
     final r = _pod;
     _pod = null;
     if (r != null) _showLine(r, null, null);
+  }
+
+  // ---- البث الاحتياطي (بودكاست عربي من الإنترنت) ----
+  bool _radioOn = false;
+  int _radioIdx = -1;
+  int _lastProbe = 0;
+
+  bool get radioOn => _radioOn;
+
+  /// الحلقة والثانية الحالية في البث الاحتياطي (نفسها عند الجميع).
+  static ({int index, int offset}) radioAt(int ms) {
+    final total = radioItems.fold(0, (a, b) => a + b.seconds);
+    var pos = ((ms - dayStart(dayOf(ms))) ~/ 1000) % total;
+    for (final (i, it) in radioItems.indexed) {
+      if (pos < it.seconds) return (index: i, offset: pos);
+      pos -= it.seconds;
+    }
+    return (index: 0, offset: 0);
+  }
+
+  void _radio(VoiceRoom r, int now) {
+    if (!_radioOn) {
+      _radioOn = true;
+      _radioIdx = -1;
+      _lastProbe = now;
+      Speech.instance.stopSpeaking();
+    }
+    final at = radioAt(now);
+    final it = radioItems[at.index];
+    if (_svc.speakerOn && (at.index != _radioIdx || !Speech.instance.streaming)) {
+      Speech.instance.playStream(it.url, at.offset.toDouble());
+    } else if (!_svc.speakerOn && Speech.instance.streaming) {
+      Speech.instance.stopStream();
+    }
+    if (at.index != _radioIdx || r.caption != '🎧 ${it.title}') {
+      _radioIdx = at.index;
+      r.topic = 'بث من $radioSource';
+      r.caption = '🎧 ${it.title}';
+      r.captionBy = null;
+      r.host.speaking = false;
+      r.hostSpeaking = false;
+      r.seats[0].user?.speaking = false;
+      _svc.notify();
+    }
+    // بعد انتهاء فترة الراحة نجرب الصوت الطبيعي بهدوء، ونرجع للمذيعين فقط إذا نجح
+    if (!AiBrain.instance.ttsDown && now - _lastProbe > 60000 && _timeline.isNotEmpty) {
+      _lastProbe = now;
+      final l = _timeline.first.line;
+      final p = l.who == 0 ? podA : podB;
+      AiBrain.instance.tts(l.text, p.voice, egyptian: p.egyptian).then((d) {
+        if (d != null && _radioOn) {
+          _radioOn = false;
+          Speech.instance.stopStream();
+          _cur = -2;
+          _justStarted = true;
+        }
+      });
+    }
   }
 
   void _step() {
@@ -297,6 +358,10 @@ class SystemRooms {
     if (day != _day) {
       _setEpisodes(day, _fallbackFor(day));
       _maybeGenerate(r, null);
+    }
+    if (_radioOn || AiBrain.instance.ttsDown) {
+      _radio(r, now);
+      return;
     }
     final pos = (now - dayStart(_day)) % _total;
     var idx = -1;
@@ -321,7 +386,8 @@ class SystemRooms {
     final speak = !_justStarted || into < 1500;
     _justStarted = false;
     if (speak && _svc.speakerOn && Speech.instance.pending <= 1) {
-      Speech.instance.speak(e.line.text, female: p.female, voice: p.voice, egyptian: p.egyptian);
+      // بصوت Gemini الطبيعي فقط؛ إذا انتهت الحصة ننتقل للبث الاحتياطي
+      Speech.instance.speak(e.line.text, female: p.female, voice: p.voice, egyptian: p.egyptian, naturalOnly: Cloud.instance.enabled);
     }
     // نجهز صوت الجملة التالية مسبقاً
     final next = _timeline[(idx + 1) % _timeline.length];

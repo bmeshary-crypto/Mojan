@@ -87,6 +87,13 @@ void main() {
     svc.leave(w);
   });
 
+  test('backup Arabic podcast is at the same spot for everyone', () {
+    final base = SystemRooms.dayStart(SystemRooms.dayOf(DateTime.utc(2026, 11, 12).millisecondsSinceEpoch));
+    expect(SystemRooms.radioAt(base), (index: 0, offset: 0));
+    expect(SystemRooms.radioAt(base + 1005 * 1000), (index: 1, offset: 5));
+    expect(radioItems.every((r) => r.url.startsWith('https://news.un.org/')), isTrue);
+  });
+
   test('generated episodes are parsed safely', () {
     final ep = SystemRooms.parseEpisode('موضوع', 'نص {"lines":[{"who":0,"text":"هلا"},{"who":"ريم","text":"*أهلين*"},{"who":0,"text":"a"},{"who":1,"text":"b"}]} زائد');
     expect(ep!.lines.length, 4);

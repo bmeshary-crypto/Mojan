@@ -390,7 +390,7 @@ class LiveVoice {
       if (m['ai'] != null && m['quiet'] != true) {
         final p = personaById(m['ai'] as String);
         if (p != null) {
-          if (_svc.speakerOn) Speech.instance.speak(vm.text, female: p.female, voice: p.voice, egyptian: p.egyptian);
+          if (_svc.speakerOn) Speech.instance.speak(vm.text, female: p.female, voice: p.voice, egyptian: p.egyptian, naturalOnly: r.isWelcome);
           SystemRooms.instance.glow(r, p.id, vm.text);
         }
       }

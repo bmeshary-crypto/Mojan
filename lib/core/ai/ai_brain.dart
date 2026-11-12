@@ -122,6 +122,12 @@ class AiBrain {
   @visibleForTesting
   Future<String?> Function(String system, String prompt)? override;
 
+  /// الصوت الطبيعي متاح (ليس في فترة راحة بعد تجاوز الحصة).
+  bool get ttsAvailable => override == null && Cloud.instance.enabled && !_ttsCooldown;
+
+  /// انتهت حصة الصوت الطبيعي مؤقتاً.
+  bool get ttsDown => override == null && Cloud.instance.enabled && _ttsCooldown;
+
   bool get online => override != null || (Cloud.instance.enabled && !_cooldown);
 
   /// رد شخصية على محادثة. [about] وصف المكان (غرفة صوتية، لعبة صراحة...).
@@ -205,7 +211,9 @@ class AiBrain {
       debugPrint('AiBrain tts failed: $e');
       // عند تجاوز الحد المجاني نرجع لصوت المتصفح دقيقتين
       _ttsCooldown = true;
-      Timer(const Duration(minutes: 2), () => _ttsCooldown = false);
+      // انتهاء الحصة اليومية يحتاج راحة أطول من خطأ عابر
+      final quota = '$e'.contains('quota') || '$e'.contains('429');
+      Timer(Duration(minutes: quota ? 20 : 2), () => _ttsCooldown = false);
     }
     return null;
   }

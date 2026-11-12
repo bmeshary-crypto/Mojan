@@ -65,7 +65,8 @@ class Speech {
   }
 
   /// يتكلم بصوت طبيعي من Gemini إن توفر [voice]، وإلا بصوت المتصفح. الجمل تُقال بالترتيب بدون تداخل.
-  void speak(String text, {bool female = true, double pitch = 1, String? voice, bool egyptian = false}) {
+  /// [naturalOnly]: إذا ما توفر الصوت الطبيعي لا نستخدم صوت المتصفح (يبقى الكلام مكتوباً فقط).
+  void speak(String text, {bool female = true, double pitch = 1, String? voice, bool egyptian = false, bool naturalOnly = false}) {
     final clean = text.replaceAll(RegExp(r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]', unicode: true), '').trim();
     if (clean.isEmpty) return;
     final gen = _gen;
@@ -81,7 +82,7 @@ class Speech {
       if (gen != _gen) return;
       if (data != null && data.length > 100) {
         await _playPcm(data);
-      } else {
+      } else if (!naturalOnly) {
         await _browserSpeak(clean, female, pitch);
       }
     }).whenComplete(() {
@@ -132,7 +133,34 @@ class Speech {
     await done.future.timeout(Duration(seconds: 4 + clean.length ~/ 10), onTimeout: () {});
   }
 
+  web.HTMLAudioElement? _stream;
+  bool get streaming => _stream != null;
+
+  /// تشغيل ملف صوتي من الإنترنت (بودكاست) بدءاً من ثانية معينة.
+  void playStream(String url, double startSec) {
+    stopStream();
+    final a = web.HTMLAudioElement()
+      ..src = url
+      ..preload = 'auto';
+    a.onloadedmetadata = ((web.Event _) {
+      try {
+        a.currentTime = startSec;
+      } catch (_) {}
+    }).toJS;
+    _stream = a;
+    a.play().toDart.catchError((_) => null);
+  }
+
+  void stopStream() {
+    final a = _stream;
+    _stream = null;
+    if (a == null) return;
+    a.pause();
+    a.removeAttribute('src');
+  }
+
   void stopSpeaking() {
+    stopStream();
     _gen++;
     pending = 0;
     _queue = Future.value();

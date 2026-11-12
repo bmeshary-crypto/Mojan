@@ -416,7 +416,7 @@ class VoiceService extends ChangeNotifier {
         await LiveVoice.instance.postAi(r, p, text);
       } else {
         r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: text, user: u));
-        if (speakerOn) Speech.instance.speak(text, female: p.female, voice: p.voice, egyptian: p.egyptian);
+        if (speakerOn) Speech.instance.speak(text, female: p.female, voice: p.voice, egyptian: p.egyptian, naturalOnly: r.isWelcome);
       }
       u.speaking = true;
       notifyListeners();

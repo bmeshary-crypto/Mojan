@@ -764,8 +764,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 : Text.rich(
                     TextSpan(
                       children: [
-                        TextSpan(
-                          text: '${by?.name ?? ''}: ',
+                        if (by != null) TextSpan(
+                          text: '${by.name}: ',
                           style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFB9A9E8)),
                         ),
                         TextSpan(text: room.caption),

@@ -9,8 +9,11 @@ class Speech {
   bool get canListen => false;
   bool get listening => false;
   int get pending => 0;
-  void speak(String text, {bool female = true, double pitch = 1, String? voice, bool egyptian = false}) {}
+  void speak(String text, {bool female = true, double pitch = 1, String? voice, bool egyptian = false, bool naturalOnly = false}) {}
   void stopSpeaking() {}
+  bool get streaming => false;
+  void playStream(String url, double startSec) {}
+  void stopStream() {}
   void listen(void Function(String text) onText) {}
   void stopListening() {}
 }
