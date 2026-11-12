@@ -52,9 +52,10 @@ class RtcMesh {
       );
       _mic = await web.window.navigator.mediaDevices.getUserMedia(constraints).toDart;
       _myAnalyser = _analyse(_mic!);
+      _connectMicToMix();
       setMic(_micOn);
       for (final p in _peers.values) {
-        await p.sender?.replaceTrack(_micOn ? _track : null).toDart;
+        await p.sender?.replaceTrack(_out).toDart;
       }
       return true;
     } catch (e) {
@@ -68,12 +69,143 @@ class RtcMesh {
     return t == null || t.isEmpty ? null : t.first;
   }
 
+  /// ما يُرسل للآخرين: المايك وحده، أو خليط المايك مع الموسيقى إذا كانت شغالة.
+  web.MediaStreamTrack? get _out {
+    final mix = _mixDest;
+    if (mix != null) {
+      final t = mix.stream.getAudioTracks().toDart;
+      if (t.isNotEmpty) return t.first;
+    }
+    return _micOn ? _track : null;
+  }
+
   void setMic(bool on) {
     _micOn = on;
     _track?.enabled = on;
+    _micGain?.gain.value = on ? 1 : 0;
     for (final p in _peers.values) {
-      p.sender?.replaceTrack(on ? _track : null);
+      p.sender?.replaceTrack(_out);
     }
+  }
+
+  // ---------- تشغيل موسيقى أو ملف صوتي للغرفة ----------
+
+  web.MediaStreamAudioDestinationNode? _mixDest;
+  web.GainNode? _micGain, _mediaGain;
+  web.AudioNode? _micSrc, _mediaSrc;
+  web.HTMLAudioElement? _media;
+  double _mediaVolume = .8;
+
+  bool get mediaOn => _media != null;
+  bool get mediaPaused => _media?.paused ?? true;
+  double get mediaPosition => _media?.currentTime ?? 0;
+  double get mediaDuration {
+    final d = _media?.duration ?? 0;
+    return d.isFinite ? d : 0;
+  }
+
+  void _ensureMix() {
+    if (_mixDest != null) return;
+    final ctx = _audio;
+    _mixDest = ctx.createMediaStreamDestination();
+    _micGain = ctx.createGain()..gain.value = _micOn ? 1 : 0;
+    _micGain!.connect(_mixDest!);
+    _mediaGain = ctx.createGain()..gain.value = _mediaVolume;
+    _mediaGain!.connect(_mixDest!);
+    // صاحب الموسيقى يسمعها أيضاً
+    _mediaGain!.connect(ctx.destination);
+    _connectMicToMix();
+  }
+
+  void _connectMicToMix() {
+    if (_mixDest == null || _mic == null || _micSrc != null) return;
+    _micSrc = _audio.createMediaStreamSource(_mic!)..connect(_micGain!);
+  }
+
+  /// يشغّل ملفاً صوتياً ويبثه لكل من في الغرفة مع صوت المايك.
+  Future<bool> playMedia(String url) async {
+    try {
+      stopMedia(update: false);
+      _ensureMix();
+      if (_audio.state == 'suspended') await _audio.resume().toDart;
+      final el = web.HTMLAudioElement()
+        ..src = url
+        ..preload = 'auto';
+      _mediaSrc = _audio.createMediaElementSource(el)..connect(_mediaGain!);
+      _media = el;
+      await el.play().toDart;
+      for (final p in _peers.values) {
+        p.sender?.replaceTrack(_out);
+        _boost(p.sender);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('media: $e');
+      stopMedia();
+      return false;
+    }
+  }
+
+  /// جودة أعلى للصوت المرسل أثناء الموسيقى.
+  void _boost(web.RTCRtpSender? s) {
+    if (s == null) return;
+    try {
+      final params = s.getParameters();
+      final enc = params.encodings.toDart;
+      if (enc.isEmpty) return;
+      enc.first.maxBitrate = 128000;
+      s.setParameters(params).toDart.catchError((_) => null);
+    } catch (_) {}
+  }
+
+  void pauseMedia() => _media?.pause();
+  void resumeMedia() => _media?.play().toDart.catchError((_) => null);
+
+  void setMediaVolume(double v) {
+    _mediaVolume = v;
+    _mediaGain?.gain.value = v;
+  }
+
+  void stopMedia({bool update = true}) {
+    final el = _media;
+    _media = null;
+    el?.pause();
+    el?.removeAttribute('src');
+    try {
+      _mediaSrc?.disconnect();
+      _micSrc?.disconnect();
+      _micGain?.disconnect();
+      _mediaGain?.disconnect();
+    } catch (_) {}
+    _mediaSrc = null;
+    _micSrc = null;
+    _micGain = null;
+    _mediaGain = null;
+    _mixDest = null;
+    if (update) {
+      for (final p in _peers.values) {
+        p.sender?.replaceTrack(_out);
+      }
+    }
+  }
+
+  /// يختار ملفاً صوتياً من الجهاز. يرجع رابطاً مؤقتاً واسم الملف.
+  Future<(String, String)?> pickAudio() async {
+    final done = Completer<(String, String)?>();
+    final input = web.HTMLInputElement()
+      ..type = 'file'
+      ..accept = 'audio/*';
+    input.onchange = ((web.Event _) {
+      final f = input.files?.item(0);
+      if (f == null) {
+        if (!done.isCompleted) done.complete(null);
+        return;
+      }
+      final name = f.name.replaceAll(RegExp(r'\.[A-Za-z0-9]+$'), '');
+      if (!done.isCompleted) done.complete((web.URL.createObjectURL(f), name));
+    }).toJS;
+    input.click();
+    return done.future;
   }
 
   void setSpeaker(bool on) {
@@ -138,7 +270,9 @@ class RtcMesh {
   }
 
   void _attachMic(_Peer p) {
-    if (_micOn && _track != null) p.sender?.replaceTrack(_track);
+    final t = _out;
+    if (t != null) p.sender?.replaceTrack(t);
+    if (_mixDest != null) _boost(p.sender);
   }
 
   /// يعيد تشغيل الأصوات الواردة (بعد لمسة من المستخدم إذا منع المتصفح التشغيل التلقائي).
@@ -217,6 +351,7 @@ class RtcMesh {
   }
 
   void closeAll() {
+    stopMedia(update: false);
     for (final k in [..._peers.keys]) {
       close(k);
     }

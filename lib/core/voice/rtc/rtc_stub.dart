@@ -15,6 +15,16 @@ class RtcMesh {
   void close(String peer) {}
   void closeAll() {}
   void resume() {}
+  bool get mediaOn => false;
+  bool get mediaPaused => true;
+  double get mediaPosition => 0;
+  double get mediaDuration => 0;
+  Future<bool> playMedia(String url) async => false;
+  void pauseMedia() {}
+  void resumeMedia() {}
+  void setMediaVolume(double v) {}
+  void stopMedia({bool update = true}) {}
+  Future<(String, String)?> pickAudio() async => null;
   double level(String peer) => 0;
   double myLevel() => 0;
 }

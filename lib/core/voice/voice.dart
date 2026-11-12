@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../ai/ai_brain.dart';
 import '../ai/speech.dart';
 import 'live_voice.dart';
+import 'rtc/rtc.dart';
 import 'system_rooms.dart';
 
 import '../account/account.dart';
@@ -251,7 +252,17 @@ class VoiceRoom {
   }
 
   /// الأشخاص على المايكات (المضيف ثم المقاعد).
-  List<VoiceUser> get onMics => [host, for (final s in seats) if (s.user != null) s.user!];
+  /// المضيف انتقل من مقعده العلوي إلى أحد المايكات.
+  bool get hostSeated => seats.any((s) => s.user?.id == host.id);
+  List<VoiceUser> get onMics => [if (!hostSeated) host, for (final s in seats) if (s.user != null) s.user!];
+
+  /// شكل كراسي المايكات (من متجر المضيف).
+  String? chair;
+
+  /// ما يُشغَّل الآن في الغرفة (موسيقى أو ملف صوتي) ومن شغّله.
+  String? mediaTitle;
+  String? mediaBy;
+  String? mediaUid;
   final Set<String> kicked = {};
 
   int get onSeats => seats.where((s) => !s.empty).length;
@@ -489,6 +500,155 @@ class VoiceService extends ChangeNotifier {
     }
   }
 
+  // ---- دعوات المايك وأدوات المضيف المتقدمة ----
+
+  /// دعوة وصلتني للصعود على المايك.
+  ({VoiceRoom room, int seat})? pendingInvite;
+
+  /// يدعو شخصاً بعينه للمايك (مقعد محدد أو أول مقعد فارغ).
+  String? inviteUser(VoiceRoom r, VoiceUser u, [int? seat]) {
+    if (!isHost(r)) return null;
+    if (r.seats.any((s) => s.user?.id == u.id)) return '${u.name} على المايك بالفعل';
+    final free = seat != null && r.seats[seat].empty ? r.seats[seat] : r.seats.where((s) => s.empty && !s.locked).firstOrNull;
+    if (free == null) return 'ما فيه مايك فاضي';
+    if (r.live) {
+      LiveVoice.instance.sendInvite(r, u.id, free.index);
+    } else {
+      // في وضع التجربة يقبل الضيف الدعوة بعد لحظة
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        if (!free.empty || r.closed) return;
+        free.user = u;
+        r.audience.remove(u);
+        if (r.listeners > 0) r.listeners--;
+        r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: '${u.name} قبل الدعوة وصعد للمايك ${free.index + 1}'));
+        notifyListeners();
+      });
+    }
+    r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: '📨 دعوت ${u.name} للمايك ${free.index + 1}'));
+    notifyListeners();
+    return null;
+  }
+
+  void gotInvite(VoiceRoom r, int seat) {
+    if (pendingInvite != null || mySeat(r) != null) return;
+    pendingInvite = (room: r, seat: seat);
+    notifyListeners();
+  }
+
+  /// قبول أو رفض دعوة المايك.
+  String? answerInvite(bool accept) {
+    final inv = pendingInvite;
+    pendingInvite = null;
+    if (inv == null) return null;
+    final r = inv.room;
+    if (r.live) LiveVoice.instance.clearInvite(r);
+    String? err;
+    if (accept) {
+      final seat = r.seats[inv.seat].empty ? inv.seat : r.seats.where((s) => s.empty && !s.locked).firstOrNull?.index;
+      err = seat == null ? 'المايكات امتلأت' : _sit(r, seat);
+    }
+    notifyListeners();
+    return err;
+  }
+
+  /// المضيف ينتقل لأي مايك فارغ (ويرجع لمقعده العلوي من نفس القائمة).
+  String? hostMoveTo(VoiceRoom r, int i) {
+    if (!isHost(r)) return null;
+    final seat = r.seats[i];
+    if (!seat.empty) return 'المقعد مشغول';
+    final old = mySeat(r);
+    if (old != null) r.seats[old].user = null;
+    seat.locked = false;
+    seat.user = me()..frame = SeatFrame.host;
+    if (r.live) {
+      LiveVoice.instance.setLocked(r);
+      LiveVoice.instance.claimSeat(r, i).then((err) {
+        if (err != null) r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: err));
+        LiveVoice.instance.micChanged();
+        notifyListeners();
+      });
+    }
+    notifyListeners();
+    return null;
+  }
+
+  void hostBackToTop(VoiceRoom r) {
+    final s = mySeat(r);
+    if (!isHost(r) || s == null) return;
+    r.seats[s].user = null;
+    if (r.live) LiveVoice.instance.releaseSeat(r, s);
+    notifyListeners();
+  }
+
+  /// قفل أو فتح كل المايكات الفارغة مرة واحدة.
+  void lockAll(VoiceRoom r, bool lock) {
+    if (!isHost(r)) return;
+    for (final s in r.seats) {
+      if (s.empty) s.locked = lock;
+    }
+    if (r.live) LiveVoice.instance.setLocked(r);
+    r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: lock ? '🔒 قفل المضيف كل المايكات' : '🔓 فتح المضيف كل المايكات'));
+    notifyListeners();
+  }
+
+  /// شكل كراسي غرفتي يتبع ما ألبسه من المتجر.
+  void applyMyChair(String chair) {
+    for (final r in rooms.where((r) => isHost(r) && !r.closed)) {
+      r.chair = chair == 'none' ? null : chair;
+      if (r.live) LiveVoice.instance.update(r);
+    }
+    notifyListeners();
+  }
+
+  // ---- الموسيقى في الغرفة ----
+
+  bool canPlayMedia(VoiceRoom r) => r.system == null && onMic(r);
+
+  /// يختار ملفاً صوتياً من الجهاز ويشغّله لكل من في الغرفة.
+  Future<String?> playMedia(VoiceRoom r) async {
+    if (!canPlayMedia(r)) return 'اطلع على المايك أولاً عشان تشغّل موسيقى';
+    final picked = await RtcMesh.instance.pickAudio();
+    if (picked == null) return null;
+    final ok = await RtcMesh.instance.playMedia(picked.$1);
+    if (!ok) return 'ما قدرنا نشغّل هالملف';
+    r.mediaTitle = picked.$2;
+    r.mediaBy = me().name;
+    r.mediaUid = me().id;
+    if (r.live) LiveVoice.instance.setMedia(r, picked.$2);
+    r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: '🎵 ${me().name} يشغّل: ${picked.$2}'));
+    notifyListeners();
+    return null;
+  }
+
+  double mediaVolume = .8;
+
+  void setMediaVolume(double v) {
+    mediaVolume = v;
+    RtcMesh.instance.setMediaVolume(v);
+  }
+
+  bool myMedia(VoiceRoom r) => RtcMesh.instance.mediaOn && r.mediaUid == me().id;
+
+  void toggleMediaPause(VoiceRoom r) {
+    if (RtcMesh.instance.mediaPaused) {
+      RtcMesh.instance.resumeMedia();
+    } else {
+      RtcMesh.instance.pauseMedia();
+    }
+    notifyListeners();
+  }
+
+  void stopMedia(VoiceRoom r) {
+    final mine = r.mediaUid == me().id;
+    RtcMesh.instance.stopMedia();
+    if (!mine) return;
+    r.mediaTitle = null;
+    r.mediaBy = null;
+    r.mediaUid = null;
+    if (r.live) LiveVoice.instance.setMedia(r, null);
+    notifyListeners();
+  }
+
   /// غرف وهمية للاختبارات فقط.
   void ensureDemo() {
     if (rooms.isNotEmpty) return;
@@ -574,6 +734,8 @@ class VoiceService extends ChangeNotifier {
       theme: theme,
       announcement: announcement?.trim().isNotEmpty == true ? announcement!.trim() : 'أهلاً بالجميع، احترموا بعض واستمتعوا 🌹',
     );
+    final chair = Account.instance.profile?.chair;
+    room.chair = chair == null || chair == 'none' ? null : chair;
     room.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: room.announcement));
     rooms.insert(0, room);
     if (live) {
@@ -611,6 +773,8 @@ class VoiceService extends ChangeNotifier {
 
   void leave(VoiceRoom r) {
     if (minimized == r) minimized = null;
+    if (r.mediaUid == me().id) stopMedia(r);
+    if (pendingInvite?.room == r) pendingInvite = null;
     if (r.live) LiveVoice.instance.exit(r);
     if (r.system != null) SystemRooms.instance.left(r);
     final s = mySeat(r);
@@ -629,6 +793,11 @@ class VoiceService extends ChangeNotifier {
     if (!seat.empty) return 'المقعد مشغول';
     if (seat.locked && !isHost(r)) return 'المقعد مقفل';
     if (isHost(r)) return 'أنت المضيف ومكانك في الأعلى';
+    return _sit(r, i);
+  }
+
+  String? _sit(VoiceRoom r, int i) {
+    final seat = r.seats[i];
     final noMic = Restrictions.instance.check('mic');
     if (noMic != null) return noMic;
     final old = mySeat(r);
@@ -651,6 +820,7 @@ class VoiceService extends ChangeNotifier {
   void leaveSeat(VoiceRoom r) {
     final s = mySeat(r);
     if (s == null) return;
+    if (isHost(r)) return hostBackToTop(r);
     r.seats[s].user = null;
     r.listeners++;
     micOn = false;

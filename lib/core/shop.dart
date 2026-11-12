@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../games/ludo/ludo_engine.dart';
 
-enum ShopKind { dice, board, item, bundle, frame, entrance, bubble }
+enum ShopKind { dice, board, item, bundle, frame, entrance, bubble, chair }
 
 /// سكن نرد: لون الوجه ولون النقاط.
 class DiceSkin {
@@ -122,7 +122,18 @@ const styleCatalog = <ShopItem>[
   ShopItem(id: 'bubble.emerald', kind: ShopKind.bubble, title: 'فقاعة الزمرد', price: 2000),
   ShopItem(id: 'bubble.galaxy', kind: ShopKind.bubble, title: 'فقاعة المجرة', price: 2500),
   ShopItem(id: 'bubble.royal', kind: ShopKind.bubble, title: 'فقاعة ملكية', price: 3000),
+  ShopItem(id: 'chair.majlis', kind: ShopKind.chair, title: 'كراسي المجلس', price: 2000),
+  ShopItem(id: 'chair.heart', kind: ShopKind.chair, title: 'كراسي القلوب', price: 2500),
+  ShopItem(id: 'chair.roses', kind: ShopKind.chair, title: 'كراسي الورد', price: 3000),
+  ShopItem(id: 'chair.cloud', kind: ShopKind.chair, title: 'كراسي الغيم', price: 3500),
+  ShopItem(id: 'chair.gaming', kind: ShopKind.chair, title: 'كراسي القيمنق', price: 4000),
+  ShopItem(id: 'chair.ice', kind: ShopKind.chair, title: 'عروش الجليد', price: 5000),
+  ShopItem(id: 'chair.throne', kind: ShopKind.chair, title: 'العروش الملكية', price: 6500),
+  ShopItem(id: 'chair.dragon', kind: ShopKind.chair, title: 'عروش التنين', price: 8000),
 ];
+
+/// صورة كرسي المايك.
+String chairAsset(String name) => 'assets/images/ch_$name.webp';
 
 /// ألوان فقاعات الدردشة.
 const bubbleStyles = <String, List<Color>>{

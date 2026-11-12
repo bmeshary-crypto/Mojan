@@ -242,6 +242,7 @@ class PlayerProfile {
     this.frame = 'none',
     this.entrance = 'none',
     this.bubble = 'none',
+    this.chair = 'none',
     this.bio = '',
     List<ProfilePost>? posts,
     this.vipPoints = 0,
@@ -266,6 +267,9 @@ class PlayerProfile {
   String frame;
   String entrance;
   String bubble;
+
+  /// شكل كراسي المايكات في الغرف التي يستضيفها.
+  String chair;
 
   /// نقاط VIP (من الشحن والهدايا والمتجر) وآخر يوم استُلمت فيه مكافأة VIP اليومية.
   int vipPoints;
@@ -348,6 +352,7 @@ class PlayerProfile {
     'frame': frame,
     'entrance': entrance,
     'bubble': bubble,
+    'chair': chair,
     'bio': bio,
     'posts': posts.map((e) => e.toJson()).toList(),
     'vp': vipPoints,
@@ -380,6 +385,7 @@ class PlayerProfile {
     frame: j['frame'] ?? 'none',
     entrance: j['entrance'] ?? 'none',
     bubble: j['bubble'] ?? 'none',
+    chair: j['chair'] ?? 'none',
     bio: j['bio'] ?? '',
     posts: [
       for (final e in (j['posts'] as List? ?? []))
@@ -781,6 +787,7 @@ class Account extends ChangeNotifier {
         if (id.startsWith('frame.') && p.frame == 'none') p.frame = name;
         if (id.startsWith('entrance.') && p.entrance == 'none') p.entrance = name;
         if (id.startsWith('bubble.') && p.bubble == 'none') p.bubble = name;
+        if (id.startsWith('chair.') && p.chair == 'none') p.chair = name;
       }
     }
   }
@@ -824,6 +831,7 @@ class Account extends ChangeNotifier {
       case ShopKind.frame:
       case ShopKind.entrance:
       case ShopKind.bubble:
+      case ShopKind.chair:
         p.owned.add(item.id);
       case ShopKind.item:
         final i = LudoItem.values.byName(item.id.split('.').last);
@@ -837,6 +845,9 @@ class Account extends ChangeNotifier {
     return null;
   }
 
+  /// تُنادى عند تغيير شكل الكراسي (لتحديث غرفتي المفتوحة).
+  void Function(String chair)? onChairChanged;
+
   void equip(String id) {
     final p = profile;
     if (p == null || !p.owns(id)) return;
@@ -846,6 +857,10 @@ class Account extends ChangeNotifier {
     if (id.startsWith('frame.')) p.frame = name;
     if (id.startsWith('entrance.')) p.entrance = name;
     if (id.startsWith('bubble.')) p.bubble = name;
+    if (id.startsWith('chair.')) {
+      p.chair = name;
+      onChairChanged?.call(name);
+    }
     _save();
     notifyListeners();
   }

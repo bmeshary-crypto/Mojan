@@ -22,9 +22,10 @@ abstract final class ShopTab {
   static const frames = 1;
   static const entrances = 2;
   static const bubbles = 3;
-  static const skins = 4;
-  static const items = 5;
-  static const bag = 6;
+  static const chairs = 4;
+  static const skins = 5;
+  static const items = 6;
+  static const bag = 7;
 }
 
 Future<void> openShop(BuildContext context, {int tab = 0}) =>
@@ -153,6 +154,7 @@ class _ShopScreenState extends State<ShopScreen> {
               Tab(key: ValueKey('shop-tab-frames'), text: 'إطارات'),
               Tab(key: ValueKey('shop-tab-entrances'), text: 'دخوليات'),
               Tab(key: ValueKey('shop-tab-bubbles'), text: 'فقاعات'),
+              Tab(key: ValueKey('shop-tab-chairs'), text: 'كراسي'),
               Tab(key: ValueKey('shop-tab-skins'), text: 'سكنات لودو'),
               Tab(key: ValueKey('shop-tab-items'), text: 'أدوات'),
               Tab(key: ValueKey('shop-tab-bag'), text: 'حقيبتي'),
@@ -164,6 +166,7 @@ class _ShopScreenState extends State<ShopScreen> {
               _framesTab(p),
               _entrancesTab(p),
               _bubblesTab(p),
+              _chairsTab(p),
               _skinsTab(p),
               _itemsTab(p),
               _bagTab(p),
@@ -173,7 +176,7 @@ class _ShopScreenState extends State<ShopScreen> {
       },
     );
     return DefaultTabController(
-      length: 7,
+      length: 8,
       initialIndex: widget.initialTab,
       child: widget.embedded
           ? body
@@ -188,6 +191,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final equipped = switch (item.kind) {
       ShopKind.frame => p.frame == name,
       ShopKind.entrance => p.entrance == name,
+      ShopKind.chair => p.chair == name,
       _ => p.bubble == name,
     };
     return _skinCard(
@@ -278,6 +282,26 @@ class _ShopScreenState extends State<ShopScreen> {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Text('هلا والله 👋', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+            ),
+          ),
+      ]),
+    ]);
+  }
+
+  Widget _chairsTab(PlayerProfile p) {
+    final list = styleCatalog.where((i) => i.kind == ShopKind.chair);
+    return _list([
+      _intro('شكل كراسي المايكات في غرفتك: كل اللي يدخل غرفتك يشوف المايكات على هالكراسي.'),
+      _unequip(p, 'chair', p.chair),
+      _grid(ratio: .78, [
+        for (final c in list)
+          _styleCard(
+            p,
+            c,
+            SizedBox(
+              width: 96,
+              height: 96,
+              child: Image.asset(chairAsset(c.id.split('.').last), fit: BoxFit.contain),
             ),
           ),
       ]),

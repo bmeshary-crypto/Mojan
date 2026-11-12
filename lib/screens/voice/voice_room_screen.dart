@@ -18,6 +18,7 @@ import '../../widgets/account_widgets.dart';
 import 'voice_sheets.dart';
 import 'entrance_fx.dart';
 import 'voice_widgets.dart';
+import '../shop_screen.dart';
 
 /// داخل الغرفة الصوتية: المضيف، المايكات، الدردشة، الهدايا، وصالة اللعب.
 class VoiceRoomScreen extends StatefulWidget {
@@ -128,10 +129,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
   /// مكان الشخص على الشاشة: كرسيه، أو مقعد المضيف، أو صندوق الأشخاص.
   GlobalKey _targetOf(VoiceUser u) {
-    if (u.id == room.host.id) return _hostKey;
     for (final s in room.seats) {
       if (s.user?.id == u.id) return _seatKey(s.index);
     }
+    if (u.id == room.host.id) return _hostKey;
     return _peopleKey;
   }
 
@@ -242,6 +243,19 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              key: const ValueKey('seat-move'),
+              leading: const Icon(Icons.event_seat_rounded, color: AppColors.quiz),
+              title: Text(
+                'انتقل للمايك ${s.index + 1}',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                final err = svc.hostMoveTo(room, s.index);
+                if (err != null) voiceToast(context, err);
+              },
+            ),
+            ListTile(
               key: const ValueKey('seat-lock'),
               leading: Icon(
                 s.locked ? Icons.lock_open_rounded : Icons.lock_rounded,
@@ -265,13 +279,43 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 color: AppColors.seeko,
               ),
               title: const Text(
-                'دعوة مستمع لهذا المايك',
+                'ادعُ شخصاً لهذا المايك',
                 style: TextStyle(fontWeight: FontWeight.w800),
               ),
               onTap: () {
-                svc.invite(room);
                 Navigator.pop(ctx);
+                if (room.live || room.audience.isNotEmpty) {
+                  showInvitePicker(context, room, seat: s.index);
+                } else {
+                  svc.invite(room);
+                }
               },
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: ListTile(
+                    key: const ValueKey('seat-lock-all'),
+                    leading: const Icon(Icons.lock_rounded, color: AppColors.gold),
+                    title: const Text('قفل الكل', style: TextStyle(fontWeight: FontWeight.w800)),
+                    onTap: () {
+                      svc.lockAll(room, true);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: ListTile(
+                    key: const ValueKey('seat-open-all'),
+                    leading: const Icon(Icons.lock_open_rounded, color: AppColors.seeko),
+                    title: const Text('فتح الكل', style: TextStyle(fontWeight: FontWeight.w800)),
+                    onTap: () {
+                      svc.lockAll(room, false);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -474,6 +518,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         body: ListenableBuilder(
           listenable: svc,
           builder: (context, _) {
+            _checkInvite();
             final party = room.theme == VoiceTheme.party;
             return Stack(
               key: _stackKey,
@@ -487,6 +532,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         children: [
                           _topBar(),
                           _announcement(),
+                          if (room.mediaTitle != null) _mediaBanner(),
                           if (room.closed)
                             Expanded(
                               child: Center(
@@ -780,6 +826,77 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     );
   }
 
+  Widget _mediaBanner() => GestureDetector(
+    onTap: svc.canPlayMedia(room) ? () => showMediaSheet(context, room) : null,
+    child: Container(
+      key: const ValueKey('media-banner'),
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Color(0xCC5B3BD6), Color(0xCCB04DFF)]),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.music_note_rounded, size: 16, color: Colors.white),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '${room.mediaBy ?? ''} يشغّل: ${room.mediaTitle}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const LiveBars(),
+        ],
+      ),
+    ),
+  );
+
+  bool _inviteOpen = false;
+
+  void _checkInvite() {
+    final inv = svc.pendingInvite;
+    if (inv == null || inv.room != room || _inviteOpen) return;
+    _inviteOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          key: const ValueKey('invite-dialog'),
+          backgroundColor: const Color(0xFF241A55),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Text('📨 دعوة للمايك', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w900)),
+          content: Text(
+            '${room.host.name} يدعوك تطلع على المايك ${inv.seat + 1}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              key: const ValueKey('invite-decline'),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('لا شكراً'),
+            ),
+            FilledButton(
+              key: const ValueKey('invite-accept'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.seeko, foregroundColor: AppColors.bgTop),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('اطلع على المايك', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      );
+      _inviteOpen = false;
+      final err = svc.answerInvite(ok == true);
+      if (err != null && mounted) voiceToast(context, err);
+    });
+  }
+
   Widget _announcement() => Container(
     margin: const EdgeInsets.symmetric(horizontal: 12),
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -807,6 +924,38 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
   Widget _hostArea(bool party) {
     final h = room.host;
+    if (room.hostSeated) {
+      final mine = svc.isHost(room);
+      return GestureDetector(
+        key: const ValueKey('host-seat-empty'),
+        onTap: mine ? () => svc.hostBackToTop(room) : null,
+        child: Padding(
+          padding: EdgeInsets.only(top: party ? 26 : 22),
+          child: Column(
+            children: [
+              KeyedSubtree(
+                key: _hostKey,
+                child: Container(
+                  width: party ? 92 : 84,
+                  height: party ? 92 : 84,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: .06),
+                    border: Border.all(color: AppColors.gold.withValues(alpha: .6), width: 2),
+                  ),
+                  child: const Center(child: Text('👑', style: TextStyle(fontSize: 34))),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                mine ? 'ارجع لمقعد المضيف' : 'المضيف على المايك',
+                style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.gold),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final speaking = h.isMe ? svc.micOn : room.hostSpeaking;
     return GestureDetector(
       key: const ValueKey('host-seat'),
@@ -966,6 +1115,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   size: size,
                   party: party,
                   gifts: s.user == null ? 0 : room.receivedBy(s.user!.id),
+                  chair: room.chair,
                   onTap: () => _seatTap(s),
                 ),
               ),
@@ -1105,6 +1255,73 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     }
   }
 
+  void _tools() {
+    final host = svc.isHost(room);
+    Widget tile(String key, Widget icon, String label, List<Color> colors, VoidCallback onTap) => InkWell(
+      key: ValueKey(key),
+      borderRadius: BorderRadius.circular(18),
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [BoxShadow(color: colors.first.withValues(alpha: .35), blurRadius: 12)],
+            ),
+            child: Center(child: icon),
+          ),
+          const SizedBox(height: 6),
+          Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1446),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 18,
+            runSpacing: 16,
+            children: [
+              tile('tool-sky-wheel', artImage('sw_crown', 40, fallback: Icons.attractions_rounded), 'عجلة السماء',
+                  const [Color(0xFF7CC8FF), Color(0xFF5B49C9)], _openSkyWheel),
+              if (room.system == null)
+                tile('tool-music', const Icon(Icons.library_music_rounded, size: 30), 'شغّل موسيقى',
+                    const [Color(0xFFB04DFF), Color(0xFF5B3BD6)], () {
+                  if (svc.canPlayMedia(room)) {
+                    showMediaSheet(context, room);
+                  } else {
+                    voiceToast(context, 'اطلع على المايك أولاً عشان تشغّل موسيقى للغرفة');
+                  }
+                }),
+              if (host) ...[
+                tile('tool-invite', const Icon(Icons.mic_external_on_rounded, size: 30), 'ادعُ للمايك',
+                    const [Color(0xFF2EE59D), Color(0xFF14955E)], () => showInvitePicker(context, room)),
+                tile('tool-lock-all', const Icon(Icons.lock_rounded, size: 30), 'قفل كل المايكات',
+                    const [Color(0xFFFFC23D), Color(0xFFE08A12)], () => svc.lockAll(room, true)),
+                tile('tool-open-all', const Icon(Icons.lock_open_rounded, size: 30), 'فتح كل المايكات',
+                    const [Color(0xFF3DB8FF), Color(0xFF1B6FD1)], () => svc.lockAll(room, false)),
+                tile('tool-chairs', Image.asset(chairAsset('throne'), width: 40, height: 40), 'كراسي الغرفة',
+                    const [Color(0xFFFF7AB6), Color(0xFFFF4D9D)], () => openShop(context, tab: ShopTab.chairs)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _round(
     String key,
     Widget icon,
@@ -1205,6 +1422,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         room.chatMuted && !host
                             ? 'الدردشة مقفلة'
                             : 'اكتب رسالة…',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppColors.textMuted,
                           fontWeight: FontWeight.w700,
@@ -1270,11 +1489,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               colors: const [Color(0xFF8E6CFF), Color(0xFF5B3BD6)],
             ),
           const SizedBox(width: 6),
-          // عجلة السماء بإطار أصغر وأنت داخل الغرفة
+          // صندوق الأدوات: عجلة السماء والموسيقى وأدوات المضيف
           _round(
-            'btn-sky-wheel',
-            artImage('sw_crown', 34, fallback: Icons.attractions_rounded),
-            _openSkyWheel,
+            'btn-tools',
+            const Icon(Icons.apps_rounded, color: Colors.white),
+            _tools,
             colors: const [Color(0xFF7CC8FF), Color(0xFF5B49C9)],
           ),
           const SizedBox(width: 6),

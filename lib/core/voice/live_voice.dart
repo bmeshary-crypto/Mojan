@@ -175,6 +175,14 @@ class LiveVoice {
       s.muted = m['muted'] == true;
       s.user!.mic = m['mic'] == true;
     }
+    r.chair = data['chair'] as String?;
+    final media = data['media'] as Map?;
+    r.mediaTitle = media?['title'] as String?;
+    r.mediaBy = media?['by'] as String?;
+    r.mediaUid = media?['uid'] as String?;
+    final inv = (data['invites'] as Map?)?[_me];
+    if (inv == null) _inviteHandled = false;
+    if (inv is num && r == _room && !_inviteHandled) _svc.gotInvite(r, inv.toInt());
     r.kicked
       ..clear()
       ..addAll(((data['kicked'] as List?) ?? []).cast<String>());
@@ -201,6 +209,7 @@ class LiveVoice {
       'theme': r.theme.name,
       'seatCount': r.seats.length,
       'announcement': r.announcement,
+      'chair': ?r.chair,
       'open': true,
       'heat': 0,
       'seats': {if (aiSeat != null) '${aiSeat.index}': {'ai': aiSeat.user!.aiId}},
@@ -424,7 +433,7 @@ class LiveVoice {
         final seats = Map<String, dynamic>.from(snap.data()?['seats'] as Map? ?? {});
         if (seats['$i'] != null) return false;
         seats.removeWhere((k, v) => v is Map && v['uid'] == _me);
-        seats['$i'] = {..._meMap(), 'mic': true};
+        seats['$i'] = {..._meMap(), 'mic': r.host.isMe ? _svc.micOn : true};
         tx.update(_ref(r), {'seats': seats});
         return true;
       });
@@ -434,6 +443,25 @@ class LiveVoice {
     } catch (e) {
       return 'تعذر الجلوس، حاول مرة أخرى';
     }
+  }
+
+  /// دعوة شخص بعينه للمايك: تظهر له رسالة يقبل أو يرفض.
+  Future<void> sendInvite(VoiceRoom r, String uid, int seat) => _ref(r).update({'invites.$uid': seat});
+
+  bool _inviteHandled = false;
+
+  Future<void> clearInvite(VoiceRoom r) async {
+    _inviteHandled = true;
+    try {
+      await _ref(r).update({'invites.$_me': FieldValue.delete()});
+    } catch (_) {}
+  }
+
+  /// ما يُشغَّل الآن في الغرفة (يظهر للجميع).
+  Future<void> setMedia(VoiceRoom r, String? title) async {
+    try {
+      await _ref(r).update({'media': title == null ? FieldValue.delete() : {'title': title, 'by': _svc.me().name, 'uid': _me}});
+    } catch (_) {}
   }
 
   Future<void> seatAi(VoiceRoom r, int i, AiPersona p) => _ref(r).update({'seats.$i': {'ai': p.id}});
@@ -464,6 +492,7 @@ class LiveVoice {
         'category': r.category.name,
         'seatCount': r.seats.length,
         'game': r.game,
+        'chair': r.chair,
       });
 
   Future<void> close(VoiceRoom r, String reason) => _ref(r).update({'open': false, 'closeReason': reason});

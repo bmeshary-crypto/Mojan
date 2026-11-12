@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../core/shop.dart';
 import '../../core/theme.dart';
 import '../../core/voice/voice.dart';
 import '../../widgets/account_widgets.dart';
@@ -193,7 +194,11 @@ class SeatTile extends StatelessWidget {
     required this.onTap,
     this.party = false,
     this.gifts = 0,
+    this.chair,
   });
+
+  /// شكل الكرسي تحت المايك (من متجر المضيف).
+  final String? chair;
 
   /// قيمة الهدايا التي استلمها الجالس في هذه الغرفة.
   final int gifts;
@@ -212,20 +217,21 @@ class SeatTile extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (u != null)
-            VoiceAvatar(
+          _onChair(u != null
+            ? VoiceAvatar(
               user: u,
               size: size,
               speaking: u.isMe ? VoiceService.instance.micOn : u.speaking,
               muted: seat.muted,
             )
-          else
-            Container(
+          : Container(
               width: size,
               height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: party ? .14 : .07),
+                color: chair != null
+                    ? const Color(0xFF1E1446).withValues(alpha: .4)
+                    : Colors.white.withValues(alpha: party ? .14 : .07),
                 border: Border.all(
                   color: party
                       ? Colors.white.withValues(alpha: .35)
@@ -246,7 +252,7 @@ class SeatTile extends StatelessWidget {
                 color: seat.locked ? const Color(0xFFFFC23D) : Colors.white70,
                 size: size * .42,
               ),
-            ),
+            )),
           const SizedBox(height: 4),
           SizedBox(
             width: size + 14,
@@ -275,6 +281,38 @@ class SeatTile extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+extension on SeatTile {
+  /// المايك جالس على الكرسي: الكرسي خلفه وأسفل منه قليلاً.
+  Widget _onChair(Widget seatCircle) {
+    final c = chair;
+    if (c == null) return seatCircle;
+    final w = size * 1.5;
+    // الكرسي خلف المايك: ظهره خلف الدائرة، والمقعدة والأرجل تحتها
+    return SizedBox(
+      width: w,
+      height: size * 1.55,
+      child: Stack(
+        alignment: Alignment.topCenter,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            top: 0,
+            child: Image.asset(
+              chairAsset(c),
+              key: ValueKey('chair-${seat.index}'),
+              width: w,
+              height: w,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          ),
+          Positioned(top: size * .16, child: seatCircle),
         ],
       ),
     );

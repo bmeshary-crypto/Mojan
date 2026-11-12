@@ -14,6 +14,7 @@ import 'core/sfx.dart';
 import 'core/update_check.dart';
 import 'core/rounds/shared_rounds.dart';
 import 'core/theme.dart';
+import 'core/voice/voice.dart';
 import 'screens/vip_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/voice/mini_room_bubble.dart';
@@ -32,6 +33,7 @@ Future<void> main() async {
   );
   UpdateCheck.instance.start();
   SharedClock.sync();
+  Account.instance.onChairChanged = VoiceService.instance.applyMyChair;
   runApp(const MojanApp());
 }
 

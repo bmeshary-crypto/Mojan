@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../core/vip.dart';
 import '../../core/firebase/support.dart';
 import '../../core/screenshot.dart';
+import '../../core/voice/rtc/rtc.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
 import '../../widgets/account_widgets.dart';
@@ -543,6 +544,21 @@ Future<void> showUserSheet(
               ],
             ),
           ],
+          if (host && !u.isMe && !u.isAi && s == null && !room.seats.any((x) => x.user?.id == u.id))
+            Row(
+              children: [
+                act(
+                  'host-invite',
+                  Icons.mic_external_on_rounded,
+                  'دعوة للمايك',
+                  () {
+                    final err = svc.inviteUser(room, u);
+                    voiceToast(context, err ?? 'أرسلنا الدعوة لـ ${u.name} 📨');
+                  },
+                  color: AppColors.seeko,
+                ),
+              ],
+            ),
           if (u.isMe && s != null)
             Row(
               children: [
@@ -1226,6 +1242,27 @@ Future<void> showRoomSettings(
                 ),
               ],
             ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('lock-all-mics'),
+                    onPressed: () => svc.lockAll(room, true),
+                    icon: const Icon(Icons.lock_rounded, color: AppColors.gold),
+                    label: const Text('قفل كل المايكات'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('open-all-mics'),
+                    onPressed: () => svc.lockAll(room, false),
+                    icon: const Icon(Icons.lock_open_rounded, color: AppColors.seeko),
+                    label: const Text('فتح كل المايكات'),
+                  ),
+                ),
+              ],
+            ),
             SwitchListTile(
               key: const ValueKey('lock-room'),
               contentPadding: EdgeInsets.zero,
@@ -1450,3 +1487,194 @@ Future<VoiceRoom?> showCreateRoom(BuildContext context) {
     ),
   );
 }
+
+
+// ---------------- دعوة شخص للمايك ----------------
+
+Future<void> showInvitePicker(BuildContext context, VoiceRoom room, {int? seat}) => _sheet(context, (ctx) {
+  final svc = VoiceService.instance;
+  final people = [for (final u in room.audience) if (!u.isMe && !u.isAi) u];
+  return ConstrainedBox(
+    key: const ValueKey('invite-picker'),
+    constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .6),
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _handle(),
+          _title(seat == null ? 'ادعُ شخصاً للمايك' : 'ادعُ شخصاً للمايك ${seat + 1}'),
+          if (people.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'ما فيه مستمعين في الغرفة الحين.\nشارك رقم الغرفة وادعُ أصحابك 👋',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, height: 1.6),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final u in people)
+                    ListTile(
+                      key: ValueKey('invite-${u.id}'),
+                      contentPadding: EdgeInsets.zero,
+                      leading: PlayerAvatar(index: u.avatar, size: 40, ring: false),
+                      title: Text(
+                        u.name,
+                        style: TextStyle(fontWeight: FontWeight.w900, color: u.vip ? AppColors.gold : Colors.white),
+                      ),
+                      subtitle: Text('المستوى ${u.level}', style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+                      trailing: FilledButton.icon(
+                        style: FilledButton.styleFrom(backgroundColor: AppColors.seeko, foregroundColor: AppColors.bgTop),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          final err = svc.inviteUser(room, u, seat);
+                          voiceToast(context, err ?? 'أرسلنا الدعوة لـ ${u.name} 📨');
+                        },
+                        icon: const Icon(Icons.mic_external_on_rounded, size: 18),
+                        label: const Text('دعوة', style: TextStyle(fontWeight: FontWeight.w900)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+});
+
+// ---------------- تشغيل الموسيقى في الغرفة ----------------
+
+Future<void> showMediaSheet(BuildContext context, VoiceRoom room) => _sheet(context, (ctx) {
+  final svc = VoiceService.instance;
+  return StatefulBuilder(
+    builder: (ctx, setState) {
+      final mine = svc.myMedia(room);
+      final rtc = RtcMesh.instance;
+      return Padding(
+        key: const ValueKey('media-sheet'),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _handle(),
+            _title('🎵 شغّل للغرفة'),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFF5B3BD6), Color(0xFFB04DFF)]),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(14)),
+                    child: const Icon(Icons.music_note_rounded, size: 30),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          mine ? room.mediaTitle ?? '' : 'ما فيه شي شغال منك',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          mine ? (rtc.mediaPaused ? 'متوقف مؤقتاً' : 'يسمعه كل اللي في الغرفة') : 'اختر أغنية أو أي ملف صوتي من جوالك',
+                          style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (mine && !rtc.mediaPaused) const LiveBars(),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (mine) ...[
+              Row(
+                children: [
+                  const Icon(Icons.volume_down_rounded, color: Colors.white70),
+                  Expanded(
+                    child: Slider(
+                      key: const ValueKey('media-volume'),
+                      value: svc.mediaVolume,
+                      activeColor: AppColors.gold,
+                      onChanged: (v) {
+                        svc.setMediaVolume(v);
+                        setState(() {});
+                      },
+                    ),
+                  ),
+                  const Icon(Icons.volume_up_rounded, color: Colors.white70),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      key: const ValueKey('media-pause'),
+                      onPressed: () {
+                        svc.toggleMediaPause(room);
+                        setState(() {});
+                      },
+                      icon: Icon(rtc.mediaPaused ? Icons.play_arrow_rounded : Icons.pause_rounded),
+                      label: Text(rtc.mediaPaused ? 'تشغيل' : 'إيقاف مؤقت'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('media-stop'),
+                      onPressed: () {
+                        svc.stopMedia(room);
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.stop_rounded, color: Color(0xFFFF7A7A)),
+                      label: const Text('إيقاف'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+            FilledButton.icon(
+              key: const ValueKey('media-pick'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.gold,
+                foregroundColor: AppColors.bgTop,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () async {
+                final err = await svc.playMedia(room);
+                if (err != null && context.mounted) voiceToast(context, err);
+                setState(() {});
+              },
+              icon: const Icon(Icons.library_music_rounded),
+              label: Text(mine ? 'اختر ملف ثاني' : 'اختر ملف صوتي من جوالك', style: const TextStyle(fontWeight: FontWeight.w900)),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'الصوت يوصل لكل اللي في الغرفة مع صوت المايك. شغّل فقط شي تملك حق مشاركته.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+});
