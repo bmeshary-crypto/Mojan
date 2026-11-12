@@ -965,6 +965,7 @@ class _CloudUsersState extends State<_CloudUsers> {
                         ),
                         Text(
                           '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}'
+                          '${_pendingGrants(u) > 0 ? '  •  ⏳ ${_pendingGrants(u)} شحن بانتظار دخول اللاعب' : ''}'
                           '${same(u) > 1 ? '  •  ⚠️ ${same(u)} حسابات بنفس الجهاز' : ''}${u['banned'] == true ? '  •  موقوف' : ''}',
                           style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                         ),
@@ -1185,4 +1186,18 @@ Future<void> _editPayments(BuildContext context) async {
   if (ok == true) {
     await Support.instance.setPaymentConfig({for (final e in ctl.entries) e.key: e.value.text.trim()});
   }
+}
+
+/// مجموع الشحنات التي لم يستلمها اللاعب بعد (تنضاف أول ما يفتح اللعبة).
+int _pendingGrants(Map<String, dynamic> u) {
+  var sum = 0;
+  final g = u['grants'];
+  if (g is Map) {
+    for (final x in g.values) {
+      if (x is Map && x['coins'] is num) sum += (x['coins'] as num).toInt();
+    }
+  }
+  final old = u['grant'];
+  if (old is Map && old['coins'] is num) sum += (old['coins'] as num).toInt();
+  return sum;
 }

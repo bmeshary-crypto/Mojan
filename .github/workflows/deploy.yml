@@ -26,7 +26,9 @@ jobs:
       - run: flutter pub get
       - run: flutter test
       # بدون tree-shake للأيقونات حتى لا تختفي، وبدون CDN حتى يعمل كل شيء من نفس الموقع
-      - run: flutter build web --release --no-web-resources-cdn --no-tree-shake-icons
+      - run: flutter build web --release --no-web-resources-cdn --no-tree-shake-icons --dart-define=BUILD_ID=${{ github.sha }}
+      # رقم النسخة: التطبيق المفتوح يقارن نفسه فيه ويعرض زر «تحديث» إذا نزلت نسخة أحدث
+      - run: echo "${{ github.sha }}" > build/web/build_id.txt
       - name: Relative base href (works on any repo name)
         run: |
           sed -i 's|<base href="/">|<base href="./">|' build/web/index.html

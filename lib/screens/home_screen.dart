@@ -16,6 +16,7 @@ import 'profile_tab.dart';
 import 'rooms_tab.dart';
 import 'settings_sheet.dart';
 import 'shop_screen.dart';
+import 'support_screen.dart';
 import '../widgets/daily_bonus.dart';
 
 /// يظهر البونص اليومي تلقائياً مرة واحدة في كل تشغيل.
@@ -264,6 +265,8 @@ class _TopBar extends StatelessWidget {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                const SupportBell(),
                 const SizedBox(width: 8),
                 BouncyButton(
                   tilt: false,

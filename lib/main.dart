@@ -10,6 +10,7 @@ import 'core/ai/speech.dart';
 import 'core/firebase/cloud.dart';
 import 'core/screenshot.dart';
 import 'core/sfx.dart';
+import 'core/update_check.dart';
 import 'core/theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/voice/mini_room_bubble.dart';
@@ -26,6 +27,7 @@ Future<void> main() async {
       statusBarIconBrightness: Brightness.light,
     ),
   );
+  UpdateCheck.instance.start();
   runApp(const MojanApp());
 }
 
@@ -52,6 +54,33 @@ class MojanApp extends StatelessWidget {
               child: RepaintBoundary(key: appShotKey, child: child ?? const SizedBox.shrink()),
             ),
             const MiniRoomBubble(),
+            // نسخة جديدة نزلت: زر تحديث صغير فوق
+            ValueListenableBuilder<bool>(
+              valueListenable: UpdateCheck.instance.available,
+              builder: (_, has, _) => !has
+                  ? const SizedBox.shrink()
+                  : Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 6),
+                        child: Material(
+                          color: AppColors.gold,
+                          borderRadius: BorderRadius.circular(20),
+                          child: InkWell(
+                            key: const ValueKey('update-banner'),
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: UpdateCheck.instance.reload,
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              child: Text('✨ فيه تحديث جديد، اضغط للتحديث',
+                                  textDirection: TextDirection.rtl,
+                                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
             // إشعار الإدارة (مثل وصول عملات الشحن)
             ValueListenableBuilder<String?>(
               valueListenable: Cloud.instance.notice,

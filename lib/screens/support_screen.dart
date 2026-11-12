@@ -379,3 +379,63 @@ class _SupportScreenState extends State<SupportScreen> {
     );
   }
 }
+
+/// جرس الإشعارات في الرئيسية: نقطة حمراء إذا وصلت رسالة من الإدارة.
+class SupportBell extends StatefulWidget {
+  const SupportBell({super.key});
+
+  @override
+  State<SupportBell> createState() => _SupportBellState();
+}
+
+class _SupportBellState extends State<SupportBell> {
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Cloud.instance.ready.then((_) {
+      if (mounted) setState(() => _ready = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = Cloud.instance.uid;
+    final live = _ready && Support.instance.available && uid != null;
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: live ? Support.instance.chat(uid) : const Stream.empty(),
+      builder: (context, snap) {
+        final unread = snap.data?['unreadUser'] == true;
+        return GestureDetector(
+          onTap: () => openSupport(context),
+          child: Container(
+            key: const ValueKey('top-bell'),
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(color: Colors.black.withValues(alpha: .28), shape: BoxShape.circle),
+            child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+              Icon(unread ? Icons.notifications_active_rounded : Icons.notifications_rounded,
+                  color: unread ? AppColors.gold : Colors.white),
+              if (unread)
+                Positioned(
+                  top: 6,
+                  right: 7,
+                  child: Container(
+                    key: const ValueKey('top-bell-dot'),
+                    width: 11,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF4D6D),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+}

@@ -76,7 +76,8 @@ class Cloud {
   Future<void> _claimGrants(DocumentReference<Map<String, dynamic>> ref) async {
     if (_claiming) return;
     final acc = Account.instance;
-    if (acc.profile?.id != ref.id) return;
+    // نستلم فقط إذا كان الحساب المفتوح فعلاً هو صاحب المستند (مهم لو تبدّل الحساب على نفس المتصفح)
+    if (acc.profile?.id != ref.id || _auth.currentUser?.uid != ref.id) return;
     _claiming = true;
     try {
       final total = await _db.runTransaction<int>((tx) async {
