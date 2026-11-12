@@ -3,6 +3,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/theme.dart';
+import '../../core/firebase/support.dart';
+import '../../core/screenshot.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
 import '../../widgets/account_widgets.dart';
@@ -919,7 +921,10 @@ Future<void> showReportSheet(
   BuildContext context,
   VoiceRoom room, {
   String? target,
-}) {
+}) async {
+  // صورة الشاشة قبل فتح نافذة البلاغ، تُرسل كدليل
+  final shot = await captureScreen();
+  if (!context.mounted) return;
   return _sheet(
     context,
     (ctx) => Padding(
@@ -948,8 +953,9 @@ Future<void> showReportSheet(
               ),
               onTap: () {
                 VoiceService.instance.report(room, r, target: target);
+                Support.instance.report(reason: r, roomId: room.id, roomTitle: room.title, target: target, screenshot: shot);
                 Navigator.pop(ctx);
-                voiceToast(context, 'وصل بلاغك، شكراً لك 🙏');
+                voiceToast(context, shot != null ? 'وصل بلاغك مع صورة الشاشة كدليل، شكراً لك 🙏' : 'وصل بلاغك، شكراً لك 🙏');
               },
             ),
         ],

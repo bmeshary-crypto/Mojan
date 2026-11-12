@@ -43,6 +43,19 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /support/{uid} {
+      allow read, write: if isOwner(uid) || isAdmin();
+      match /messages/{id} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create: if (isOwner(uid) && request.resource.data.from == 'user' && request.resource.data.text is string && request.resource.data.text.size() <= 500)
+          || (isAdmin() && request.resource.data.from == 'admin');
+        allow delete: if isAdmin();
+      }
+    }
+    match /reports/{id} {
+      allow create: if signedIn() && request.resource.data.by == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
     match /{document=**} { allow read, write: if false; }
   }
 }

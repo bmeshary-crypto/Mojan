@@ -12,6 +12,7 @@ import '../games/ludo/ludo_engine.dart';
 import '../widgets/account_widgets.dart';
 import '../widgets/animated_background.dart';
 import '../widgets/daily_bonus.dart';
+import 'support_screen.dart';
 
 /// يفتح المتجر. [tab]: 0 عملات، 1 سكنات، 2 أدوات، 3 حقيبتي.
 /// أرقام تبويبات المتجر.
@@ -371,7 +372,7 @@ class _ShopScreenState extends State<ShopScreen> {
         children: [
           for (final (i, (coins, price)) in coinPacks.indexed)
             GestureDetector(
-              onTap: () => _toast('شراء العملات بفلوس حقيقية يتفعّل عند نزول التطبيق في المتاجر'),
+              onTap: () => openSupport(context, draft: 'أبغى أشحن باقة $coins عملة ($price ر.س)'),
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -391,7 +392,7 @@ class _ShopScreenState extends State<ShopScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(12)),
-                    child: Text('$price ر.س · قريباً',
+                    child: Text('$price ر.س · اطلب',
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
                   ),
                 ]),
@@ -401,7 +402,7 @@ class _ShopScreenState extends State<ShopScreen> {
       ),
       const SizedBox(height: 8),
       const Text(
-        'الشراء بالفلوس الحقيقية يعمل عبر متجر جوجل وآبل بعد نشر التطبيق. حالياً اجمع العملات من الفوز والبونص والصندوق.',
+        'للشحن اضغط على الباقة وتواصل مع الإدارة مباشرة، ويوصلك الشحن على حسابك. وتقدر تجمع عملات مجاناً من الفوز والبونص والصندوق.',
         textAlign: TextAlign.center,
         style: TextStyle(color: AppColors.textMuted, fontSize: 12),
       ),

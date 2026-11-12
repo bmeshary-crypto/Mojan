@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/account/account.dart';
 import 'core/firebase/cloud.dart';
+import 'core/screenshot.dart';
 import 'core/theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/voice/mini_room_bubble.dart';
@@ -39,7 +40,26 @@ class MojanApp extends StatelessWidget {
       navigatorKey: appNavigatorKey,
       // فقاعة الغرفة الصوتية المصغّرة تطفو فوق كل الشاشات
       builder: (context, child) =>
-          Stack(children: [?child, const MiniRoomBubble()]),
+          Stack(children: [
+            RepaintBoundary(key: appShotKey, child: child ?? const SizedBox.shrink()),
+            const MiniRoomBubble(),
+            ValueListenableBuilder<bool>(
+              valueListenable: Cloud.instance.banned,
+              builder: (_, banned, _) => banned
+                  ? const ColoredBox(
+                      color: Color(0xF0120A26),
+                      child: Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(28),
+                          child: Text('تم إيقاف حسابك من الإدارة 🚫\nللاستفسار تواصل مع إدارة MOJAN.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800, decoration: TextDecoration.none)),
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ]),
       home: const SplashScreen(),
     );
   }

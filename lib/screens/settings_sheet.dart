@@ -6,6 +6,7 @@ import '../core/account/auth_backend.dart';
 import '../core/theme.dart';
 import 'login_screen.dart';
 import 'admin/admin_screen.dart';
+import 'support_screen.dart';
 
 const appVersion = '0.7.0';
 
@@ -99,6 +100,15 @@ Future<void> showSettingsSheet(BuildContext context) {
                         '${authBackend.isDemo ? '\n\nتسجيل الدخول يعمل هنا في وضع التجربة، والحسابات الحقيقية تعمل من موقع MOJAN الرسمي.' : ''}',
                   ),
                 ),
+                if (!AdminService.instance.isAdmin)
+                  ListTile(
+                    key: const ValueKey('open-support'),
+                    leading: const Icon(Icons.support_agent_rounded, color: AppColors.gold),
+                    title: const Text('تواصل مع الإدارة', style: TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: const Text('شحن العملات وأي مشكلة'),
+                    trailing: const Icon(Icons.chevron_left_rounded),
+                    onTap: () => openSupport(ctx),
+                  ),
                 if (AdminService.instance.isAdmin) ListTile(
                   key: const ValueKey('open-admin'),
                   leading: const Icon(

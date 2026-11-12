@@ -1,12 +1,18 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/admin/admin.dart';
 import '../../core/firebase/cloud.dart';
+import '../../core/firebase/support.dart';
 import '../../core/theme.dart';
 import '../../core/voice/voice.dart';
 import '../../widgets/account_widgets.dart';
+import '../support_screen.dart';
 import '../voice/voice_room_screen.dart';
 import '../voice/voice_widgets.dart';
 
@@ -74,7 +80,7 @@ class AdminScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final admin = AdminService.instance;
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: Scaffold(
         backgroundColor: const Color(0xFF0E0A24),
         appBar: AppBar(
@@ -118,13 +124,14 @@ class AdminScreen extends StatelessWidget {
               Tab(key: ValueKey('admin-tab-rooms'), text: 'الغرف الصوتية'),
               Tab(key: ValueKey('admin-tab-reports'), text: 'البلاغات'),
               Tab(key: ValueKey('admin-tab-users'), text: 'المستخدمون'),
+              Tab(key: ValueKey('admin-tab-support'), text: 'الدعم'),
             ],
           ),
         ),
         body: ListenableBuilder(
           listenable: Listenable.merge([admin, VoiceService.instance]),
           builder: (context, _) => const TabBarView(
-            children: [_Overview(), _Matches(), _Rooms(), _Reports(), _Users()],
+            children: [_Overview(), _Matches(), _Rooms(), _Reports(), _Users(), _SupportInbox()],
           ),
         ),
       ),
@@ -586,6 +593,7 @@ class _Reports extends StatelessWidget {
     final admin = AdminService.instance;
     final reports = VoiceService.instance.reports;
     return _list([
+      if (Cloud.instance.isAdmin) const _CloudReports(),
       if (reports.isEmpty)
         _card(
           child: const Text(
@@ -989,3 +997,147 @@ class _CloudUsersState extends State<_CloudUsers> {
 }
 
 String adminUidsLabel(String uid) => Cloud.instance.uid == uid ? ' (أنت)' : '';
+
+DateTime? _ts(Object? v) => v is Timestamp ? v.toDate() : null;
+
+/// بلاغات اللاعبين الحقيقية مع صورة الشاشة كدليل.
+class _CloudReports extends StatelessWidget {
+  const _CloudReports();
+
+  void _showShot(BuildContext context, Uint8List bytes) => showDialog<void>(
+        context: context,
+        builder: (c) => Dialog(
+          backgroundColor: Colors.black,
+          insetPadding: const EdgeInsets.all(12),
+          child: InkWell(
+            onTap: () => Navigator.pop(c),
+            child: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain)),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: Support.instance.reports(),
+      builder: (context, snap) {
+        final list = snap.data ?? const [];
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text('بلاغات اللاعبين (مع صورة الشاشة)', style: TextStyle(fontWeight: FontWeight.w900, color: AppColors.gold)),
+          ),
+          if (list.isEmpty) _card(child: Text(snap.hasError ? 'تعذر تحميل البلاغات' : 'لا توجد بلاغات من اللاعبين')),
+          for (final r in list) _row(context, r),
+          const Divider(color: Colors.white12, height: 24),
+        ]);
+      },
+    );
+  }
+
+  Widget _row(BuildContext context, Map<String, dynamic> r) {
+    Uint8List? shot;
+    try {
+      if (r['shot'] is String) shot = base64Decode(r['shot'] as String);
+    } catch (_) {}
+    final at = _ts(r['at']);
+    final open = r['status'] == 'open';
+    final id = r['id'] as String;
+    return _card(
+      border: open ? const Color(0xFFFF7A7A) : null,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (shot != null)
+          GestureDetector(
+            onTap: () => _showShot(context, shot!),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.memory(shot, width: 76, height: 120, fit: BoxFit.cover),
+            ),
+          )
+        else
+          Container(
+            width: 76,
+            height: 120,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(10)),
+            child: const Text('بدون صورة', textAlign: TextAlign.center, style: TextStyle(fontSize: 11)),
+          ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text('${r['reason'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w900))),
+              if (at != null) Text(_ago(at), style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+            ]),
+            const SizedBox(height: 4),
+            Text(
+              [
+                if (r['roomTitle'] != null) 'الغرفة: ${r['roomTitle']}',
+                if (r['target'] != null) 'المبلَّغ عنه: ${r['target']}',
+                'من: ${r['byName'] ?? '-'}',
+              ].join(' · '),
+              style: const TextStyle(fontSize: 12.5, color: Colors.white70),
+            ),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, children: [
+              if (shot != null)
+                TextButton(onPressed: () => _showShot(context, shot!), child: const Text('عرض الصورة')),
+              if (open) ...[
+                OutlinedButton(
+                  onPressed: () => Support.instance.setReportStatus(id, 'done'),
+                  child: const Text('تمت المعالجة'),
+                ),
+                TextButton(
+                  onPressed: () => Support.instance.setReportStatus(id, 'dismissed'),
+                  child: const Text('تجاهل'),
+                ),
+              ] else
+                Text(r['status'] == 'done' ? '✅ تمت المعالجة' : 'تم التجاهل',
+                    style: const TextStyle(color: AppColors.seeko, fontWeight: FontWeight.w800)),
+            ]),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// صندوق رسائل الدعم: محادثات اللاعبين مع الإدارة (طلبات الشحن وغيرها).
+class _SupportInbox extends StatelessWidget {
+  const _SupportInbox();
+
+  @override
+  Widget build(BuildContext context) {
+    if (!Cloud.instance.isAdmin || !Support.instance.available) {
+      return _list([
+        _card(child: const Text('رسائل اللاعبين تظهر هنا في الموقع الرسمي عند الدخول بحساب الأدمن.', style: TextStyle(fontWeight: FontWeight.w700))),
+      ]);
+    }
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: Support.instance.inbox(),
+      builder: (context, snap) {
+        final list = snap.data ?? const [];
+        return _list([
+          if (list.isEmpty) _card(child: Text(snap.hasError ? 'تعذر تحميل الرسائل' : 'لا توجد رسائل بعد')),
+          for (final c in list)
+            _card(
+              border: c['unreadAdmin'] == true ? AppColors.gold : null,
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: PlayerAvatar(index: (c['avatar'] as num?)?.toInt() ?? 0, size: 44, ring: false),
+                title: Text('${c['name'] ?? 'لاعب'}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                subtitle: Text('${c['lastText'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  if (_ts(c['lastAt']) != null)
+                    Text(_ago(_ts(c['lastAt'])!), style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                  if (c['unreadAdmin'] == true)
+                    const Text('جديد', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w900, fontSize: 12)),
+                ]),
+                onTap: () => openSupport(context, userId: c['uid'] as String, userName: c['name'] as String?),
+              ),
+            ),
+        ]);
+      },
+    );
+  }
+}

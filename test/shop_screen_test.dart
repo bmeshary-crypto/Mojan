@@ -43,10 +43,13 @@ void main() {
     await tapKey(tester, 'shop-chest');
     expect(acc.profile!.coins, 5000 + Account.chestCoins);
     expect(find.textContaining('يفتح بعد'), findsOneWidget);
-    // باقات الفلوس الحقيقية تقول بصراحة أنها لاحقاً
+    // باقات الشحن تفتح صفحة التواصل مع الإدارة
     await tester.tap(find.textContaining('4.99').first);
-    await pumpFor(tester, 400);
-    expect(find.textContaining('عند نزول التطبيق في المتاجر'), findsOneWidget);
+    await pumpFor(tester, 800);
+    expect(find.text('تواصل مع الإدارة'), findsOneWidget);
+    expect(find.textContaining('تعمل في الموقع الرسمي'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
+    await pumpFor(tester, 800);
 
     // السكنات: شراء نرد ياقوتي يركّبه تلقائياً
     await tapKey(tester, 'shop-tab-skins', 800);
