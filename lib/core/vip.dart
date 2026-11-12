@@ -150,3 +150,70 @@ class VipBadge extends StatelessWidget {
     );
   }
 }
+
+/// أقل عدد أرقام مسموح للـ ID المميز حسب مستوى VIP (null = غير متاح).
+/// VIP3 = 7 أرقام، VIP4 = 6، ... VIP8 = رقمين.
+int? specialIdDigits(int vipLevel) => vipLevel < 3 ? null : (10 - vipLevel).clamp(2, 7);
+
+/// الـ ID العادي لكل لاعب: 8 أرقام ثابتة مشتقة من معرف الحساب.
+String defaultPlayerId(String uid) {
+  var h = 0x811c9dc5;
+  for (final c in uid.codeUnits) {
+    h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF;
+  }
+  return '${10000000 + h % 90000000}';
+}
+
+/// يتحقق من صيغة ID مميز لمستوى معين. يرجع رسالة خطأ أو null.
+String? checkSpecialId(String id, int vipLevel) {
+  final min = specialIdDigits(vipLevel);
+  if (min == null) return 'الـ ID المميز يبدأ من VIP3';
+  if (!RegExp(r'^[0-9]+$').hasMatch(id)) return 'الـ ID أرقام فقط';
+  if (id.startsWith('0')) return 'ما يبدأ بصفر';
+  if (id.length < min) return 'مستواك يسمح بـ ID من $min أرقام أو أكثر';
+  if (id.length > 7) return 'الـ ID المميز من 7 أرقام كحد أقصى';
+  return null;
+}
+
+/// اقتراحات أرقام مميزة بعدد أرقام معين (مكررة ومتسلسلة).
+List<String> specialIdIdeas(int digits) {
+  final out = <String>[];
+  for (final d in [7, 8, 9, 1, 5, 6]) {
+    out.add('$d' * digits);
+  }
+  final seq = '123456789'.substring(0, digits.clamp(2, 9));
+  out.insert(2, seq);
+  out.add('1'.padRight(digits, '0'));
+  if (digits >= 4) out.add(('${7 * 11}' * digits).substring(0, digits));
+  return out;
+}
+
+/// شارة الـ ID: ذهبية مع 💎 للمميز، وعادية للباقي.
+class PlayerIdTag extends StatelessWidget {
+  const PlayerIdTag(this.id, {super.key, this.special = false, this.size = 12});
+  final String id;
+  final bool special;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: EdgeInsets.symmetric(horizontal: size * .6, vertical: size * .15),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(size),
+          gradient: special ? const LinearGradient(colors: [Color(0xFFFFF0A8), Color(0xFFFFB800), Color(0xFFFF7A00)]) : null,
+          color: special ? null : Colors.white.withValues(alpha: .1),
+          border: special ? Border.all(color: Colors.white, width: 1) : null,
+          boxShadow: special ? [BoxShadow(color: const Color(0xFFFFB800).withValues(alpha: .5), blurRadius: 8)] : null,
+        ),
+        child: Text(
+          special ? '💎 ID $id' : 'ID $id',
+          textDirection: TextDirection.ltr,
+          style: TextStyle(
+            fontSize: size,
+            fontWeight: FontWeight.w900,
+            letterSpacing: special ? 1.2 : .3,
+            color: special ? const Color(0xFF4A2600) : Colors.white70,
+          ),
+        ),
+      );
+}

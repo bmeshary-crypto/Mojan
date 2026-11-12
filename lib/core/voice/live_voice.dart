@@ -108,6 +108,7 @@ class LiveVoice {
           entrance: m['entrance'] as String?,
           bio: m['bio'] as String? ?? '',
           vipLevel: (m['vip'] as num?)?.toInt() ?? 0,
+          sid: m['sid'] as String?,
         );
   }
 
@@ -122,6 +123,7 @@ class LiveVoice {
       'entrance': ?u.entrance,
       'bio': u.bio,
       'vip': u.vipLevel,
+      'sid': ?u.sid,
     };
   }
 

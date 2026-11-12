@@ -173,8 +173,12 @@ void main() {
     expect(room.host.reaction, '🔥');
     await tapKey(tester, 'btn-gift', 800);
     await tapKey(tester, 'gift-heart');
+    final heat = room.heat;
+    final coins = Account.instance.profile!.coins;
     await tapKey(tester, 'gift-send', 800);
-    expect(room.heat, 30);
+    // الهدية (30) تنضاف لحرارة الغرفة، والبوتات ممكن تضيف هداياها خلال نفس الوقت.
+    expect(room.heat, greaterThanOrEqualTo(heat + 30));
+    expect(Account.instance.profile!.coins, coins - 30);
     await pumpFor(tester, 3000);
 
     // إعدادات الغرفة: 20 مايك، صالة لودو

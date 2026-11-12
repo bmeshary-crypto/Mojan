@@ -246,6 +246,7 @@ class PlayerProfile {
     List<ProfilePost>? posts,
     this.vipPoints = 0,
     this.lastVipDaily,
+    this.specialId,
   }) : posts = posts ?? [],
        stats = stats ?? {},
        unlocked = unlocked ?? {},
@@ -270,6 +271,10 @@ class PlayerProfile {
   int vipPoints;
   String? lastVipDaily;
   int get vipLevel => vipLevelFor(vipPoints);
+
+  /// ID مميز محجوز (VIP3 فأعلى)، وإلا يظهر الـ ID العادي من 8 أرقام.
+  String? specialId;
+  String get displayId => specialId ?? defaultPlayerId(id);
 
   /// الملف الشخصي: النبذة والمنشورات.
   String bio;
@@ -347,6 +352,7 @@ class PlayerProfile {
     'posts': posts.map((e) => e.toJson()).toList(),
     'vp': vipPoints,
     'vd': lastVipDaily,
+    'sid': specialId,
   };
 
   factory PlayerProfile.fromJson(Map<String, dynamic> j) => PlayerProfile(
@@ -381,6 +387,7 @@ class PlayerProfile {
     ],
     vipPoints: (j['vp'] as num?)?.toInt() ?? 0,
     lastVipDaily: j['vd'] as String?,
+    specialId: j['sid'] as String?,
   );
 }
 
@@ -713,6 +720,28 @@ class Account extends ChangeNotifier {
   void earn(int coins) {
     if (profile == null || coins <= 0) return;
     profile!.coins += coins;
+    _save();
+  }
+
+  /// حجز ID مميز. يرجع رسالة خطأ أو null عند النجاح.
+  Future<String?> setSpecialId(String id) async {
+    final p = profile;
+    if (p == null) return 'سجّل دخولك أولاً';
+    final bad = checkSpecialId(id, p.vipLevel);
+    if (bad != null) return bad;
+    if (id == p.specialId) return null;
+    final err = await Cloud.instance.claimId(id, release: p.specialId);
+    if (err != null) return err;
+    p.specialId = id;
+    _save();
+    return null;
+  }
+
+  /// ID مميز أعطته الإدارة (محجوز من جهتها).
+  void adoptSpecialId(String id) {
+    final p = profile;
+    if (p == null) return;
+    p.specialId = id.isEmpty ? null : id;
     _save();
   }
 

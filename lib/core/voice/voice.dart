@@ -9,6 +9,7 @@ import 'live_voice.dart';
 import '../account/account.dart';
 import '../admin/admin.dart';
 import '../ban.dart';
+import '../vip.dart';
 
 /// أقسام الغرف الصوتية.
 enum VoiceCategory {
@@ -58,6 +59,7 @@ class VoiceUser {
     required this.avatar,
     this.level = 1,
     this.vipLevel = 0,
+    this.sid,
     this.frame = SeatFrame.none,
     this.isMe = false,
     this.isBot = true,
@@ -89,6 +91,11 @@ class VoiceUser {
   /// مستوى VIP (0 = عادي).
   int vipLevel;
   bool get vip => vipLevel > 0;
+
+  /// الـ ID الظاهر (مميز أو عادي).
+  String? sid;
+  String get displayId => sid ?? defaultPlayerId(id);
+  bool get specialId => sid != null && sid!.length <= 7;
   SeatFrame frame;
   final bool isMe;
   final bool isBot;
@@ -329,6 +336,7 @@ class VoiceService extends ChangeNotifier {
       bubble: p == null || p.bubble == 'none' ? null : p.bubble,
       bio: p?.bio ?? '',
       vipLevel: p?.vipLevel ?? 0,
+      sid: p?.specialId,
     );
   }
 
@@ -343,6 +351,10 @@ class VoiceService extends ChangeNotifier {
       vipLevel: _rng.nextDouble() < .25 ? 1 + _rng.nextInt(_rng.nextDouble() < .2 ? 8 : 4) : 0,
       bio: _botBios[(n + _rng.nextInt(3)) % _botBios.length],
     );
+    if (u.vipLevel >= 3) {
+      final d = specialIdDigits(u.vipLevel)!;
+      u.sid = '${1 + _rng.nextInt(9)}' * d;
+    }
     // بعض المستخدمين المميزين عندهم إطارات ودخوليات من المتجر
     if (u.vip) {
       u.frameArt = _botFrames[_rng.nextInt(_botFrames.length)];

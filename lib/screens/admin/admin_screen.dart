@@ -852,6 +852,8 @@ class _CloudUsersState extends State<_CloudUsers> {
     final bio = TextEditingController(text: '${(u['profile'] as Map?)?['bio'] ?? ''}');
     var resetAvatar = false;
     final vipAdd = TextEditingController();
+    final sid = TextEditingController(text: '${(u['profile'] as Map?)?['sid'] ?? ''}');
+    final oldSid = (u['profile'] as Map?)?['sid'] as String?;
     final vp = ((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0;
     final device = u['device'] as String?;
     final ok = await showDialog<String>(
@@ -872,6 +874,13 @@ class _CloudUsersState extends State<_CloudUsers> {
                   labelText: 'إضافة نقاط VIP',
                   helperText: 'الحالي: $vp نقطة (VIP${vipLevelFor(vp)}). VIP1 = 5000، VIP3 = 60000، VIP5 = 400000',
                 ),
+              ),
+              TextField(
+                key: const ValueKey('edit-sid'),
+                controller: sid,
+                keyboardType: TextInputType.number,
+                maxLength: 7,
+                decoration: const InputDecoration(labelText: 'ID مميز (من 2 إلى 7 أرقام، فاضي = بدون)'),
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
@@ -902,12 +911,30 @@ class _CloudUsersState extends State<_CloudUsers> {
     );
     try {
       if (ok == 'save') {
+        final newSid = sid.text.trim();
+        String? sidOut;
+        if (newSid != (oldSid ?? '')) {
+          if (newSid.isNotEmpty && !RegExp(r'^[1-9][0-9]{1,6}$').hasMatch(newSid)) {
+            _snack('الـ ID لازم من 2 إلى 7 أرقام وما يبدأ بصفر');
+            return;
+          }
+          if (newSid.isEmpty && oldSid != null) await Cloud.instance.releaseId(oldSid);
+          if (newSid.isNotEmpty) {
+            final err = await Cloud.instance.claimId(newSid, release: oldSid, forUid: u['uid'] as String);
+            if (err != null) {
+              _snack(err);
+              return;
+            }
+          }
+          sidOut = newSid;
+        }
         await Cloud.instance.adminEdit(
           u['uid'] as String,
           name: name.text.trim().isEmpty ? null : name.text.trim(),
           bio: bio.text.trim(),
           avatar: resetAvatar ? 0 : null,
           vipAdd: int.tryParse(vipAdd.text.trim()),
+          sid: sidOut,
         );
         _snack('تم الحفظ، يتحدث ملف اللاعب عند فتحه التطبيق ✅');
       } else if (ok == 'ban-device' && device != null) {
@@ -985,6 +1012,7 @@ class _CloudUsersState extends State<_CloudUsers> {
                         ),
                         Text(
                           '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}'
+                          '  •  ID ${(u['profile'] as Map?)?['sid'] ?? defaultPlayerId(u['uid'] as String)}'
                           '${vipLevelFor(((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0) > 0 ? '  •  👑 VIP${vipLevelFor(((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0)}' : ''}'
                           '${_pendingGrants(u) > 0 ? '  •  ⏳ ${_pendingGrants(u)} شحن بانتظار دخول اللاعب' : ''}'
                           '${same(u) > 1 ? '  •  ⚠️ ${same(u)} حسابات بنفس الجهاز' : ''}${_banOf(u) == null ? '' : '  •  ${_banOf(u)!.full ? '🚫 محظور' : '⛔ مقيد'} (${_banOf(u)!.remaining()})'}',

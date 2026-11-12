@@ -58,6 +58,8 @@ class VipScreen extends StatelessWidget {
                       _hero(context, lvl, pts),
                       const SizedBox(height: 14),
                       _daily(context, lvl),
+                      const SizedBox(height: 14),
+                      _idCard(context, p, lvl),
                       const SizedBox(height: 18),
                       _howTo(context),
                       const SizedBox(height: 18),
@@ -167,6 +169,138 @@ class VipScreen extends StatelessWidget {
     );
   }
 
+  Widget _idCard(BuildContext context, PlayerProfile? p, int lvl) {
+    final digits = specialIdDigits(lvl);
+    return Container(
+      key: const ValueKey('vip-id-card'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .25),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.gold.withValues(alpha: .4)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('🆔', style: TextStyle(fontSize: 30)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('الـ ID المميز', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+              Text(
+                digits == null ? 'يبدأ من VIP3: ID من 7 أرقام، وكل مستوى أعلى رقم أقل' : 'مستواك يسمح بـ ID من $digits أرقام',
+                style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 12),
+              ),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        if (p != null) Center(child: PlayerIdTag(p.displayId, special: p.specialId != null, size: 16)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 6, runSpacing: 4, children: [
+          for (var l = 3; l <= 8; l++)
+            Opacity(
+              opacity: lvl >= l ? 1 : .5,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(10)),
+                child: Text('VIP$l: ${specialIdDigits(l)} أرقام', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            key: const ValueKey('vip-pick-id'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
+            onPressed: digits == null ? null : () => _pickId(context, digits),
+            icon: Icon(digits == null ? Icons.lock_rounded : Icons.auto_awesome_rounded),
+            label: Text(
+              digits == null ? 'متاح من VIP3' : (p?.specialId == null ? 'اختر الـ ID المميز' : 'غيّر الـ ID المميز'),
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _pickId(BuildContext context, int digits) async {
+    final ctl = TextEditingController();
+    String? error;
+    var busy = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) {
+          Future<void> submit() async {
+            if (busy) return;
+            set(() {
+              busy = true;
+              error = null;
+            });
+            final err = await Account.instance.setSpecialId(ctl.text.trim());
+            if (!ctx.mounted) return;
+            if (err == null) {
+              Navigator.pop(ctx);
+              Sfx.instance.win();
+              ScaffoldMessenger.of(context)
+                ..hideCurrentSnackBar()
+                ..showSnackBar(SnackBar(
+                  duration: const Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                  content: Text('صار الـ ID حقك: ${ctl.text.trim()} 💎', style: const TextStyle(fontWeight: FontWeight.w800)),
+                ));
+            } else {
+              set(() {
+                busy = false;
+                error = err;
+              });
+            }
+          }
+
+          return AlertDialog(
+            backgroundColor: AppColors.surface,
+            title: const Text('اختر الـ ID المميز', style: TextStyle(fontWeight: FontWeight.w900)),
+            content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('من $digits إلى 7 أرقام، وما يبدأ بصفر. كل ID لشخص واحد بس.',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
+              TextField(
+                key: const ValueKey('vip-id-input'),
+                controller: ctl,
+                keyboardType: TextInputType.number,
+                maxLength: 7,
+                textAlign: TextAlign.center,
+                textDirection: TextDirection.ltr,
+                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 4),
+                decoration: InputDecoration(errorText: error, counterText: ''),
+                onSubmitted: (_) => submit(),
+              ),
+              const SizedBox(height: 8),
+              const Text('أفكار:', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+              Wrap(spacing: 6, runSpacing: 4, children: [
+                for (final idea in specialIdIdeas(digits))
+                  ActionChip(
+                    label: Text(idea, textDirection: TextDirection.ltr, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    onPressed: () => set(() => ctl.text = idea),
+                  ),
+              ]),
+            ]),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+              FilledButton(
+                key: const ValueKey('vip-id-save'),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
+                onPressed: busy ? null : submit,
+                child: Text(busy ? '...' : 'احجزه', style: const TextStyle(fontWeight: FontWeight.w900)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Widget _howTo(BuildContext context) {
     Widget row(String e, String t, String s) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -213,6 +347,7 @@ class VipScreen extends StatelessWidget {
     final all = [
       '🎁 مكافأة يومية ${_n(t.daily)} عملة',
       if (t.discount > 0) '🏷️ خصم ${t.discount}% على المتجر',
+      if (specialIdDigits(t.level) != null) '🆔 ID مميز من ${specialIdDigits(t.level)} أرقام',
       ...t.perks.map((x) => '✨ $x'),
     ];
     return Container(
@@ -283,6 +418,7 @@ class VipUpOverlay extends StatelessWidget {
                     for (final x in [
                       'مكافأة يومية ${t.daily} عملة',
                       if (t.discount > 0) 'خصم ${t.discount}% على المتجر',
+                      if (specialIdDigits(t.level) != null) 'ID مميز من ${specialIdDigits(t.level)} أرقام',
                       ...t.perks,
                     ])
                       Text('✨ $x', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.6)),

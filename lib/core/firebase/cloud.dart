@@ -66,6 +66,7 @@ class Cloud {
           if (edit['bio'] is String) acc.setBio(edit['bio'] as String);
           if (edit['avatar'] is num) await acc.setAvatar((edit['avatar'] as num).toInt());
           if (edit['vipAdd'] is num) acc.addVip((edit['vipAdd'] as num).toInt());
+          if (edit['sid'] is String) acc.adoptSpecialId(edit['sid'] as String);
         } catch (e) {
           debugPrint('edit failed: $e');
         }
@@ -111,6 +112,37 @@ class Cloud {
     }
   }
 
+  /// حجز رقم ID مميز (فريد على مستوى التطبيق). يرجع رسالة خطأ أو null.
+  /// بدون سحابة (وضع التجربة) يُقبل محلياً.
+  Future<String?> claimId(String id, {String? release, String? forUid}) async {
+    final me = forUid ?? uid;
+    if (!enabled || me == null) return null;
+    try {
+      return await _db.runTransaction<String?>((tx) async {
+        final ref = _db.collection('ids').doc(id);
+        final cur = await tx.get(ref);
+        if (cur.exists && cur.data()?['uid'] != me) return 'هذا الـ ID محجوز لشخص ثاني، جرّب غيره';
+        tx.set(ref, {'uid': me, 'at': FieldValue.serverTimestamp()});
+        if (release != null && release != id) {
+          tx.delete(_db.collection('ids').doc(release));
+        }
+        return null;
+      });
+    } catch (e) {
+      debugPrint('claimId: $e');
+      return 'تعذر حجز الـ ID، حاول مرة ثانية';
+    }
+  }
+
+  Future<void> releaseId(String id) async {
+    if (!enabled) return;
+    try {
+      await _db.collection('ids').doc(id).delete();
+    } catch (e) {
+      debugPrint('releaseId: $e');
+    }
+  }
+
   // ---- أدوات الأدمن ----
 
   Future<List<Map<String, dynamic>>> adminUsers() async {
@@ -145,8 +177,8 @@ class Cloud {
   }
 
   /// تعديل ملف لاعب: يُطبق على جهازه عند فتح التطبيق.
-  Future<void> adminEdit(String id, {String? name, String? bio, int? avatar, int? vipAdd}) => _db.collection('users').doc(id).set({
-        'edit': {'name': ?name, 'bio': ?bio, 'avatar': ?avatar, 'vipAdd': ?vipAdd},
+  Future<void> adminEdit(String id, {String? name, String? bio, int? avatar, int? vipAdd, String? sid}) => _db.collection('users').doc(id).set({
+        'edit': {'name': ?name, 'bio': ?bio, 'avatar': ?avatar, 'vipAdd': ?vipAdd, 'sid': ?sid},
         'name': ?name,
         'avatar': ?avatar,
       }, SetOptions(merge: true));

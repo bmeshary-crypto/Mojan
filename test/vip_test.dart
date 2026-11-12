@@ -69,6 +69,29 @@ void main() {
     expect(acc.profile!.vipPoints, pts);
   });
 
+  test('special ID: digits by level, format rules, saved on profile', () async {
+    expect(specialIdDigits(2), isNull);
+    expect(specialIdDigits(3), 7);
+    expect(specialIdDigits(4), 6);
+    expect(specialIdDigits(8), 2);
+    final p = acc.profile!;
+    expect(p.displayId.length, 8, reason: 'everyone has a normal 8-digit ID');
+    expect(p.displayId, defaultPlayerId(p.id));
+    expect(await acc.setSpecialId('7777777'), contains('VIP3'));
+    acc.addVip(60000); // VIP3
+    expect(await acc.setSpecialId('777777'), contains('7'), reason: 'VIP3 needs 7 digits');
+    expect(await acc.setSpecialId('0777777'), isNotNull);
+    expect(await acc.setSpecialId('77a7777'), isNotNull);
+    expect(await acc.setSpecialId('7777777'), isNull);
+    expect(p.displayId, '7777777');
+    acc.addVip(400000); // VIP5
+    expect(await acc.setSpecialId('55555'), isNull);
+    expect(await acc.setSpecialId('5555'), isNotNull, reason: '4 digits need VIP6');
+    for (final idea in specialIdIdeas(5)) {
+      expect(checkSpecialId(idea, 5), isNull, reason: idea);
+    }
+  });
+
   testWidgets('VIP page shows level, tiers and claims the daily reward', (tester) async {
     tester.view.physicalSize = const Size(420 * 3, 900 * 3);
     tester.view.devicePixelRatio = 3;

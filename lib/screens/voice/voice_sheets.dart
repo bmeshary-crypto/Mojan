@@ -430,6 +430,11 @@ Future<void> showUserSheet(
               ],
             ],
           ),
+          if (!u.isAi) ...[
+            const SizedBox(height: 4),
+            PlayerIdTag(u.displayId, special: u.specialId, size: 11),
+            const SizedBox(height: 2),
+          ],
           Text(
             'المستوى ${u.level}${u.id == room.host.id ? ' · المضيف' : ''}',
             style: const TextStyle(

@@ -132,6 +132,21 @@ class ProfileTab extends StatelessWidget {
                       ),
                     ],
                   ),
+                  GestureDetector(
+                    key: const ValueKey('profile-id'),
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: p.displayId));
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(const SnackBar(
+                          duration: Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                          content: Text('تم نسخ الـ ID', style: TextStyle(fontWeight: FontWeight.w800)),
+                        ));
+                    },
+                    child: PlayerIdTag(p.displayId, special: p.specialId != null, size: 13),
+                  ),
+                  const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
