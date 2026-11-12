@@ -44,6 +44,54 @@ class PlayerAvatar extends StatelessWidget {
   }
 }
 
+/// مكان الفتحة الدائرية في كل إطار (مركزها ونصف قطرها كنسبة من عرض الصورة)،
+/// مقاسة من الصور نفسها عشان يجي الإطار مضبوط على الأفاتار.
+const frameHoles = <String, (double, double, double)>{
+  'fr_angel': (0.489, 0.509, 0.204),
+  'fr_candy': (0.500, 0.498, 0.287),
+  'fr_demon': (0.494, 0.486, 0.207),
+  'fr_desert': (0.499, 0.499, 0.286),
+  'fr_emerald': (0.496, 0.499, 0.285),
+  'fr_fire': (0.489, 0.532, 0.208),
+  'fr_galaxy': (0.500, 0.497, 0.280),
+  'fr_hearts': (0.503, 0.500, 0.198),
+  'fr_ice': (0.494, 0.499, 0.201),
+  'fr_jungle': (0.504, 0.517, 0.207),
+  'fr_neon': (0.496, 0.499, 0.285),
+  'fr_ocean': (0.510, 0.488, 0.272),
+  'fr_phoenix': (0.498, 0.507, 0.269),
+  'fr_rainbow': (0.496, 0.500, 0.212),
+  'fr_ramadan': (0.502, 0.499, 0.199),
+  'fr_royal': (0.495, 0.492, 0.212),
+  'fr_sakura': (0.502, 0.505, 0.274),
+  'fr_storm': (0.498, 0.499, 0.292),
+  'frame_host': (0.541, 0.569, 0.276),
+  'frame_party': (0.524, 0.488, 0.305),
+  'frame_vip': (0.491, 0.476, 0.279),
+};
+
+/// يرسم إطاراً فوق أفاتار قطره [diameter] ومركزه [center]، بحيث تنطبق فتحة الإطار على الأفاتار.
+/// [art] اسم الصورة مثل fr_royal أو frame_host.
+Widget frameOverlay(String art, {required double diameter, required Offset center}) {
+  final (cx, cy, r) = frameHoles[art] ?? (.5, .5, .24);
+  // الفتحة أصغر من الأفاتار بشوي عشان الحلقة تغطي طرفه
+  final w = diameter * .5 * .95 / r;
+  return Positioned(
+    left: center.dx - cx * w,
+    top: center.dy - cy * w,
+    width: w,
+    height: w,
+    child: IgnorePointer(
+      child: Image.asset(
+        'assets/images/$art.webp',
+        fit: BoxFit.fill,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      ),
+    ),
+  );
+}
+
 /// صورة اللاعب مع إطار المتجر (إن وجد).
 class FramedAvatar extends StatelessWidget {
   const FramedAvatar({super.key, required this.index, required this.size, this.frame});
@@ -65,19 +113,7 @@ class FramedAvatar extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           PlayerAvatar(index: index, size: size * .86, ring: false),
-          Positioned(
-            left: -size * .4,
-            top: -size * .4,
-            width: size * 1.8,
-            height: size * 1.8,
-            child: IgnorePointer(
-              child: Image.asset(
-                'assets/images/fr_$f.webp',
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
-              ),
-            ),
-          ),
+          frameOverlay('fr_$f', diameter: size * .86, center: Offset(size / 2, size / 2)),
         ],
       ),
     );

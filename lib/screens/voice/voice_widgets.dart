@@ -95,14 +95,6 @@ class VoiceAvatar extends StatelessWidget {
             SeatFrame.vip => 'frame_vip',
             SeatFrame.none => null,
           };
-    // إطارات المتجر مقصوصة بنفس المقاس (الحلقة في المنتصف تماماً)،
-    // والإطار المذهب للمضيف أعرض بسبب الأجنحة.
-    final frameScale = shopFrame != null
-        ? 1.8
-        : (user.frame == SeatFrame.host ? 1.75 : 1.42);
-    final lift = shopFrame == null && user.frame == SeatFrame.host
-        ? size * .1
-        : 0.0;
     final ripple = speaking && !muted;
     return SizedBox(
       width: size,
@@ -132,13 +124,7 @@ class VoiceAvatar extends StatelessWidget {
             ring: frame == null,
           ),
           if (frame != null)
-            Positioned(
-              left: -size * (frameScale - 1) / 2,
-              top: -size * (frameScale - 1) / 2 - lift,
-              width: size * frameScale,
-              height: size * frameScale,
-              child: IgnorePointer(child: artImage(frame, size * frameScale)),
-            ),
+            frameOverlay(frame, diameter: size * .86, center: Offset(size / 2, size / 2)),
           if (muted)
             Positioned(
               right: -2,

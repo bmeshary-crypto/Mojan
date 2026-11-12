@@ -202,7 +202,7 @@ class _TopBar extends StatelessWidget {
             GestureDetector(
               key: const ValueKey('top-avatar'),
               onTap: onProfile,
-              child: PlayerAvatar(index: p?.avatar ?? 0, size: 50),
+              child: FramedAvatar(index: p?.avatar ?? 0, size: 50, frame: p?.frame),
             ),
             const SizedBox(width: 10),
             Flexible(

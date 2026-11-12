@@ -17,7 +17,6 @@ import '../../core/voice/rtc/rtc.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
 import '../../widgets/mode_sheet.dart';
-import '../../games/sky_wheel/sky_wheel_screen.dart';
 import '../../widgets/account_widgets.dart';
 import 'voice_sheets.dart';
 import 'entrance_fx.dart';
@@ -273,24 +272,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               child: KeyedSubtree(key: ValueKey('room-play-${g.id}'), child: g.screenBuilder(ctx, mode)),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  /// يفتح عجلة السماء فوق الغرفة (الصوت والمحادثة يكملون).
-  void _openSkyWheel() {
-    final h = MediaQuery.sizeOf(context).height;
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          child: SizedBox(height: h * .86, child: const SkyWheelScreen(key: ValueKey('room-sky-wheel'))),
         ),
       ),
     );
@@ -1432,8 +1413,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             children: [
               tile('tool-games', const Icon(Icons.sports_esports_rounded, size: 32), 'الألعاب',
                   const [Color(0xFFFF7AB6), Color(0xFF8E6CFF)], _gamesMenu),
-              tile('tool-sky-wheel', artImage('sw_crown', 40, fallback: Icons.attractions_rounded), 'عجلة السماء',
-                  const [Color(0xFF7CC8FF), Color(0xFF5B49C9)], _openSkyWheel),
               if (room.system == null)
                 tile('tool-music', const Icon(Icons.library_music_rounded, size: 30), 'شغّل موسيقى',
                     const [Color(0xFFB04DFF), Color(0xFF5B3BD6)], () {

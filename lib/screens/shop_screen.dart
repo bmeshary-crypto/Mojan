@@ -257,8 +257,8 @@ class _ShopScreenState extends State<ShopScreen> {
               width: 92,
               height: 92,
               child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
-                PlayerAvatar(index: p.avatar, size: 92 / 1.8 * .9, ring: false),
-                _art(frameArt(f.id.split('.').last), 92),
+                PlayerAvatar(index: p.avatar, size: 46, ring: false),
+                frameOverlay(frameArt(f.id.split('.').last), diameter: 46, center: const Offset(46, 46)),
               ]),
             ),
           ),
@@ -355,8 +355,8 @@ class _ShopScreenState extends State<ShopScreen> {
           width: 84,
           height: 84,
           child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
-            PlayerAvatar(index: p.avatar, size: 84 / 1.8 * .9, ring: false),
-            _art(frameArt(name), 84),
+            PlayerAvatar(index: p.avatar, size: 42, ring: false),
+            frameOverlay(frameArt(name), diameter: 42, center: const Offset(42, 42)),
           ]),
         ),
       ShopKind.entrance => EntranceArt(name, size: 80),

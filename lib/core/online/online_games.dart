@@ -10,12 +10,15 @@ import '../firebase/cloud.dart';
 
 /// مقعد في مباراة أونلاين: لاعب حقيقي أو شخصية ذكاء اصطناعي.
 class OnlineSeat {
-  const OnlineSeat({this.uid, this.ai, required this.name, required this.avatar, this.seen});
+  const OnlineSeat({this.uid, this.ai, required this.name, required this.avatar, this.seen, this.frame});
   final String? uid;
   final String? ai;
   final String name;
   final int avatar;
   final DateTime? seen;
+
+  /// إطار المتجر اللي لابسه اللاعب.
+  final String? frame;
   bool get isAi => ai != null;
 
   static OnlineSeat? from(Object? v, DateTime? seen) {
@@ -26,6 +29,7 @@ class OnlineSeat {
       name: (v['name'] as String?) ?? 'لاعب',
       avatar: (v['avatar'] as num?)?.toInt() ?? 0,
       seen: seen,
+      frame: v['frame'] as String?,
     );
   }
 }
@@ -120,7 +124,7 @@ class OnlineGames {
 
   Map<String, dynamic> _meSeat() {
     final p = Account.instance.profile;
-    return {'uid': uid, 'name': p?.name ?? 'لاعب', 'avatar': p?.avatar ?? 0};
+    return {'uid': uid, 'name': p?.name ?? 'لاعب', 'avatar': p?.avatar ?? 0, if (p != null && p.frame != 'none') 'frame': p.frame};
   }
 
   /// الغرف المفتوحة التي تنتظر لاعبين (آخر نشاط خلال دقيقتين).

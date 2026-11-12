@@ -1379,9 +1379,9 @@ class _LudoTableState extends State<_LudoTable> {
             boxShadow: active ? [BoxShadow(color: color, blurRadius: 16)] : null,
           ),
           child: _online && _seat(c) != null
-              ? PlayerAvatar(index: _seat(c)!.avatar, size: 42, ring: false)
+              ? FramedAvatar(index: _seat(c)!.avatar, size: 42, frame: _seat(c)!.frame)
               : _solo && c == _me && Account.instance.signedIn
-              ? PlayerAvatar(index: Account.instance.profile!.avatar, size: 42, ring: false)
+              ? FramedAvatar(index: Account.instance.profile!.avatar, size: 42, frame: Account.instance.profile!.frame)
               : CircleAvatar(
                   backgroundColor: Color.lerp(color, Colors.black, .35),
                   child: Icon(isHuman ? Icons.face_rounded : Icons.smart_toy_rounded, color: Colors.white),
