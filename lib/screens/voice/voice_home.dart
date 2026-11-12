@@ -470,7 +470,7 @@ class _RoomCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 2),
                       Text(
-                        '${room.onSeats + 1}/${room.seats.length + 1}',
+                        '${room.micsHere}/${room.seats.length + 1}',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,

@@ -207,7 +207,11 @@ class VoiceRoom {
   DateTime? lastActive;
 
   /// الغرفة فيها أحد الآن (آخر ظهور أقل من 3 دقائق).
-  bool get active => system != null || lastActive == null || DateTime.now().difference(lastActive!).inMinutes < 3;
+  bool get active {
+    if (system != null || lastActive == null) return true;
+    if (hereKnown && presentIds != null) return presentIds!.isNotEmpty;
+    return DateTime.now().difference(lastActive!).inMinutes < 3;
+  }
   bool chatMuted = false;
 
   /// لعبة الصالة إن تحولت الغرفة لصالة لعب.
@@ -275,6 +279,19 @@ class VoiceRoom {
   int get onSeats => seats.where((s) => !s.empty).length;
   /// غرفة خاصة: الدخول بكلمة سر.
   bool private = false;
+
+  /// علامات "أنا هنا" في مستند الغرفة (uid -> آخر نبضة).
+  Map<String, DateTime> hereAt = {};
+  bool hereKnown = false;
+
+  /// من نبضته خلال 75 ثانية.
+  Set<String> freshHere({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    return {for (final e in hereAt.entries) if (t.difference(e.value).inSeconds < 75) e.key};
+  }
+
+  /// عدد المايكات المشغولة بأشخاص موجودين فعلاً (مع المضيف إن كان موجوداً).
+  int get micsHere => onMics.where(isPresent).length;
 
   /// الموجودون فعلاً الآن (للغرف الحقيقية وأنا داخلها). null = غير معروف.
   Set<String>? presentIds;

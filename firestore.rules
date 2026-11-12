@@ -36,7 +36,7 @@ service cloud.firestore {
       allow update: if isAdmin() || (signedIn() && resource.data.host == request.auth.uid
           && request.resource.data.host == resource.data.host)
         || (signedIn() && !kickedFrom(roomId) && memberOf(roomId)
-          && changed().hasOnly(['seats', 'heat', 'lastActive', 'invites', 'media', 'pod', 'podGen'])
+          && changed().hasOnly(['seats', 'heat', 'lastActive', 'here', 'invites', 'media', 'pod', 'podGen'])
           && (!changed().hasAny(['heat']) || request.resource.data.heat >= resource.data.get('heat', 0)));
       allow delete: if isAdmin() || (signedIn() && resource.data.host == request.auth.uid);
 

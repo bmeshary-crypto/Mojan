@@ -63,4 +63,23 @@ void main() {
     r.presentIds = null;
     expect(r.online, greaterThan(0));
   });
+
+  test('room list counts only fresh "here" marks', () {
+    final r = svc.create(title: 'غرفة', category: VoiceCategory.chat, seats: 8)..live = true;
+    final now = DateTime.now();
+    r.seats[1].user = VoiceUser(id: 'ghost', name: 'طلع', avatar: 1, isBot: false);
+    r.seats[2].user = VoiceUser(id: 'real', name: 'موجود', avatar: 2, isBot: false);
+    r.hereKnown = true;
+    r.hereAt = {'real': now.subtract(const Duration(seconds: 10)), 'ghost': now.subtract(const Duration(hours: 2))};
+    r.host = VoiceUser(id: 'host', name: 'المضيف', avatar: 3, isBot: false);
+    r.lastActive = now.subtract(const Duration(seconds: 30));
+    r.presentIds = r.freshHere();
+    expect(r.presentIds, {'real'});
+    expect(r.online, 1);
+    expect(r.micsHere, 1, reason: 'only the present person counts on the mics');
+    expect(r.active, isTrue);
+    r.hereAt = {'ghost': now.subtract(const Duration(hours: 2))};
+    r.presentIds = r.freshHere();
+    expect(r.active, isFalse, reason: 'nobody really there = saved room');
+  });
 }

@@ -40,6 +40,7 @@ class LiveVoice {
   final _absentSince = <String, DateTime>{};
   Set<String> _docIds = {};
   Timer? _conn;
+  bool _satThisVisit = false;
   bool _turnLoaded = false, _hideHooked = false;
   final _answeredFor = <String, String>{};
   final Set<String> _seenMsgs = {};
@@ -70,8 +71,47 @@ class LiveVoice {
         }
       }
       _svc.rooms.removeWhere((r) => r.live && r.system == null && !alive.contains(r.id) && r != _room);
+      for (final r in _svc.rooms) {
+        if (r.live && r.system == null && r != _room) _sweepIdle(r);
+      }
       _svc.notify();
     }, onError: (e) => debugPrint('rooms list: $e'));
+    // غرفتا النظام: نعرف عدد الموجودين فيهما من علامات "أنا هنا"
+    for (final id in [SystemRooms.welcomeId, SystemRooms.podcastId]) {
+      _sysSubs.add(_db.collection('rooms').doc(id).snapshots().listen((d) {
+        final r = _svc.byId(id);
+        final data = d.data();
+        if (r == null || data == null || r == _room) return;
+        final here = data['here'];
+        r.hereKnown = here is Map;
+        r.hereAt = {
+          if (here is Map)
+            for (final e in here.entries)
+              if (e.value is Timestamp) '${e.key}': (e.value as Timestamp).toDate(),
+        };
+        r.presentIds = r.hereKnown ? r.freshHere() : null;
+        _svc.notify();
+      }, onError: (e) => debugPrint('sys room: $e')));
+    }
+  }
+
+  final _sysSubs = <StreamSubscription>[];
+  final _idleSwept = <String, DateTime>{};
+
+  /// غرفة ما فيها أحد من دقيقتين: ننزل من بقوا "معلقين" على المايكات (طلعوا بدون ما يُحذفوا).
+  void _sweepIdle(VoiceRoom r) {
+    final last = r.lastActive;
+    if (last == null || DateTime.now().difference(last).inSeconds < 120) return;
+    final fresh = r.hereKnown ? r.freshHere() : <String>{};
+    final ghosts = [
+      for (final s in r.seats)
+        if (s.user != null && !s.user!.isAi && !fresh.contains(s.user!.id)) s.index,
+    ];
+    if (ghosts.isEmpty) return;
+    final prev = _idleSwept[r.id];
+    if (prev != null && DateTime.now().difference(prev).inSeconds < 60) return;
+    _idleSwept[r.id] = DateTime.now();
+    _ref(r).update({for (final i in ghosts) 'seats.$i': FieldValue.delete()}).catchError((Object e) => debugPrint('idle sweep: $e'));
   }
 
   VoiceRoom _newRoom(String id, Map<String, dynamic> data) {
@@ -137,6 +177,15 @@ class LiveVoice {
   }
 
   void _applyRoom(VoiceRoom r, Map<String, dynamic> data) {
+    final here = data['here'];
+    r.hereKnown = here is Map;
+    r.hereAt = {
+      if (here is Map)
+        for (final e in here.entries)
+          if (e.value is Timestamp) '${e.key}': (e.value as Timestamp).toDate(),
+    };
+    // غرفة ما دخلتها: الموجودون = من علامته "أنا هنا" حديثة
+    if (r != _room) r.presentIds = r.hereKnown ? r.freshHere() : null;
     if (r.system != null) {
       // غرف النظام: العنوان والمضيف ثابتة، نأخذ فقط المقاعد والشعبية
       r.heat = (data['heat'] as num?)?.toInt() ?? r.heat;
@@ -232,6 +281,7 @@ class LiveVoice {
     if (_room != null && _room != r) await exit(_room!);
     _room = r;
     r.presentIds = {if (!hidden) _me};
+    _satThisVisit = false;
     _firstMessages = true;
     _loadTurn();
     if (!_hideHooked) {
@@ -273,9 +323,13 @@ class LiveVoice {
       try {
         await peopleRef.set({..._meMap(), 'session': _session, 'at': FieldValue.serverTimestamp(), if (hidden) 'hidden': true});
         // أي شخص داخل الغرفة يبقيها نشطة ويحدّث آخر ظهور لها
-        if (r.system == null) {
+        // وعلامة "أنا هنا" في مستند الغرفة نفسه، عشان القائمة تعرف مين فعلاً موجود بدون ما تدخل
+        if (!hidden) {
           r.lastActive = DateTime.now();
-          await ref.update({'lastActive': FieldValue.serverTimestamp()});
+          await ref.update({
+            'here.$_me': FieldValue.serverTimestamp(),
+            if (r.system == null) 'lastActive': FieldValue.serverTimestamp(),
+          });
         }
       } catch (e) {
         debugPrint('beat: $e');
@@ -345,7 +399,7 @@ class LiveVoice {
       final mine = r.seats.where((s) => s.user?.isMe == true).map((s) => s.index).toList();
       await Future.wait([
         ref.collection('people').doc(_me).delete(),
-        if (mine.isNotEmpty) ref.update({for (final i in mine) 'seats.$i': FieldValue.delete()}),
+        ref.update({'here.$_me': FieldValue.delete(), for (final i in mine) 'seats.$i': FieldValue.delete()}),
       ]);
     } catch (e) {
       debugPrint('exit: $e');
@@ -381,7 +435,18 @@ class LiveVoice {
         continue;
       }
       final since = _absentSince.putIfAbsent(u.id, () => now);
-      if (now.difference(since).inSeconds >= 40) gone.add(s.index);
+      final seen = r.hereAt[u.id];
+      // ما له علامة حضور حديثة أصلاً: معلّق من زيارة قديمة، ينزل فوراً
+      final stale = r.hereKnown && (seen == null || now.difference(seen).inSeconds > 90);
+      if (stale || now.difference(since).inSeconds >= 40) gone.add(s.index);
+    }
+    // مقعدي من زيارة سابقة (طلعت بدون ما ينحذف): أنزل منه
+    if (!_satThisVisit && !_svc.isHost(r)) {
+      final mine = [for (final s in r.seats) if (s.user?.isMe == true) s.index];
+      if (mine.isNotEmpty) {
+        _satThisVisit = true;
+        _ref(r).update({for (final i in mine) 'seats.$i': FieldValue.delete()}).catchError((Object e) => debugPrint('own ghost: $e'));
+      }
     }
     if (gone.isEmpty) return;
     if (present.isEmpty) return;
@@ -520,6 +585,7 @@ class LiveVoice {
         return true;
       });
       if (!ok) return 'المقعد مشغول';
+      _satThisVisit = true;
       await RtcMesh.instance.startMic();
       return null;
     } catch (e) {
