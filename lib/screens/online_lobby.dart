@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/firebase/cloud.dart';
 import '../core/online/online_games.dart';
+import '../core/online/share_link.dart';
+import '../games/game_registry.dart';
 import '../core/theme.dart';
 import '../widgets/account_widgets.dart';
 import '../widgets/animated_background.dart';
@@ -35,7 +38,11 @@ class OnlineLobby extends StatefulWidget {
   final Widget Function() vsComputer;
 
   /// كم ثانية ننتظر لاعبين حقيقيين قبل ما يدخل الذكاء الاصطناعي.
-  static const waitSeconds = 20;
+  static const waitSeconds = 60;
+
+  /// رقم غرفة جاي من رابط دعوة (?join=123456&g=ludo) ينتظر يفتح لوبي اللعبة.
+  static String? pendingCode;
+  static String? pendingGame;
 
   @override
   State<OnlineLobby> createState() => _OnlineLobbyState();
@@ -56,14 +63,70 @@ class _OnlineLobbyState extends State<OnlineLobby> {
   void initState() {
     super.initState();
     Cloud.instance.ready.then((_) {
-      if (mounted) setState(() => _ready = true);
+      if (!mounted) return;
+      setState(() => _ready = true);
+      final code = OnlineLobby.pendingCode;
+      if (code != null && (OnlineLobby.pendingGame ?? widget.game) == widget.game && svc.available) {
+        OnlineLobby.pendingCode = null;
+        OnlineLobby.pendingGame = null;
+        _joinCode(code);
+      }
     });
   }
+
+  final _codeCtl = TextEditingController();
+
+  String _gameTitle(String id) {
+    try {
+      return GameRegistry.byId(id).title;
+    } catch (_) {
+      return id;
+    }
+  }
+
+  /// الانضمام برقم الغرفة.
+  void _joinCode(String raw) {
+    final code = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (code.length != 6) {
+      _toast('رقم الغرفة 6 أرقام');
+      return;
+    }
+    _run(() async {
+      final m = await svc.findByCode(code);
+      if (m == null) {
+        _toast('ما لقينا غرفة مفتوحة بهذا الرقم، يمكن بدأت أو انقفلت');
+        return null;
+      }
+      if (m.game != widget.game) {
+        _toast('هذا الرقم لغرفة ${_gameTitle(m.game)}، افتحها من لعبتها');
+        return null;
+      }
+      if (m.full) {
+        _toast('الغرفة مليانة');
+        return null;
+      }
+      return await svc.join(m.id) ? m.id : null;
+    });
+  }
+
+  String _inviteLink(OnlineMatch m) => '${siteUrl()}?join=${m.code}&g=${m.game}';
+
+  String _inviteText(OnlineMatch m) =>
+      'تعال العب معي ${widget.title} في MOJAN 🎲\nرقم الغرفة: ${m.code}\nادخل من الرابط: ${_inviteLink(m)}';
+
+  Future<void> _share(OnlineMatch m) async {
+    if (await shareNative(_inviteText(m))) return;
+    await Clipboard.setData(ClipboardData(text: _inviteText(m)));
+    _toast('نسخت الدعوة، الصقها لأصحابك');
+  }
+
+  void _whatsapp(OnlineMatch m) => openExternal('https://wa.me/?text=${Uri.encodeComponent(_inviteText(m))}');
 
   @override
   void dispose() {
     _sub?.cancel();
     _tick?.cancel();
+    _codeCtl.dispose();
     super.dispose();
   }
 
@@ -197,6 +260,35 @@ class _OnlineLobbyState extends State<OnlineLobby> {
 
   Widget _lobby() {
     return ListView(padding: const EdgeInsets.all(14), children: [
+      GlassCard(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('انضم برقم الغرفة', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                key: const ValueKey('online-code-input'),
+                controller: _codeCtl,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                textAlign: TextAlign.center,
+                textDirection: TextDirection.ltr,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 6),
+                decoration: const InputDecoration(counterText: '', hintText: '000000', isDense: true),
+                onSubmitted: _joinCode,
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilledButton(
+              key: const ValueKey('online-code-join'),
+              onPressed: _working ? null : () => _joinCode(_codeCtl.text),
+              child: const Text('دخول', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 14),
       Row(children: [
         for (final (i, n) in widget.sizes.indexed) ...[
           if (i > 0) const SizedBox(width: 10),
@@ -213,7 +305,7 @@ class _OnlineLobbyState extends State<OnlineLobby> {
       ]),
       const SizedBox(height: 8),
       const Text(
-        'إذا ما لقينا أحد خلال ${OnlineLobby.waitSeconds} ثانية يدخل معك لاعب ذكاء اصطناعي 🤖',
+        'تنتظر غرفتك دقيقة كاملة يدخلها أصحابك، وبعدها يكمل الناقص لاعب ذكاء اصطناعي 🤖',
         textAlign: TextAlign.center,
         style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 12.5),
       ),
@@ -312,6 +404,56 @@ class _OnlineLobbyState extends State<OnlineLobby> {
       const SizedBox(height: 6),
       Text('ننتظر لاعبين… ${m.filled}/${m.size}',
           textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800)),
+      if (m.code != null) ...[
+        const SizedBox(height: 12),
+        GlassCard(
+          padding: const EdgeInsets.all(12),
+          child: Column(children: [
+            const Text('رقم الغرفة', style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w800)),
+            InkWell(
+              key: const ValueKey('online-code-copy'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: m.code!));
+                _toast('نسخت رقم الغرفة');
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                child: Row(mainAxisSize: MainAxisSize.min, textDirection: TextDirection.ltr, children: [
+                  Text(m.code!,
+                      key: const ValueKey('online-code'),
+                      style: AppTheme.display.copyWith(fontSize: 38, letterSpacing: 6, color: AppColors.gold)),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.copy_rounded, color: Colors.white70),
+                ]),
+              ),
+            ),
+            const Text('أرسل الرقم أو الرابط لأصحابك عشان يدخلون معك',
+                textAlign: TextAlign.center, style: TextStyle(color: AppColors.textMuted, fontSize: 12.5, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                child: FilledButton.icon(
+                  key: const ValueKey('online-share-wa'),
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366), foregroundColor: Colors.white),
+                  onPressed: () => _whatsapp(m),
+                  icon: const Icon(Icons.chat_rounded),
+                  label: const Text('واتساب', style: TextStyle(fontWeight: FontWeight.w900)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.icon(
+                  key: const ValueKey('online-share'),
+                  onPressed: () => _share(m),
+                  icon: const Icon(Icons.share_rounded),
+                  label: const Text('مشاركة الرابط', style: TextStyle(fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ],
       const SizedBox(height: 16),
       Wrap(alignment: WrapAlignment.center, spacing: 14, runSpacing: 14, children: [
         for (final seat in m.seats)
@@ -339,7 +481,9 @@ class _OnlineLobbyState extends State<OnlineLobby> {
       ]),
       const SizedBox(height: 20),
       Text(
-        _left > 0 ? 'إذا ما دخل أحد خلال $_left ثانية يكمل معك لاعب ذكاء اصطناعي 🤖' : 'يدخل الذكاء الاصطناعي الحين…',
+        _left > 0
+            ? 'ننتظر أصحابك $_left ثانية، وبعدها تكمل المقاعد الفاضية بلاعبين ذكاء اصطناعي 🤖'
+            : 'يدخل الذكاء الاصطناعي الحين…',
         textAlign: TextAlign.center,
         style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
       ),

@@ -20,6 +20,8 @@ import 'vip_screen.dart';
 import '../core/vip.dart';
 import 'support_screen.dart';
 import '../widgets/daily_bonus.dart';
+import '../core/online/share_link.dart';
+import 'online_lobby.dart';
 
 /// يظهر البونص اليومي تلقائياً مرة واحدة في كل تشغيل.
 bool _dailyShown = false;
@@ -43,12 +45,33 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _openInvite()) return;
       if (!mounted || _dailyShown || !Account.instance.dailyAvailable) return;
       _dailyShown = true;
       Future.delayed(const Duration(milliseconds: 900), () {
         if (mounted && Account.instance.dailyAvailable) showDailyBonus(context);
       });
     });
+  }
+
+  /// رابط دعوة لغرفة (?join=123456&g=ludo): يفتح لوبي اللعبة أونلاين ويدخل الغرفة.
+  bool _openInvite() {
+    final q = Uri.base.queryParameters;
+    final code = q['join'];
+    if (code == null || code.isEmpty) return false;
+    clearJoinParam();
+    final id = q['g'] ?? 'ludo';
+    final GameModule game;
+    try {
+      game = GameRegistry.byId(id);
+    } catch (_) {
+      return false;
+    }
+    if (!game.modes.contains(PlayMode.online)) return false;
+    OnlineLobby.pendingCode = code;
+    OnlineLobby.pendingGame = id;
+    Navigator.of(context).push(MaterialPageRoute(builder: (c) => game.screenBuilder(c, PlayMode.online)));
+    return true;
   }
 
   Future<void> _openGame(GameModule game) async {

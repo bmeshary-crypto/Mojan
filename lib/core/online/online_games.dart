@@ -38,6 +38,7 @@ class OnlineMatch {
         size = (d['size'] as num?)?.toInt() ?? 2,
         host = d['host'] as String? ?? '',
         seed = (d['seed'] as num?)?.toInt() ?? 7,
+        code = d['code'] as String?,
         lastActive = (d['lastActive'] as Timestamp?)?.toDate(),
         seats = List.generate((d['size'] as num?)?.toInt() ?? 2, (i) {
           final s = (d['seats'] as Map?)?['$i'];
@@ -53,6 +54,9 @@ class OnlineMatch {
 
   /// بذرة عشوائية مشتركة (مثل خلط أوراق سيكو بنفس الترتيب عند الكل).
   final int seed;
+
+  /// رقم الغرفة (6 أرقام) للانضمام أو المشاركة برابط.
+  final String? code;
   final DateTime? lastActive;
   final List<OnlineSeat?> seats;
 
@@ -133,8 +137,31 @@ class OnlineGames {
   Stream<OnlineMatch?> watch(String id) =>
       _matches.doc(id).snapshots().map((d) => d.exists ? OnlineMatch(d.id, d.data()!) : null);
 
+  /// رقم غرفة جديد ما يتكرر مع غرفة مفتوحة.
+  Future<String> _newCode() async {
+    final r = Random();
+    for (var i = 0; i < 5; i++) {
+      final c = '${100000 + r.nextInt(900000)}';
+      if (await findByCode(c) == null) return c;
+    }
+    return '${100000 + r.nextInt(900000)}';
+  }
+
+  /// يدور غرفة منتظرة بهذا الرقم (آخر نشاط خلال 10 دقائق).
+  Future<OnlineMatch?> findByCode(String code) async {
+    final s = await _matches.where('code', isEqualTo: code).limit(10).get();
+    final now = DateTime.now();
+    for (final d in s.docs) {
+      final m = OnlineMatch(d.id, d.data());
+      if (m.status == 'waiting' && (m.lastActive == null || now.difference(m.lastActive!).inMinutes < 10)) return m;
+    }
+    return null;
+  }
+
   Future<String> create(String game, int size) async {
+    final code = await _newCode();
     final ref = await _matches.add({
+      'code': code,
       'game': game,
       'status': 'waiting',
       'size': size,
