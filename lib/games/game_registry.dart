@@ -32,6 +32,7 @@ class GameRegistry {
                   game: 'ludo',
                   title: 'لودو',
                   colors: const [Color(0xFFFF6B85), AppColors.ludo],
+                  modes: const [('classic', 'كلاسيك'), ('power', '⚡ باور'), ('quick', '🏃 سريع')],
                   screen: (m) => LudoOnlineScreen(match: m),
                   vsComputer: () => const LudoScreen(mode: PlayMode.vsComputer),
                 )

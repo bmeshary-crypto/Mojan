@@ -8,6 +8,7 @@ import '../../core/account/account.dart';
 import '../../core/game_module.dart';
 import '../../core/haptics.dart';
 import '../../core/sfx.dart';
+import '../../core/num_format.dart';
 import '../../core/online/online_games.dart';
 import '../../core/shop.dart';
 import '../../core/theme.dart';
@@ -356,7 +357,7 @@ class _CoinPill extends StatelessWidget {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const CoinIcon(size: 20),
             const SizedBox(width: 5),
-            Text('$coins', style: const TextStyle(fontWeight: FontWeight.w900)),
+            Text(fmtK(coins), style: const TextStyle(fontWeight: FontWeight.w900)),
             const SizedBox(width: 4),
             const Icon(Icons.add_circle_rounded, size: 18, color: AppColors.gold),
           ]),
@@ -586,7 +587,8 @@ class LudoOnlineScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final setup = LudoSetup(players: match.size);
+    final variant = LudoVariant.values.where((v) => v.name == match.mode).firstOrNull ?? LudoVariant.classic;
+    final setup = LudoSetup(players: match.size, variant: variant);
     final mine = match.seatOf(OnlineGames.instance.uid);
     return Scaffold(
       body: AnimatedBackground(
@@ -800,7 +802,14 @@ class _LudoTableState extends State<_LudoTable> {
         };
       }
     }
-    game = LudoGame(players: s.colors, rules: s.rules, teams: s.teams, power: s.power, items: items);
+    game = LudoGame(
+      players: s.colors,
+      rules: s.rules,
+      teams: s.teams,
+      power: s.power,
+      items: items,
+      pickupSeed: _online ? _match.seed : null,
+    );
     _status = _turnText();
     if (_online) {
       _startOnline();

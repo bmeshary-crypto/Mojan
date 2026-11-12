@@ -39,6 +39,7 @@ class OnlineMatch {
         host = d['host'] as String? ?? '',
         seed = (d['seed'] as num?)?.toInt() ?? 7,
         code = d['code'] as String?,
+        mode = d['mode'] as String? ?? 'classic',
         lastActive = (d['lastActive'] as Timestamp?)?.toDate(),
         seats = List.generate((d['size'] as num?)?.toInt() ?? 2, (i) {
           final s = (d['seats'] as Map?)?['$i'];
@@ -57,6 +58,9 @@ class OnlineMatch {
 
   /// رقم الغرفة (6 أرقام) للانضمام أو المشاركة برابط.
   final String? code;
+
+  /// وضع اللعب (لودو: classic / power / quick).
+  final String mode;
   final DateTime? lastActive;
   final List<OnlineSeat?> seats;
 
@@ -158,13 +162,14 @@ class OnlineGames {
     return null;
   }
 
-  Future<String> create(String game, int size) async {
+  Future<String> create(String game, int size, {String mode = 'classic'}) async {
     final code = await _newCode();
     final ref = await _matches.add({
       'code': code,
       'game': game,
       'status': 'waiting',
       'size': size,
+      'mode': mode,
       'host': uid,
       'seed': Random().nextInt(1 << 30),
       'seats': {'0': _meSeat()},
@@ -202,12 +207,12 @@ class OnlineGames {
   }
 
   /// لعب سريع: يدخل أقدم غرفة مفتوحة بنفس الحجم، أو ينشئ غرفة جديدة.
-  Future<String> quick(String game, int size) async {
+  Future<String> quick(String game, int size, {String mode = 'classic'}) async {
     final open = await openMatches(game).first;
-    for (final m in open.where((m) => m.size == size && m.host != uid)) {
+    for (final m in open.where((m) => m.size == size && m.mode == mode && m.host != uid)) {
       if (await join(m.id)) return m.id;
     }
-    return create(game, size);
+    return create(game, size, mode: mode);
   }
 
   /// يملأ المقاعد الفاضية بشخصيات ذكاء اصطناعي ويبدأ.

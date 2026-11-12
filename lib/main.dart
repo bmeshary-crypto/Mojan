@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -20,6 +21,11 @@ import 'screens/splash_screen.dart';
 import 'screens/voice/mini_room_bubble.dart';
 
 Future<void> main() async {
+  LicenseRegistry.addLicense(() => Stream.value(const LicenseEntryWithLineBreaks(
+        ['Noto Emoji Animation'],
+        'Animated gifts in voice rooms use Noto Emoji Animation by Google, licensed under CC BY 4.0 '
+        '(https://creativecommons.org/licenses/by/4.0/). Resized for the app.',
+      )));
   WidgetsFlutterBinding.ensureInitialized();
   await Account.instance.load();
   Speech.natural = (t, v, eg) => AiBrain.instance.tts(t, v, egyptian: eg);

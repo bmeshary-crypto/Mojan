@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/account/account.dart';
 import '../core/haptics.dart';
+import '../core/num_format.dart';
 import '../core/shop.dart';
 import '../core/theme.dart';
 import '../games/ludo/ludo_board.dart';
@@ -19,13 +20,14 @@ import 'voice/entrance_fx.dart';
 /// أرقام تبويبات المتجر.
 abstract final class ShopTab {
   static const coins = 0;
-  static const frames = 1;
-  static const entrances = 2;
-  static const bubbles = 3;
-  static const chairs = 4;
-  static const skins = 5;
-  static const items = 6;
-  static const bag = 7;
+  static const diamonds = 1;
+  static const frames = 2;
+  static const entrances = 3;
+  static const bubbles = 4;
+  static const chairs = 5;
+  static const skins = 6;
+  static const items = 7;
+  static const bag = 8;
 }
 
 Future<void> openShop(BuildContext context, {int tab = 0}) =>
@@ -126,7 +128,12 @@ class _ShopScreenState extends State<ShopScreen> {
                   onPressed: () => Navigator.maybePop(context),
                   icon: const Icon(Icons.arrow_back_rounded, size: 28),
                 ),
-              Text('المتجر', style: AppTheme.display.copyWith(fontSize: 28)),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('المتجر', style: AppTheme.display.copyWith(fontSize: 28)),
+                ),
+              ),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.fromLTRB(8, 5, 12, 5),
@@ -134,9 +141,19 @@ class _ShopScreenState extends State<ShopScreen> {
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   const CoinIcon(size: 22),
                   const SizedBox(width: 6),
-                  Text('${p.coins}',
+                  Text(fmtK(p.coins),
                       key: const ValueKey('shop-coins'),
                       style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                ]),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.fromLTRB(8, 5, 12, 5),
+                decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Text('💎', style: TextStyle(fontSize: 17)),
+                  const SizedBox(width: 5),
+                  Text(fmtK(p.diamonds), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                 ]),
               ),
             ]),
@@ -151,6 +168,7 @@ class _ShopScreenState extends State<ShopScreen> {
             labelStyle: TextStyle(fontWeight: FontWeight.w900, fontFamily: 'Cairo', fontSize: 14),
             tabs: [
               Tab(key: ValueKey('shop-tab-coins'), text: 'عملات'),
+              Tab(key: ValueKey('shop-tab-diamonds'), text: '💎 ماسات'),
               Tab(key: ValueKey('shop-tab-frames'), text: 'إطارات'),
               Tab(key: ValueKey('shop-tab-entrances'), text: 'دخوليات'),
               Tab(key: ValueKey('shop-tab-bubbles'), text: 'فقاعات'),
@@ -163,6 +181,7 @@ class _ShopScreenState extends State<ShopScreen> {
           Expanded(
             child: TabBarView(children: [
               _coinsTab(p),
+              _diamondsTab(p),
               _framesTab(p),
               _entrancesTab(p),
               _bubblesTab(p),
@@ -176,7 +195,7 @@ class _ShopScreenState extends State<ShopScreen> {
       },
     );
     return DefaultTabController(
-      length: 8,
+      length: 9,
       initialIndex: widget.initialTab,
       child: widget.embedded
           ? body
@@ -328,6 +347,162 @@ class _ShopScreenState extends State<ShopScreen> {
         errorBuilder: (_, _, _) => SizedBox(width: size, height: size, child: const Icon(Icons.card_giftcard_rounded)),
       );
 
+  // ---------- الماسات ----------
+  Widget _preview(PlayerProfile p, ShopItem item) {
+    final name = item.id.split('.').last;
+    return switch (item.kind) {
+      ShopKind.frame => SizedBox(
+          width: 84,
+          height: 84,
+          child: Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
+            PlayerAvatar(index: p.avatar, size: 84 / 1.8 * .9, ring: false),
+            _art(frameArt(name), 84),
+          ]),
+        ),
+      ShopKind.entrance => EntranceArt(name, size: 80),
+      ShopKind.chair => SizedBox(width: 84, height: 84, child: Image.asset(chairAsset(name), fit: BoxFit.contain)),
+      ShopKind.bubble => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: bubbleStyles[name]!),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Text('هلا والله 👋', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+        ),
+      _ => const Icon(Icons.card_giftcard_rounded, size: 50),
+    };
+  }
+
+  Future<void> _exchange(PlayerProfile p) async {
+    var amount = p.diamonds;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('بدّل ماساتك بكوينز', style: TextStyle(fontWeight: FontWeight.w900)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('💎 $amount  ←  🪙 $amount',
+                key: const ValueKey('exchange-amount'),
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppColors.gold)),
+            const SizedBox(height: 4),
+            const Text('كل ماسة = كوين واحد', style: TextStyle(color: AppColors.textMuted)),
+            if (p.diamonds > 1)
+              Slider(
+                value: amount.toDouble(),
+                min: 1,
+                max: p.diamonds.toDouble(),
+                divisions: p.diamonds - 1 > 200 ? 200 : p.diamonds - 1,
+                activeColor: AppColors.gold,
+                onChanged: (v) => set(() => amount = v.round()),
+              ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+            FilledButton(
+              key: const ValueKey('confirm-exchange'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('بدّل', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return;
+    if (Account.instance.exchangeDiamonds(amount)) {
+      Haptics.heavyImpact();
+      _toast('بدّلت $amount ماسة بـ$amount كوين 🪙');
+    }
+  }
+
+  Future<void> _buyDiamonds(PlayerProfile p, ShopItem item) async {
+    final acc = Account.instance;
+    if (p.owns(item.id)) {
+      acc.equip(item.id);
+      return;
+    }
+    final price = acc.diamondPriceFor(item);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('شراء ${item.title}؟', style: const TextStyle(fontWeight: FontWeight.w900)),
+        content: Text('💎 $price ماسة بدل ${item.price} كوين',
+            style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.gold)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(
+            key: const ValueKey('confirm-buy-diamonds'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('اشترِ بالماسات', style: TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final err = acc.buyWithDiamonds(item);
+    if (err != null) {
+      _toast(err);
+      return;
+    }
+    Haptics.heavyImpact();
+    acc.equip(item.id);
+    _toast('اشتريت ${item.title} بالماسات وتم تركيبه ✨');
+  }
+
+  Widget _diamondsTab(PlayerProfile p) {
+    final picks = [for (final id in diamondPicks) shopItem(id)];
+    return _list([
+      GlassCard(
+        key: const ValueKey('diamonds-card'),
+        color: const Color(0xFF4CC9F0).withValues(alpha: .12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Text('💎', style: TextStyle(fontSize: 34)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${p.diamonds} ماسة',
+                    key: const ValueKey('shop-diamonds'),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                const Text('توصلك من هدايا الناس: 30% من قيمة كل هدية.',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('exchange-diamonds'),
+              style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
+              onPressed: p.diamonds > 0 ? () => _exchange(p) : null,
+              icon: const Icon(Icons.swap_horiz_rounded),
+              label: const Text('بدّلها بكوينز (نفس القيمة)', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 14),
+      _heading('💎 مميز بالماسات • خصم 30%'),
+      _grid(ratio: .74, [
+        for (final it in picks)
+          _skinCard(
+            key: ValueKey('dia-${it.id}'),
+            preview: _preview(p, it),
+            title: it.title,
+            owned: p.owns(it.id),
+            equipped: false,
+            price: Account.instance.diamondPriceFor(it),
+            diamonds: true,
+            onTap: () => _buyDiamonds(p, it),
+          ),
+      ]),
+    ]);
+  }
+
   // ---------- العملات ----------
   Widget _coinsTab(PlayerProfile p) {
     final acc = Account.instance;
@@ -442,6 +617,7 @@ class _ShopScreenState extends State<ShopScreen> {
     required bool owned,
     required bool equipped,
     int? price,
+    bool diamonds = false,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -473,7 +649,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   : owned
                       ? const Text('ركّب', style: TextStyle(fontWeight: FontWeight.w900))
                       : Row(mainAxisSize: MainAxisSize.min, children: [
-                          const CoinIcon(size: 16),
+                          diamonds ? const Text('💎', style: TextStyle(fontSize: 13)) : const CoinIcon(size: 16),
                           const SizedBox(width: 4),
                           Text('$price',
                               style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.bgTop)),

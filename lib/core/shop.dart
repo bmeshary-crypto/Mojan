@@ -132,6 +132,16 @@ const styleCatalog = <ShopItem>[
   ShopItem(id: 'chair.dragon', kind: ShopKind.chair, title: 'عروش التنين', price: 8000),
 ];
 
+/// خصم الشراء بالماسات.
+const diamondDiscount = .30;
+
+/// قطع مميزة تنشرى بالماسات بسعر مخفض.
+const diamondPicks = [
+  'entrance.carriage', 'entrance.jet', 'entrance.ufo', 'entrance.dragon', 'entrance.lion', 'entrance.supercar',
+  'frame.phoenix', 'frame.galaxy', 'frame.storm', 'frame.royal', 'frame.emerald', 'frame.neon',
+  'chair.dragon', 'chair.throne', 'chair.ice', 'bubble.royal', 'bubble.galaxy', 'bubble.ruby',
+];
+
 /// صورة كرسي المايك.
 String chairAsset(String name) => 'assets/images/ch_$name.webp';
 

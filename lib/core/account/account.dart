@@ -742,6 +742,33 @@ class Account extends ChangeNotifier {
     _save();
   }
 
+  /// تبديل ماسات بكوينز بنفس القيمة (ماسة = كوين).
+  bool exchangeDiamonds(int n) {
+    final p = profile;
+    if (p == null || n <= 0 || p.diamonds < n) return false;
+    p.diamonds -= n;
+    p.coins += n;
+    _save();
+    notifyListeners();
+    return true;
+  }
+
+  /// سعر القطعة بالماسات (خصم 30% عن سعرها بالكوينز).
+  int diamondPriceFor(ShopItem item) => (item.price * (1 - diamondDiscount)).round();
+
+  /// شراء قطعة مميزة بالماسات. يرجع رسالة خطأ أو null.
+  String? buyWithDiamonds(ShopItem item) {
+    final p = profile;
+    if (p == null) return 'سجّل دخولك أولاً';
+    if (p.owns(item.id)) return 'تملكه بالفعل';
+    final price = diamondPriceFor(item);
+    if (p.diamonds < price) return 'ماساتك لا تكفي';
+    p.diamonds -= price;
+    p.owned.add(item.id);
+    _save();
+    return null;
+  }
+
   /// حجز ID مميز. يرجع رسالة خطأ أو null عند النجاح.
   Future<String?> setSpecialId(String id) async {
     final p = profile;

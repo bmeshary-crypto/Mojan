@@ -22,7 +22,11 @@ class OnlineLobby extends StatefulWidget {
     required this.vsComputer,
     this.sizes = const [2, 4],
     this.sizeLabels = const {2: 'لاعبين', 4: '4 لاعبين'},
+    this.modes = const [],
   });
+
+  /// أوضاع اللعب المتاحة (المعرف والاسم). فاضية = وضع واحد.
+  final List<(String, String)> modes;
 
   /// معرف اللعبة (ludo, seeko).
   final String game;
@@ -58,6 +62,9 @@ class _OnlineLobbyState extends State<OnlineLobby> {
   Timer? _tick;
   int _left = OnlineLobby.waitSeconds;
   bool _launched = false;
+  late String _mode = widget.modes.isEmpty ? 'classic' : widget.modes.first.$1;
+
+  String _modeLabel(String id) => widget.modes.where((m) => m.$1 == id).firstOrNull?.$2 ?? '';
 
   @override
   void initState() {
@@ -289,6 +296,21 @@ class _OnlineLobbyState extends State<OnlineLobby> {
         ]),
       ),
       const SizedBox(height: 14),
+      if (widget.modes.isNotEmpty) ...[
+        const Text('وضع اللعب', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, children: [
+          for (final (id, label) in widget.modes)
+            ChoiceChip(
+              key: ValueKey('online-mode-$id'),
+              label: Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+              selected: _mode == id,
+              selectedColor: AppColors.gold.withValues(alpha: .35),
+              onSelected: (_) => setState(() => _mode = id),
+            ),
+        ]),
+        const SizedBox(height: 10),
+      ],
       Row(children: [
         for (final (i, n) in widget.sizes.indexed) ...[
           if (i > 0) const SizedBox(width: 10),
@@ -298,7 +320,7 @@ class _OnlineLobbyState extends State<OnlineLobby> {
               icon: n == 2 ? '⚡' : '👥',
               title: 'لعب سريع',
               sub: widget.sizeLabels[n] ?? '$n لاعبين',
-              onTap: () => _run(() => svc.quick(widget.game, n)),
+              onTap: () => _run(() => svc.quick(widget.game, n, mode: _mode)),
             ),
           ),
         ],
@@ -340,7 +362,7 @@ class _OnlineLobbyState extends State<OnlineLobby> {
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('غرفة ${m.hostName}', style: const TextStyle(fontWeight: FontWeight.w900)),
-                        Text('${m.filled}/${m.size} لاعبين',
+                        Text('${m.filled}/${m.size} لاعبين${_modeLabel(m.mode).isEmpty ? '' : ' • ${_modeLabel(m.mode)}'}',
                             style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
                       ]),
                     ),
@@ -363,7 +385,7 @@ class _OnlineLobbyState extends State<OnlineLobby> {
           Expanded(
             child: OutlinedButton(
               key: ValueKey('online-create-$n'),
-              onPressed: () => _run(() => svc.create(widget.game, n)),
+              onPressed: () => _run(() => svc.create(widget.game, n, mode: _mode)),
               child: Text('افتح غرفة ($n)'),
             ),
           ),

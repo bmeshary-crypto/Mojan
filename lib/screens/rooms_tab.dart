@@ -4,6 +4,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/game_module.dart';
 import '../core/theme.dart';
+import '../core/online/online_games.dart';
+import 'online_lobby.dart';
 import '../games/game_registry.dart';
 import '../widgets/account_widgets.dart';
 import '../widgets/bouncy_button.dart';
@@ -28,7 +30,7 @@ class _RoomsTabState extends State<RoomsTab> {
     super.dispose();
   }
 
-  void _join() {
+  Future<void> _join() async {
     if (_code.text.length != 6) return;
     VoiceService.instance.ensureRooms();
     final room = VoiceService.instance.byId(_code.text);
@@ -36,13 +38,27 @@ class _RoomsTabState extends State<RoomsTab> {
       openVoiceRoom(context, room);
       return;
     }
+    // غرفة لعب أونلاين بهذا الرمز
+    if (OnlineGames.instance.available) {
+      try {
+        final m = await OnlineGames.instance.findByCode(_code.text);
+        if (m != null && mounted) {
+          final g = GameRegistry.byId(m.game);
+          OnlineLobby.pendingCode = _code.text;
+          OnlineLobby.pendingGame = m.game;
+          Navigator.of(context).push(MaterialPageRoute(builder: (c) => g.screenBuilder(c, PlayMode.online)));
+          return;
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(duration: Duration(seconds: 2), 
           behavior: SnackBarBehavior.floating,
           content: Text(
-            'الانضمام لغرفة صديق برمزها يعمل بعد تشغيل السيرفر',
+            'ما لقينا غرفة بهذا الرمز، تأكد منه أو اطلبه من صاحبك',
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
@@ -51,6 +67,8 @@ class _RoomsTabState extends State<RoomsTab> {
 
   /// أفضل طريقة لعب جماعي متاحة الآن لكل لعبة.
   static PlayMode _roomMode(GameModule g) {
+    // صراحة أو جرأة أونلاين لسا قيد التجهيز
+    if (g.modes.contains(PlayMode.online) && g.id != 'truth_dare') return PlayMode.online;
     if (g.modes.contains(PlayMode.rooms)) return PlayMode.rooms;
     if (g.modes.contains(PlayMode.local)) return PlayMode.local;
     return g.modes.first;
@@ -60,7 +78,7 @@ class _RoomsTabState extends State<RoomsTab> {
     PlayMode.rooms => 'غرفة برمز مع منافسين',
     PlayMode.local => 'مع أصحابك على نفس الجهاز',
     PlayMode.vsComputer => 'ضد الكمبيوتر',
-    PlayMode.online => 'أونلاين',
+    PlayMode.online => '🌐 أونلاين مع أصحابك برمز الغرفة',
     PlayMode.live => 'جولات مباشرة مع الجميع',
     PlayMode.solo => 'العب بعملاتك',
   };

@@ -118,9 +118,11 @@ class LudoGame {
     this.power = false,
     Map<LudoColor, Map<LudoItem, int>>? items,
     Random? random,
+    int? pickupSeed,
   })  : assert(players.length >= 2 && players.length <= 4),
         assert(!teams || players.length == 4, 'الفرق تحتاج 4 لاعبين'),
-        _random = random ?? Random() {
+        _random = random ?? Random(),
+        _spawn = pickupSeed == null ? (random ?? Random()) : Random(pickupSeed) {
     for (final p in players) {
       tokens[p] = List.generate(rules.tokensPerPlayer, (i) => LudoToken(p, i));
       this.items[p] = {for (final i in LudoItem.values) i: power ? (items?[p]?[i] ?? 0) : 0};
@@ -150,8 +152,8 @@ class LudoGame {
           g,
     ];
     if (free.isEmpty) return;
-    pickups[free[_random.nextInt(free.length)]] =
-        item ?? LudoItem.values[_random.nextInt(LudoItem.values.length)];
+    pickups[free[_spawn.nextInt(free.length)]] =
+        item ?? LudoItem.values[_spawn.nextInt(LudoItem.values.length)];
   }
 
   /// 2 ضد 2: الأحمر والأصفر ضد الأخضر والأزرق (اللاعبان المتقابلان قطرياً).
@@ -179,6 +181,9 @@ class LudoGame {
   final List<LudoColor> players;
   final LudoRules rules;
   final Random _random;
+
+  /// مكان ظهور أدوات الباور (بذرة مشتركة في الأونلاين عشان تطلع بنفس المكان عند الكل).
+  final Random _spawn;
   final Map<LudoColor, List<LudoToken>> tokens = {};
 
   int _turn = 0;

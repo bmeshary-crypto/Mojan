@@ -16,6 +16,7 @@ import '../../core/voice/live_voice.dart';
 import '../../core/voice/rtc/rtc.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
+import '../../widgets/mode_sheet.dart';
 import '../../games/sky_wheel/sky_wheel_screen.dart';
 import '../../widgets/account_widgets.dart';
 import 'voice_sheets.dart';
@@ -185,6 +186,96 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     Future.delayed(const Duration(milliseconds: 2600), () {
       if (mounted && _giftKey == k) setState(() => _giftFx = null);
     });
+  }
+
+  /// قائمة كل الألعاب: أي لعبة تنفتح فوق الغرفة والصوت والمحادثة يكملون.
+  void _gamesMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1E1446),
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .8),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('🎮 الألعاب', style: AppTheme.display.copyWith(fontSize: 22)),
+              const Text('العب وأنت في الغرفة: الصوت والدردشة يكملون.',
+                  style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 10),
+              Flexible(
+                child: GridView.count(
+                  crossAxisCount: 3,
+                  shrinkWrap: true,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: .9,
+                  children: [
+                    for (final g in GameRegistry.games)
+                      GestureDetector(
+                        key: ValueKey('room-game-${g.id}'),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _playInRoom(g);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [g.colors[1], g.colors[2]]),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Column(children: [
+                            Expanded(child: g.iconBuilder(ctx)),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(g.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+                            ),
+                          ]),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// يفتح لعبة فوق الغرفة (نفس فكرة عجلة السماء).
+  Future<void> _playInRoom(GameModule g) async {
+    final mode = g.modes.length == 1 ? g.modes.first : await showModeSheet(context, g);
+    if (mode == null || !mounted) return;
+    final h = MediaQuery.sizeOf(context).height;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: SizedBox(
+            height: h * .9,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF2A1E6B), AppColors.bgTop],
+                ),
+              ),
+              child: KeyedSubtree(key: ValueKey('room-play-${g.id}'), child: g.screenBuilder(ctx, mode)),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// يفتح عجلة السماء فوق الغرفة (الصوت والمحادثة يكملون).
@@ -1339,6 +1430,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             spacing: 18,
             runSpacing: 16,
             children: [
+              tile('tool-games', const Icon(Icons.sports_esports_rounded, size: 32), 'الألعاب',
+                  const [Color(0xFFFF7AB6), Color(0xFF8E6CFF)], _gamesMenu),
               tile('tool-sky-wheel', artImage('sw_crown', 40, fallback: Icons.attractions_rounded), 'عجلة السماء',
                   const [Color(0xFF7CC8FF), Color(0xFF5B49C9)], _openSkyWheel),
               if (room.system == null)
@@ -1533,6 +1626,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               _raiseHand,
               colors: const [Color(0xFF8E6CFF), Color(0xFF5B3BD6)],
             ),
+          const SizedBox(width: 6),
+          _round(
+            'btn-games',
+            const Icon(Icons.sports_esports_rounded, color: Colors.white),
+            _gamesMenu,
+            colors: const [Color(0xFFFF7AB6), Color(0xFF8E6CFF)],
+          ),
           const SizedBox(width: 6),
           // صندوق الأدوات: عجلة السماء والموسيقى وأدوات المضيف
           _round(

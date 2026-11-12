@@ -31,11 +31,14 @@ enum VoiceTheme { classic, party }
 
 /// هدايا الغرف الصوتية.
 class VoiceGift {
-  const VoiceGift(this.id, this.title, this.price);
+  const VoiceGift(this.id, this.title, this.price, {this.animated = false});
   final String id;
   final String title;
   final int price;
-  String get art => 'assets/images/gift_$id.webp';
+
+  /// هدية متحركة (Noto Animated Emoji من Google، رخصة CC BY 4.0).
+  final bool animated;
+  String get art => animated ? 'assets/images/ag_$id.webp' : 'assets/images/gift_$id.webp';
 }
 
 const voiceGifts = [
@@ -48,6 +51,26 @@ const voiceGifts = [
   VoiceGift('ring', 'خاتم ألماس', 999),
   VoiceGift('car', 'سيارة', 1999),
   VoiceGift('rocket', 'صاروخ', 4999),
+  // متحركة
+  VoiceGift('coffee', 'قهوة', 15, animated: true),
+  VoiceGift('kiss', 'بوسة', 20, animated: true),
+  VoiceGift('balloon', 'بالونة', 25, animated: true),
+  VoiceGift('yay', 'فرحة', 30, animated: true),
+  VoiceGift('star', 'نجمة', 40, animated: true),
+  VoiceGift('sparkheart', 'قلب لامع', 50, animated: true),
+  VoiceGift('party', 'احتفال', 66, animated: true),
+  VoiceGift('fire', 'نار', 88, animated: true),
+  VoiceGift('butterfly', 'فراشة', 120, animated: true),
+  VoiceGift('cake', 'كيكة', 150, animated: true),
+  VoiceGift('rainbow', 'قوس قزح', 250, animated: true),
+  VoiceGift('gem', 'ألماسة', 350, animated: true),
+  VoiceGift('dolphin', 'دولفين', 400, animated: true),
+  VoiceGift('fireworks', 'ألعاب نارية', 777, animated: true),
+  VoiceGift('eagle', 'نسر', 1200, animated: true),
+  VoiceGift('unicorn', 'وحيد القرن', 1500, animated: true),
+  VoiceGift('lion', 'أسد', 2500, animated: true),
+  VoiceGift('dragon', 'تنين', 3999, animated: true),
+  VoiceGift('globe', 'العالم', 9999, animated: true),
 ];
 
 VoiceGift giftById(String id) => voiceGifts.firstWhere((g) => g.id == id);
@@ -751,6 +774,13 @@ class VoiceService extends ChangeNotifier {
       if (m != 0) return m;
       return (b.lastActive ?? DateTime(2000)).compareTo(a.lastActive ?? DateTime(2000));
     });
+
+  /// غرفتي (أحدث غرفة أنشأتها أنا).
+  VoiceRoom? get myRoom {
+    final mine = rooms.where((r) => r.live && r.system == null && r.host.isMe).toList()
+      ..sort((a, b) => (b.lastActive ?? DateTime(2000)).compareTo(a.lastActive ?? DateTime(2000)));
+    return mine.firstOrNull;
+  }
 
   List<VoiceRoom> get live => rooms.where((r) => !r.closed && r.active).toList()
     ..sort((a, b) {

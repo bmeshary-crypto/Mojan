@@ -72,6 +72,11 @@ class _VoiceHomeState extends State<VoiceHome> {
 
   Future<void> _create() async {
     if (Account.instance.profile == null) return;
+    final mine = svc.myRoom;
+    if (mine != null) {
+      openVoiceRoom(context, mine);
+      return;
+    }
     final r = await showCreateRoom(context);
     if (r != null && mounted) openVoiceRoom(context, r);
   }
@@ -187,7 +192,78 @@ class _VoiceHomeState extends State<VoiceHome> {
     if (ok == true) svc.deleteSaved(r);
   }
 
-  Widget _banner() => GestureDetector(
+  Widget _banner() {
+    final mine = svc.myRoom;
+    return mine == null ? _createBanner() : _myRoomBanner(mine);
+  }
+
+  Widget _myRoomBanner(VoiceRoom r) {
+    final on = !r.closed && r.active;
+    final n = r.presentIds?.length ?? 0;
+    return GestureDetector(
+      key: const ValueKey('voice-my-room'),
+      onTap: () => openVoiceRoom(context, r),
+      child: Container(
+        height: 130,
+        padding: const EdgeInsets.fromLTRB(16, 12, 14, 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF4D9D), Color(0xFF8E6CFF), Color(0xFF5B3BD6)],
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFFF4D9D).withValues(alpha: .35),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('🏠 غرفتك', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white70)),
+                  Text(
+                    r.title,
+                    key: const ValueKey('my-room-title'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.display.copyWith(fontSize: 24),
+                  ),
+                  Text(
+                    on ? '🟢 مفتوحة الحين • $n بالغرفة' : 'مقفلة • ${lastSeenLabel(r.lastActive)}',
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.login_rounded, color: Color(0xFFB0207A), size: 18),
+                      const SizedBox(width: 4),
+                      Text(
+                        on ? 'ادخل غرفتك' : 'افتح غرفتك',
+                        style: const TextStyle(color: Color(0xFFB0207A), fontWeight: FontWeight.w900),
+                      ),
+                    ]),
+                  ),
+                ],
+              ),
+            ),
+            VoiceAvatar(user: r.host, size: 84, speaking: on)
+                .animate(onPlay: (c) => c.repeat(reverse: true))
+                .moveY(begin: 0, end: -5, duration: 1400.ms, curve: Curves.easeInOut),
+          ],
+        ),
+      ),
+    ).animate().fadeIn().slideY(begin: .1, end: 0);
+  }
+
+  Widget _createBanner() => GestureDetector(
     key: const ValueKey('voice-create'),
     onTap: _create,
     child: Container(

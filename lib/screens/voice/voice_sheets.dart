@@ -56,7 +56,8 @@ void voiceToast(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
-      SnackBar(duration: const Duration(seconds: 2), 
+      SnackBar(
+        duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
         content: Text(
           text,
@@ -79,6 +80,7 @@ Future<(VoiceGift, int)?> showGiftSheet(
   var allMics = false;
   var selected = voiceGifts.first;
   var count = 1;
+  var animatedTab = false;
   return _sheet(context, (ctx) {
     final mics = room.onMics.where((u) => !u.isMe).toList();
     final people = [
@@ -209,69 +211,99 @@ Future<(VoiceGift, int)?> showGiftSheet(
                 ),
               ),
               const SizedBox(height: 8),
-              GridView.count(
-                crossAxisCount: 3,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 1.05,
+              Row(
                 children: [
-                  for (final g in voiceGifts)
-                    GestureDetector(
-                      key: ValueKey('gift-${g.id}'),
-                      onTap: () => set(() => selected = g),
-                      child: AnimatedContainer(
-                        duration: 200.ms,
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(
-                            alpha: selected == g ? .14 : .05,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: selected == g
-                                ? AppColors.gold
-                                : Colors.white12,
-                            width: selected == g ? 2 : 1,
-                          ),
+                  for (final (anim, label) in [
+                    (false, '🎁 هدايا'),
+                    (true, '✨ متحركة'),
+                  ])
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 8),
+                      child: ChoiceChip(
+                        key: ValueKey(
+                          'gift-tab-${anim ? 'animated' : 'classic'}',
                         ),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: artImage(
-                                g.art,
-                                70,
-                                fallback: Icons.card_giftcard_rounded,
-                              ),
-                            ),
-                            Text(
-                              g.title,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const CoinIcon(size: 13),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '${g.price}',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: AppColors.gold,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                        label: Text(
+                          label,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
+                        selected: animatedTab == anim,
+                        selectedColor: AppColors.gold.withValues(alpha: .3),
+                        onSelected: (_) => set(() => animatedTab = anim),
                       ),
                     ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(ctx).height * .42,
+                ),
+                child: GridView.count(
+                  crossAxisCount: animatedTab ? 4 : 3,
+                  shrinkWrap: true,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: animatedTab ? .82 : 1.05,
+                  children: [
+                    for (final g in voiceGifts.where(
+                      (g) => g.animated == animatedTab,
+                    ))
+                      GestureDetector(
+                        key: ValueKey('gift-${g.id}'),
+                        onTap: () => set(() => selected = g),
+                        child: AnimatedContainer(
+                          duration: 200.ms,
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(
+                              alpha: selected == g ? .14 : .05,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: selected == g
+                                  ? AppColors.gold
+                                  : Colors.white12,
+                              width: selected == g ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: artImage(
+                                  g.art,
+                                  70,
+                                  fallback: Icons.card_giftcard_rounded,
+                                ),
+                              ),
+                              Text(
+                                g.title,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const CoinIcon(size: 13),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${g.price}',
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      color: AppColors.gold,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: 10),
               Row(
@@ -426,10 +458,7 @@ Future<void> showUserSheet(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(u.name, style: AppTheme.display.copyWith(fontSize: 22)),
-              if (u.vip) ...[
-                const SizedBox(width: 6),
-                VipBadge(u.vipLevel),
-              ],
+              if (u.vip) ...[const SizedBox(width: 6), VipBadge(u.vipLevel)],
             ],
           ),
           if (!u.isAi) ...[
@@ -545,7 +574,11 @@ Future<void> showUserSheet(
               ],
             ),
           ],
-          if (host && !u.isMe && !u.isAi && s == null && !room.seats.any((x) => x.user?.id == u.id))
+          if (host &&
+              !u.isMe &&
+              !u.isAi &&
+              s == null &&
+              !room.seats.any((x) => x.user?.id == u.id))
             Row(
               children: [
                 act(
@@ -587,16 +620,10 @@ Future<void> showUserSheet(
                   'إنزال',
                   () => svc.removeFromSeat(room, s.index),
                 ),
-                act(
-                  'host-kick',
-                  Icons.person_remove_rounded,
-                  'طرد',
-                  () {
-                    final err = svc.kick(room, u);
-                    if (err != null) voiceToast(context, err);
-                  },
-                  color: const Color(0xFFFF7A7A),
-                ),
+                act('host-kick', Icons.person_remove_rounded, 'طرد', () {
+                  final err = svc.kick(room, u);
+                  if (err != null) voiceToast(context, err);
+                }, color: const Color(0xFFFF7A7A)),
               ],
             ),
           ],
@@ -719,7 +746,8 @@ Future<void> showAudienceSheet(
                 ),
                 if (meListening && !svc.hiddenIn(room)) row(svc.me()),
                 for (final u in room.audience) row(u),
-                if (room.presentIds == null && room.listeners > room.audience.length + 1)
+                if (room.presentIds == null &&
+                    room.listeners > room.audience.length + 1)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Text(
@@ -960,9 +988,20 @@ Future<void> showReportSheet(
               ),
               onTap: () {
                 VoiceService.instance.report(room, r, target: target);
-                Support.instance.report(reason: r, roomId: room.id, roomTitle: room.title, target: target, screenshot: shot);
+                Support.instance.report(
+                  reason: r,
+                  roomId: room.id,
+                  roomTitle: room.title,
+                  target: target,
+                  screenshot: shot,
+                );
                 Navigator.pop(ctx);
-                voiceToast(context, shot != null ? 'وصل بلاغك مع صورة الشاشة كدليل، شكراً لك 🙏' : 'وصل بلاغك، شكراً لك 🙏');
+                voiceToast(
+                  context,
+                  shot != null
+                      ? 'وصل بلاغك مع صورة الشاشة كدليل، شكراً لك 🙏'
+                      : 'وصل بلاغك، شكراً لك 🙏',
+                );
               },
             ),
         ],
@@ -1129,7 +1168,9 @@ Future<String?> showGamePicker(BuildContext context) => _sheet<String>(
           crossAxisSpacing: 10,
           childAspectRatio: 1.3,
           children: [
-            for (final g in GameRegistry.games.where((g) => !coinGames.contains(g.id) || g.id == 'sky_wheel'))
+            for (final g in GameRegistry.games.where(
+              (g) => !coinGames.contains(g.id) || g.id == 'sky_wheel',
+            ))
               GestureDetector(
                 key: ValueKey('pick-game-${g.id}'),
                 onTap: () => Navigator.pop(ctx, g.id),
@@ -1258,7 +1299,10 @@ Future<void> showRoomSettings(
                   child: OutlinedButton.icon(
                     key: const ValueKey('open-all-mics'),
                     onPressed: () => svc.lockAll(room, false),
-                    icon: const Icon(Icons.lock_open_rounded, color: AppColors.seeko),
+                    icon: const Icon(
+                      Icons.lock_open_rounded,
+                      color: AppColors.seeko,
+                    ),
                     label: const Text('فتح كل المايكات'),
                   ),
                 ),
@@ -1288,9 +1332,14 @@ Future<void> showRoomSettings(
               ListTile(
                 key: const ValueKey('room-password-tile'),
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(room.private ? Icons.lock_rounded : Icons.lock_open_rounded, color: AppColors.gold),
+                leading: Icon(
+                  room.private ? Icons.lock_rounded : Icons.lock_open_rounded,
+                  color: AppColors.gold,
+                ),
                 title: Text(
-                  room.private ? 'غرفة خاصة 🔒 (تغيير كلمة السر)' : 'اجعلها غرفة خاصة بكلمة سر',
+                  room.private
+                      ? 'غرفة خاصة 🔒 (تغيير كلمة السر)'
+                      : 'اجعلها غرفة خاصة بكلمة سر',
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
                 onTap: () => editRoomPassword(ctx, room),
@@ -1500,12 +1549,18 @@ Future<VoiceRoom?> showCreateRoom(BuildContext context) {
   );
 }
 
-
 // ---------------- دعوة شخص للمايك ----------------
 
-Future<void> showInvitePicker(BuildContext context, VoiceRoom room, {int? seat}) => _sheet(context, (ctx) {
+Future<void> showInvitePicker(
+  BuildContext context,
+  VoiceRoom room, {
+  int? seat,
+}) => _sheet(context, (ctx) {
   final svc = VoiceService.instance;
-  final people = [for (final u in room.audience) if (!u.isMe && !u.isAi) u];
+  final people = [
+    for (final u in room.audience)
+      if (!u.isMe && !u.isAi) u,
+  ];
   return ConstrainedBox(
     key: const ValueKey('invite-picker'),
     constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .6),
@@ -1516,14 +1571,22 @@ Future<void> showInvitePicker(BuildContext context, VoiceRoom room, {int? seat})
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _handle(),
-          _title(seat == null ? 'ادعُ شخصاً للمايك' : 'ادعُ شخصاً للمايك ${seat + 1}'),
+          _title(
+            seat == null
+                ? 'ادعُ شخصاً للمايك'
+                : 'ادعُ شخصاً للمايك ${seat + 1}',
+          ),
           if (people.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
               child: Text(
                 'ما فيه مستمعين في الغرفة الحين.\nشارك رقم الغرفة وادعُ أصحابك 👋',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, height: 1.6),
+                style: TextStyle(
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w700,
+                  height: 1.6,
+                ),
               ),
             )
           else
@@ -1535,21 +1598,46 @@ Future<void> showInvitePicker(BuildContext context, VoiceRoom room, {int? seat})
                     ListTile(
                       key: ValueKey('invite-${u.id}'),
                       contentPadding: EdgeInsets.zero,
-                      leading: PlayerAvatar(index: u.avatar, size: 40, ring: false),
+                      leading: PlayerAvatar(
+                        index: u.avatar,
+                        size: 40,
+                        ring: false,
+                      ),
                       title: Text(
                         u.name,
-                        style: TextStyle(fontWeight: FontWeight.w900, color: u.vip ? AppColors.gold : Colors.white),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: u.vip ? AppColors.gold : Colors.white,
+                        ),
                       ),
-                      subtitle: Text('المستوى ${u.level}', style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+                      subtitle: Text(
+                        'المستوى ${u.level}',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
                       trailing: FilledButton.icon(
-                        style: FilledButton.styleFrom(backgroundColor: AppColors.seeko, foregroundColor: AppColors.bgTop),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.seeko,
+                          foregroundColor: AppColors.bgTop,
+                        ),
                         onPressed: () {
                           Navigator.pop(ctx);
                           final err = svc.inviteUser(room, u, seat);
-                          voiceToast(context, err ?? 'أرسلنا الدعوة لـ ${u.name} 📨');
+                          voiceToast(
+                            context,
+                            err ?? 'أرسلنا الدعوة لـ ${u.name} 📨',
+                          );
                         },
-                        icon: const Icon(Icons.mic_external_on_rounded, size: 18),
-                        label: const Text('دعوة', style: TextStyle(fontWeight: FontWeight.w900)),
+                        icon: const Icon(
+                          Icons.mic_external_on_rounded,
+                          size: 18,
+                        ),
+                        label: const Text(
+                          'دعوة',
+                          style: TextStyle(fontWeight: FontWeight.w900),
+                        ),
                       ),
                     ),
                 ],
@@ -1563,7 +1651,10 @@ Future<void> showInvitePicker(BuildContext context, VoiceRoom room, {int? seat})
 
 // ---------------- تشغيل الموسيقى في الغرفة ----------------
 
-Future<void> showMediaSheet(BuildContext context, VoiceRoom room) => _sheet(context, (ctx) {
+Future<void> showMediaSheet(
+  BuildContext context,
+  VoiceRoom room,
+) => _sheet(context, (ctx) {
   final svc = VoiceService.instance;
   return StatefulBuilder(
     builder: (ctx, setState) {
@@ -1581,7 +1672,9 @@ Future<void> showMediaSheet(BuildContext context, VoiceRoom room) => _sheet(cont
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF5B3BD6), Color(0xFFB04DFF)]),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF5B3BD6), Color(0xFFB04DFF)],
+                ),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Row(
@@ -1589,7 +1682,10 @@ Future<void> showMediaSheet(BuildContext context, VoiceRoom room) => _sheet(cont
                   Container(
                     width: 52,
                     height: 52,
-                    decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(14)),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                     child: const Icon(Icons.music_note_rounded, size: 30),
                   ),
                   const SizedBox(width: 12),
@@ -1601,12 +1697,23 @@ Future<void> showMediaSheet(BuildContext context, VoiceRoom room) => _sheet(cont
                           mine ? room.mediaTitle ?? '' : 'ما فيه شي شغال منك',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          mine ? (rtc.mediaPaused ? 'متوقف مؤقتاً' : 'يسمعه كل اللي في الغرفة') : 'اختر أغنية أو أي ملف صوتي من جوالك',
-                          style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w700),
+                          mine
+                              ? (rtc.mediaPaused
+                                    ? 'متوقف مؤقتاً'
+                                    : 'يسمعه كل اللي في الغرفة')
+                              : 'اختر أغنية أو أي ملف صوتي من جوالك',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ],
                     ),
@@ -1643,7 +1750,11 @@ Future<void> showMediaSheet(BuildContext context, VoiceRoom room) => _sheet(cont
                         svc.toggleMediaPause(room);
                         setState(() {});
                       },
-                      icon: Icon(rtc.mediaPaused ? Icons.play_arrow_rounded : Icons.pause_rounded),
+                      icon: Icon(
+                        rtc.mediaPaused
+                            ? Icons.play_arrow_rounded
+                            : Icons.pause_rounded,
+                      ),
                       label: Text(rtc.mediaPaused ? 'تشغيل' : 'إيقاف مؤقت'),
                     ),
                   ),
@@ -1655,7 +1766,10 @@ Future<void> showMediaSheet(BuildContext context, VoiceRoom room) => _sheet(cont
                         svc.stopMedia(room);
                         setState(() {});
                       },
-                      icon: const Icon(Icons.stop_rounded, color: Color(0xFFFF7A7A)),
+                      icon: const Icon(
+                        Icons.stop_rounded,
+                        color: Color(0xFFFF7A7A),
+                      ),
                       label: const Text('إيقاف'),
                     ),
                   ),
@@ -1676,7 +1790,10 @@ Future<void> showMediaSheet(BuildContext context, VoiceRoom room) => _sheet(cont
                 setState(() {});
               },
               icon: const Icon(Icons.library_music_rounded),
-              label: Text(mine ? 'اختر ملف ثاني' : 'اختر ملف صوتي من جوالك', style: const TextStyle(fontWeight: FontWeight.w900)),
+              label: Text(
+                mine ? 'اختر ملف ثاني' : 'اختر ملف صوتي من جوالك',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
             ),
             const SizedBox(height: 8),
             const Text(

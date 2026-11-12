@@ -66,7 +66,7 @@ void main() {
     await wait(tester, 200);
     await tester.tap(find.byKey(const ValueKey('room-join')));
     await wait(tester, 300);
-    expect(find.textContaining('بعد تشغيل السيرفر'), findsWidgets);
+    expect(find.textContaining('ما لقينا غرفة بهذا الرمز'), findsWidgets);
 
     // المتصدرون
     await tester.tap(find.text('المتصدرون'));

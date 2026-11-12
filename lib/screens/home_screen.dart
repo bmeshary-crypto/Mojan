@@ -22,6 +22,7 @@ import 'support_screen.dart';
 import '../widgets/daily_bonus.dart';
 import '../core/online/share_link.dart';
 import 'online_lobby.dart';
+import '../core/num_format.dart';
 
 /// يظهر البونص اليومي تلقائياً مرة واحدة في كل تشغيل.
 bool _dailyShown = false;
@@ -120,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                           sliver: SliverToBoxAdapter(
-                            child: _TopBar(onProfile: () => setState(() => _tab = 4), onSettings: () => showSettingsSheet(context), onShop: () => openShop(context)),
+                            child: _TopBar(onProfile: () => setState(() => _tab = 4), onSettings: () => showSettingsSheet(context), onShop: () => openShop(context), onDiamonds: () => openShop(context, tab: ShopTab.diamonds)),
                           ),
                         ),
                         SliverPadding(
@@ -184,10 +185,11 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onProfile, required this.onSettings, required this.onShop});
+  const _TopBar({required this.onProfile, required this.onSettings, required this.onShop, required this.onDiamonds});
   final VoidCallback onProfile;
   final VoidCallback onSettings;
   final VoidCallback onShop;
+  final VoidCallback onDiamonds;
 
   @override
   Widget build(BuildContext context) {
@@ -268,19 +270,42 @@ class _TopBar extends StatelessWidget {
                     const _Coin().animate(onPlay: (c) => c.repeat()).rotate(duration: 3.seconds, begin: 0, end: 1).then(),
                     const SizedBox(width: 6),
                     Text(
-                      _fmt(p?.coins ?? 0),
+                      fmtK(p?.coins ?? 0),
                       key: const ValueKey('top-coins'),
                       style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
                     ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.add_circle_rounded, size: 18, color: AppColors.gold),
+                    const SizedBox(width: 3),
+                    const Icon(Icons.add_circle_rounded, size: 16, color: AppColors.gold),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
+            BouncyButton(
+              tilt: false,
+              onTap: onDiamonds,
+              child: Container(
+                key: const ValueKey('top-diamonds-pill'),
+                padding: const EdgeInsets.fromLTRB(6, 5, 9, 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: .28),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: const Color(0xFF4CC9F0).withValues(alpha: .6)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Text('💎', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 4),
+                  Text(
+                    fmtK(p?.diamonds ?? 0),
+                    key: const ValueKey('top-diamonds'),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  ),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 6),
             const SupportBell(),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             BouncyButton(
               tilt: false,
               onTap: onSettings,
@@ -298,7 +323,6 @@ class _TopBar extends StatelessWidget {
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -.6, end: 0, curve: Curves.easeOutCubic);
   }
 
-  static String _fmt(int n) => n.toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
 }
 
 /// إطار التبويبات بعرض أقصى ثابت.
