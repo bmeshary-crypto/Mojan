@@ -2,9 +2,45 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.uid in ['iiSXEA6ABsdMdj9d3jIJKFFmOUX2']; }
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
-    match /users/{uid} { allow read: if signedIn(); allow create, update: if isOwner(uid); allow delete: if false; }
-    match /rooms/{roomId} { allow read: if signedIn(); allow create: if signedIn() && request.resource.data.host == request.auth.uid; allow update: if signedIn(); allow delete: if signedIn() && resource.data.host == request.auth.uid; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    match /users/{uid} {
+      allow read: if signedIn();
+      // اللاعب لا يغير حالة الإيقاف، ويستطيع فقط حذف هدية العملات بعد استلامها
+      allow create: if isOwner(uid) && !('banned' in request.resource.data) && !('grant' in request.resource.data);
+      allow update: if isAdmin() || (isOwner(uid) && !changed().hasAny(['banned']) && (!changed().hasAny(['grant']) || !('grant' in request.resource.data)));
+      allow delete: if isAdmin();
+    }
+
+    match /rooms/{roomId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.host == request.auth.uid;
+      allow update: if signedIn();
+      allow delete: if isAdmin() || (signedIn() && resource.data.host == request.auth.uid);
+
+      match /messages/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+        allow delete: if isAdmin();
+      }
+      match /people/{uid} {
+        allow read: if signedIn();
+        allow write: if isOwner(uid) || isAdmin();
+      }
+      match /signals/{id} {
+        allow read, write: if signedIn() && id.matches('.*' + request.auth.uid + '.*');
+      }
+    }
+
+    match /matches/{matchId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update: if signedIn();
+      allow delete: if isAdmin();
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }

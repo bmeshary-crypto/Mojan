@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/admin/admin.dart';
+import '../../core/firebase/cloud.dart';
 import '../../core/theme.dart';
 import '../../core/voice/voice.dart';
 import '../../widgets/account_widgets.dart';
@@ -12,6 +13,7 @@ import '../voice/voice_widgets.dart';
 /// يطلب رمز الأدمن ثم يفتح لوحة التحكم.
 Future<void> openAdmin(BuildContext context) async {
   final admin = AdminService.instance;
+  if (admin.isAdmin) admin.enterAsAdmin();
   if (!admin.unlocked) {
     final pin = TextEditingController();
     final ok = await showDialog<bool>(
@@ -691,6 +693,7 @@ class _UsersState extends State<_Users> {
     final users = admin.users.where((u) => u.contains(_q)).toList();
     final me = Account.instance.profile;
     return _list([
+      if (Cloud.instance.isAdmin) const _CloudUsers(),
       if (me != null)
         _card(
           border: AppColors.gold,
@@ -783,3 +786,131 @@ class _UsersState extends State<_Users> {
     ]);
   }
 }
+
+
+/// اللاعبون الحقيقيون من السيرفر: الرصيد، شحن عملات، إيقاف.
+class _CloudUsers extends StatefulWidget {
+  const _CloudUsers();
+
+  @override
+  State<_CloudUsers> createState() => _CloudUsersState();
+}
+
+class _CloudUsersState extends State<_CloudUsers> {
+  late Future<List<Map<String, dynamic>>> _users = Cloud.instance.adminUsers();
+
+  void _reload() => setState(() => _users = Cloud.instance.adminUsers());
+
+  void _snack(String t) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text(t)));
+
+  Future<void> _grant(Map<String, dynamic> u) async {
+    final c = TextEditingController(text: '1000');
+    final n = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('شحن عملات لـ ${u['name'] ?? 'لاعب'}', style: const TextStyle(fontWeight: FontWeight.w900)),
+        content: TextField(
+          key: const ValueKey('cloud-grant-amount'),
+          controller: c,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'عدد العملات'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, int.tryParse(c.text.trim())),
+            child: const Text('شحن'),
+          ),
+        ],
+      ),
+    );
+    if (n == null || n <= 0) return;
+    try {
+      await Cloud.instance.adminGrant(u['uid'] as String, n);
+      _snack('تم إرسال $n عملة، تصل للاعب فور فتحه التطبيق ✅');
+      _reload();
+    } catch (e) {
+      _snack('تعذر الشحن: $e');
+    }
+  }
+
+  Future<void> _ban(Map<String, dynamic> u) async {
+    final ban = u['banned'] != true;
+    try {
+      await Cloud.instance.adminBan(u['uid'] as String, ban);
+      _snack(ban ? 'تم إيقاف ${u['name']}' : 'تم رفع الإيقاف عن ${u['name']}');
+      _reload();
+    } catch (e) {
+      _snack('تعذر التنفيذ: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _users,
+      builder: (context, snap) {
+        final users = snap.data ?? const [];
+        return _card(
+          key: const ValueKey('cloud-users'),
+          border: AppColors.quiz,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.cloud_done_rounded, color: AppColors.quiz),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('اللاعبون الحقيقيون (${users.length})',
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                ),
+                IconButton(onPressed: _reload, icon: const Icon(Icons.refresh_rounded)),
+              ]),
+              if (snap.connectionState != ConnectionState.done) const LinearProgressIndicator(),
+              if (snap.hasError) Text('تعذر التحميل: ${snap.error}', style: const TextStyle(color: Color(0xFFFF7A7A))),
+              for (final u in users)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    PlayerAvatar(index: ((u['avatar'] as num?)?.toInt() ?? 0) % avatars.length, size: 36, ring: false),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(
+                          '${u['name'] ?? 'لاعب'}${adminUidsLabel(u['uid'] as String)}',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: u['banned'] == true ? const Color(0xFFFF7A7A) : Colors.white,
+                          ),
+                        ),
+                        Text(
+                          '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}${u['banned'] == true ? '  •  موقوف' : ''}',
+                          style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                        ),
+                      ]),
+                    ),
+                    IconButton(
+                      tooltip: 'شحن عملات',
+                      onPressed: () => _grant(u),
+                      icon: const Icon(Icons.add_card_rounded, color: AppColors.gold),
+                    ),
+                    IconButton(
+                      tooltip: u['banned'] == true ? 'رفع الإيقاف' : 'إيقاف',
+                      onPressed: () => _ban(u),
+                      icon: Icon(u['banned'] == true ? Icons.lock_open_rounded : Icons.block_rounded,
+                          color: const Color(0xFFFF7A7A)),
+                    ),
+                  ]),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+String adminUidsLabel(String uid) => Cloud.instance.uid == uid ? ' (أنت)' : '';

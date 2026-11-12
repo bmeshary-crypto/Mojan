@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/account/account.dart';
+import '../core/admin/admin.dart';
 import '../core/account/auth_backend.dart';
 import '../core/theme.dart';
 import 'login_screen.dart';
@@ -98,7 +99,7 @@ Future<void> showSettingsSheet(BuildContext context) {
                         '${authBackend.isDemo ? '\n\nتسجيل الدخول يعمل هنا في وضع التجربة، والحسابات الحقيقية تعمل من موقع MOJAN الرسمي.' : ''}',
                   ),
                 ),
-                ListTile(
+                if (AdminService.instance.isAdmin) ListTile(
                   key: const ValueKey('open-admin'),
                   leading: const Icon(
                     Icons.admin_panel_settings_rounded,

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../account/account.dart';
+import '../firebase/cloud.dart';
 import '../voice/voice.dart';
 
 /// مباراة جارية تظهر في لوحة الأدمن.
@@ -25,6 +26,21 @@ class AdminService extends ChangeNotifier {
   static const demoPin = '1234';
 
   bool unlocked = false;
+
+  /// للاختبارات ووضع التجربة.
+  @visibleForTesting
+  bool? adminOverride;
+
+  /// زر لوحة التحكم يظهر للأدمن فقط.
+  bool get isAdmin => adminOverride ?? Cloud.instance.isAdmin;
+
+  /// الأدمن الحقيقي يدخل مباشرة بدون رمز.
+  void enterAsAdmin() {
+    if (!isAdmin) return;
+    unlocked = true;
+    _seed();
+    notifyListeners();
+  }
   final List<LiveMatch> matches = [];
   final List<String> log = [];
 

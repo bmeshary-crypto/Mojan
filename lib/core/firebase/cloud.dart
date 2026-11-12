@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -32,6 +33,49 @@ class Cloud {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
   String? get uid => enabled ? _auth.currentUser?.uid : null;
 
+  /// هل الحساب الحالي أدمن (حسابات محددة في firebase_config.dart).
+  bool get isAdmin => adminUids.contains(uid);
+
+  /// حساب موقوف من الإدارة.
+  final banned = ValueNotifier<bool>(false);
+  StreamSubscription? _meSub;
+  String? _watching;
+
+  /// متابعة مستند اللاعب: هدايا العملات من الأدمن والإيقاف.
+  void watchMe(String id) {
+    if (!enabled || _watching == id) return;
+    _meSub?.cancel();
+    _watching = id;
+    _meSub = _db.collection('users').doc(id).snapshots().listen((doc) async {
+      final data = doc.data();
+      if (data == null) return;
+      banned.value = data['banned'] == true;
+      final grant = data['grant'];
+      if (grant is Map && grant['coins'] is num) {
+        final coins = (grant['coins'] as num).toInt();
+        try {
+          await doc.reference.update({'grant': FieldValue.delete()});
+          if (coins > 0) Account.instance.earn(coins);
+        } catch (e) {
+          debugPrint('grant failed: $e');
+        }
+      }
+    }, onError: (e) => debugPrint('watchMe: $e'));
+  }
+
+  // ---- أدوات الأدمن ----
+
+  Future<List<Map<String, dynamic>>> adminUsers() async {
+    if (!isAdmin) return [];
+    final snap = await _db.collection('users').orderBy('updatedAt', descending: true).limit(200).get();
+    return [for (final d in snap.docs) {...d.data(), 'uid': d.id}];
+  }
+
+  Future<void> adminGrant(String id, int coins) =>
+      _db.collection('users').doc(id).set({'grant': {'coins': coins, 'at': FieldValue.serverTimestamp()}}, SetOptions(merge: true));
+
+  Future<void> adminBan(String id, bool ban) => _db.collection('users').doc(id).set({'banned': ban}, SetOptions(merge: true));
+
   Future<void> init() async {
     try {
       await _init();
@@ -54,6 +98,12 @@ class Cloud {
           measurementId: firebaseWebConfig['measurementId'],
         ),
       ).timeout(const Duration(seconds: 20));
+      // حماية الذكاء الاصطناعي من الاستغلال (reCAPTCHA Enterprise، مفتاح الموقع عام وليس سرياً)
+      try {
+        await FirebaseAppCheck.instance.activate(providerWeb: ReCaptchaEnterpriseProvider(recaptchaSiteKey));
+      } catch (e) {
+        debugPrint('AppCheck failed: $e');
+      }
       // انتظار استرجاع جلسة الدخول المحفوظة في المتصفح
       await _auth.authStateChanges().first.timeout(
         const Duration(seconds: 5),
@@ -104,6 +154,10 @@ class Cloud {
   Future<void> signOut() async {
     if (!enabled) return;
     _debounce?.cancel();
+    _meSub?.cancel();
+    _meSub = null;
+    _watching = null;
+    banned.value = false;
     _weekKey = null;
     _weekBase = {};
     try {
@@ -146,7 +200,8 @@ class Cloud {
         'wk': week,
         'wb': _weekBase,
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
+      watchMe(p.id);
     } catch (e) {
       debugPrint('Cloud.save failed: $e');
     }
