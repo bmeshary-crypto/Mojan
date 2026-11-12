@@ -16,7 +16,7 @@ import 'screens/voice/mini_room_bubble.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Account.instance.load();
-  Speech.natural = AiBrain.instance.tts;
+  Speech.natural = (t, v, eg) => AiBrain.instance.tts(t, v, egyptian: eg);
   // تشغيل Firebase والربط بالسيرفر في الخلفية حتى لا يتأخر فتح التطبيق
   unawaited(Cloud.instance.init().then((_) => Account.instance.attachCloud()));
   SystemChrome.setSystemUIOverlayStyle(

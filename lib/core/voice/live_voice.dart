@@ -301,7 +301,7 @@ class LiveVoice {
       // كل الأجهزة تنطق رد الـ AI بصوتها
       if (m['ai'] != null && _svc.speakerOn) {
         final p = personaById(m['ai'] as String);
-        if (p != null) Speech.instance.speak(vm.text, female: p.female, voice: p.voice);
+        if (p != null) Speech.instance.speak(vm.text, female: p.female, voice: p.voice, egyptian: p.egyptian);
       }
       if (gift != null && !user.isMe) incomingFx.add(vm);
       // جهاز المضيف فقط يشغّل شخصيات الـ AI حتى لا يرد أكثر من مرة

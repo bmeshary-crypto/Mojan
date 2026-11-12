@@ -26,13 +26,20 @@ class Speech {
   bool get canSpeak => web.window.has('speechSynthesis');
 
   /// مصدر الصوت الطبيعي (Gemini TTS). يرجع PCM 24kHz أو null للرجوع لصوت المتصفح.
-  static Future<Uint8List?> Function(String text, String voice)? natural;
+  static Future<Uint8List?> Function(String text, String voice, bool egyptian)? natural;
 
   web.AudioContext? _ctx;
   web.AudioBufferSourceNode? _src;
   Future<void> _queue = Future.value();
   int _gen = 0;
-  bool get canListen => web.window.has('webkitSpeechRecognition');
+  /// على الجوال المتصفح يطلع صوت «تسجيل» مع كل بداية ونهاية استماع، فنوقفه هناك.
+  bool get canListen {
+    if (!web.window.has('webkitSpeechRecognition')) return false;
+    final ua = web.window.navigator.userAgent;
+    return !RegExp('Android|iPhone|iPad|iPod|Mobile').hasMatch(ua);
+  }
+
+  DateTime _lastStart = DateTime.fromMillisecondsSinceEpoch(0);
 
   _Recognition? _rec;
   bool _wanted = false;
@@ -55,12 +62,12 @@ class Speech {
   }
 
   /// يتكلم بصوت طبيعي من Gemini إن توفر [voice]، وإلا بصوت المتصفح. الجمل تُقال بالترتيب بدون تداخل.
-  void speak(String text, {bool female = true, double pitch = 1, String? voice}) {
+  void speak(String text, {bool female = true, double pitch = 1, String? voice, bool egyptian = false}) {
     final clean = text.replaceAll(RegExp(r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]', unicode: true), '').trim();
     if (clean.isEmpty) return;
     final gen = _gen;
     // نطلب الصوت فوراً (بالتوازي) ونشغله بالدور
-    final pcm = (voice != null && natural != null) ? natural!(clean, voice) : Future<Uint8List?>.value(null);
+    final pcm = (voice != null && natural != null) ? natural!(clean, voice, egyptian) : Future<Uint8List?>.value(null);
     _queue = _queue.then((_) async {
       if (gen != _gen) return;
       Uint8List? data;
@@ -152,11 +159,16 @@ class Speech {
     }).toJS;
     // المتصفح يوقف الاستماع بعد صمت طويل، فنعيد التشغيل ما دام المستخدم يريده
     r.onend = (() {
-      if (_wanted) {
+      if (!_wanted) return;
+      // نعيد التشغيل بهدوء وبدون تكرار سريع
+      final wait = const Duration(seconds: 2) - DateTime.now().difference(_lastStart);
+      Future.delayed(wait.isNegative ? Duration.zero : wait, () {
+        if (!_wanted || _rec != r) return;
         try {
+          _lastStart = DateTime.now();
           r.start();
         } catch (_) {}
-      }
+      });
     }).toJS;
     r.onerror = ((JSObject e) {
       final err = (e['error'] as JSString?)?.toDart;
@@ -164,6 +176,7 @@ class Speech {
     }).toJS;
     _rec = r;
     try {
+      _lastStart = DateTime.now();
       r.start();
     } catch (_) {
       _wanted = false;

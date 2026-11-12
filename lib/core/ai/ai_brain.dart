@@ -17,6 +17,7 @@ class AiPersona {
     required this.bio,
     required this.fallback,
     this.voice = 'Aoede',
+    this.dialect = 'السعودية البيضاء',
   });
   final String id;
   final String name;
@@ -32,6 +33,11 @@ class AiPersona {
 
   /// صوت Gemini الطبيعي (نفس أصوات NotebookLM).
   final String voice;
+
+  /// اللهجة التي تتكلم بها الشخصية (سعودية أو مصرية).
+  final String dialect;
+
+  bool get egyptian => dialect.contains('المصرية');
 }
 
 const aiPersonas = [
@@ -64,6 +70,28 @@ const aiPersonas = [
     bio: 'ذكاء اصطناعي 🤖 أحب الأسئلة والمعلومات',
     voice: 'Leda',
     fallback: ['سؤال: وش أكثر لعبة تحبونها؟', 'تدرون إن العسل ما يخرب أبداً؟ 🍯', 'منورين 🌸', 'أحب هالجو ✨'],
+  ),
+  AiPersona(
+    id: 'ai-mona',
+    name: 'منى',
+    avatar: 4,
+    female: true,
+    style: 'بنت مصرية دمها خفيف وبتحب الهزار والقفشات، بتتكلم بعفوية وبترحب بالناس',
+    bio: 'ذكاء اصطناعي 🤖 من مصر وبحب الضحك',
+    voice: 'Kore',
+    dialect: 'المصرية',
+    fallback: ['أهلاً أهلاً نورتوا 🌹', 'إيه الأخبار يا جماعة؟', 'هههه والله إنتوا عسل', 'كمل كمل أنا سامعاك 👂', 'حلو أوي الموضوع ده!'],
+  ),
+  AiPersona(
+    id: 'ai-karim',
+    name: 'كريم',
+    avatar: 7,
+    female: false,
+    style: 'شاب مصري جدع وابن نكتة، بيحب الكورة والألعاب والتحديات، ردوده قصيرة',
+    bio: 'ذكاء اصطناعي 🤖 من مصر، تعالى نلعب',
+    voice: 'Fenrir',
+    dialect: 'المصرية',
+    fallback: ['يا أهلاً يا أهلاً', 'مين يلاعبني لودو؟ 🎲', 'كلام جميل والله', 'عندك حق', 'أنا معاكم أهو 😄'],
   ),
 ];
 
@@ -100,7 +128,7 @@ class AiBrain {
   Future<String> reply(AiPersona p, {required String about, List<AiLine> history = const [], String? ask, int maxWords = 25}) async {
     final system = 'أنت "${p.name}"، شخصية ذكاء اصطناعي داخل تطبيق الألعاب الاجتماعي MOJAN. '
         'شخصيتك: ${p.style}. المكان: $about. '
-        'تكلم باللهجة السعودية البيضاء وبجمل قصيرة جداً (حد أقصى $maxWords كلمة)، كأنك تتكلم في الدردشة. '
+        'تكلم باللهجة ${p.dialect} وبجمل قصيرة جداً (حد أقصى $maxWords كلمة)، كأنك تتكلم في الدردشة. '
         'كن محترماً ولطيفاً ومناسباً لكل الأعمار، لا تطلب معلومات شخصية أو فلوس، ولا تدّعِ أنك إنسان إذا سُئلت. '
         'لا تكتب اسمك في بداية الرد ولا تستخدم علامات اقتباس.';
     final lines = history.length > 12 ? history.sublist(history.length - 12) : history;
@@ -141,7 +169,7 @@ class AiBrain {
   }
 
   /// صوت طبيعي من Gemini TTS: PCM خام 24kHz أحادي 16bit. يرجع null عند الفشل (ونستخدم صوت المتصفح).
-  Future<Uint8List?> tts(String text, String voice) async {
+  Future<Uint8List?> tts(String text, String voice, {bool egyptian = false}) async {
     if (override != null || !Cloud.instance.enabled || _ttsCooldown) return null;
     final key = '$voice|$text';
     final hit = _ttsCache[key];
@@ -154,7 +182,10 @@ class AiBrain {
           speechConfig: SpeechConfig(voiceName: voice),
         ),
       );
-      final prompt = '# Audio profile\nA friendly young Saudi host chatting in a relaxed podcast, natural Saudi Arabic dialect.\n'
+      final who = egyptian
+          ? 'A friendly young Egyptian host chatting in a relaxed podcast, natural Egyptian Arabic (Cairo) accent.'
+          : 'A friendly young Saudi host chatting in a relaxed podcast, natural Saudi Arabic dialect.';
+      final prompt = '# Audio profile\n$who\n'
           '# Director\'s notes\nWarm, clear, expressive and natural, normal conversational pace. Read only the transcript.\n'
           '# Transcript\n$text';
       for (var attempt = 0; attempt < 2; attempt++) {

@@ -42,6 +42,9 @@ const skyGroups = <SkyGroup>[
 /// قيم الرهان المتاحة.
 const skyChips = [10, 100, 1000, 10000];
 
+/// أقصى مشاركة أو ربح للاعبين الآليين (حتى لا يصير تضخم في العملات).
+const skyBotCap = 50000;
+
 enum SkyPhase { betting, spinning, result }
 
 class SkyWinner {
@@ -106,7 +109,7 @@ class SkyWheelGame {
       final key = _rng.nextDouble() < .2
           ? skyGroups[_rng.nextInt(skyGroups.length)].id
           : skyPods[_rng.nextInt(skyPods.length)].id;
-      totals[key] = (totals[key] ?? 0) + skyChips[_rng.nextInt(3)] * (1 + _rng.nextInt(5));
+      totals[key] = min((totals[key] ?? 0) + skyChips[_rng.nextInt(3)] * (1 + _rng.nextInt(5)), skyBotCap);
     }
   }
 
@@ -151,15 +154,16 @@ class SkyWheelGame {
       for (var i = 0; i < 3 + _rng.nextInt(3); i++)
         () {
           final (name, av) = botPool[_rng.nextInt(botPool.length)];
-          final stake = skyChips[_rng.nextInt(4)] * (1 + _rng.nextInt(4));
-          return SkyWinner(name, av, stake * skyPod(w).mult);
+          final stake = skyChips[_rng.nextInt(3)] * (1 + _rng.nextInt(4));
+          return SkyWinner(name, av, min(stake * skyPod(w).mult, skyBotCap));
         }(),
       if (lastPayout > 0) SkyWinner(myName, myAvatar, lastPayout, isMe: true),
     ]..sort((a, b) => b.amount.compareTo(a.amount));
     roundWinners = winners.take(3).toList();
     for (final x in winners) {
       final prev = hourly[x.name];
-      hourly[x.name] = SkyWinner(x.name, x.avatar, (prev?.amount ?? 0) + x.amount, isMe: x.isMe);
+      final sum = (prev?.amount ?? 0) + x.amount;
+      hourly[x.name] = SkyWinner(x.name, x.avatar, x.isMe ? sum : min(sum, skyBotCap), isMe: x.isMe);
     }
     return lastPayout;
   }
