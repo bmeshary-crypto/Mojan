@@ -9,6 +9,7 @@ import '../../core/account/account.dart';
 import '../../core/game_module.dart';
 import '../../core/haptics.dart';
 import '../../core/shop.dart';
+import '../../core/text_dir.dart';
 import '../../core/theme.dart';
 import '../../core/vip.dart';
 import '../../core/firebase/cloud.dart';
@@ -541,6 +542,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       ),
     );
   }
+
+  /// اتجاه خانة الكتابة على حسب أول حرف: عربي = يمين لشمال، إنجليزي = شمال ليمين.
+  TextDirection get _chatDir => textDirOf(_chat.text);
 
   void _send() {
     final err = svc.sendMessage(room, _chat.text);
@@ -1503,6 +1507,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     autofocus: true,
                     maxLength: 150,
                     textInputAction: TextInputAction.send,
+                    textDirection: _chatDir,
+                    onChanged: (_) => setState(() {}),
                     onSubmitted: (_) => _send(),
                     decoration: InputDecoration(
                       counterText: '',
@@ -1549,6 +1555,18 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     ),
                   ),
           ),
+          // وقت الكتابة: الخانة تاخد العرض كله عشان الكلام العربي يبان كامل ومرتب
+          if (_typing) ...[
+            const SizedBox(width: 6),
+            _round(
+              'chat-close',
+              const Icon(Icons.close_rounded, color: Colors.white),
+              () {
+                _chatFocus.unfocus();
+                setState(() => _typing = false);
+              },
+            ),
+          ] else ...[
           const SizedBox(width: 6),
           _round(
             'btn-speaker',
@@ -1627,6 +1645,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             () => _gift(),
             colors: const [Color(0xFFFF7AB6), Color(0xFFFF4D9D)],
           ),
+          ],
         ],
       ),
     );

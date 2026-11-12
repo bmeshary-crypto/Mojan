@@ -1,3 +1,4 @@
+import 'frame_fx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -81,14 +82,7 @@ Widget frameOverlay(String art, {required double diameter, required Offset cente
     top: center.dy - cy * w,
     width: w,
     height: w,
-    child: IgnorePointer(
-      child: Image.asset(
-        'assets/images/$art.webp',
-        fit: BoxFit.fill,
-        filterQuality: FilterQuality.medium,
-        errorBuilder: (_, _, _) => const SizedBox.shrink(),
-      ),
-    ),
+    child: IgnorePointer(child: AnimatedFrameArt(art: art, hole: r)),
   );
 }
 
