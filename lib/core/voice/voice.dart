@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../ai/ai_brain.dart';
 import '../ai/speech.dart';
+import 'live_voice.dart';
 
 import '../account/account.dart';
 
@@ -90,6 +91,9 @@ class VoiceUser {
   /// هل يتكلم الآن (حلقة الصوت).
   bool speaking = false;
 
+  /// المايك مفتوح (في الغرف الحقيقية).
+  bool mic = false;
+
   /// إيموجي يطير فوق مقعده.
   String? reaction;
 }
@@ -155,6 +159,9 @@ class VoiceRoom {
   }) : seats = List.generate(seats, VoiceSeat.new);
 
   final String id;
+
+  /// غرفة حقيقية على السيرفر بصوت حقيقي (وليست محاكاة).
+  bool live = false;
   String title;
   VoiceUser host;
   VoiceCategory category;
@@ -287,10 +294,20 @@ class VoiceService extends ChangeNotifier {
   }
   void toggleSpeaker() {
     speakerOn = !speakerOn;
+    LiveVoice.instance.speakerChanged(speakerOn);
+    if (!speakerOn) Speech.instance.stopSpeaking();
     notifyListeners();
   }
 
   void notify() => notifyListeners();
+
+  /// المتصفح رفض إذن المايك.
+  void micDenied() {
+    micOn = false;
+    final r = minimized ?? rooms.where((r) => r.live && onMic(r)).firstOrNull;
+    r?.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: '🎙️ اسمح للمتصفح باستخدام المايك حتى يسمعك الناس'));
+    notifyListeners();
+  }
 
   VoiceUser me() {
     final p = Account.instance.profile;
@@ -364,11 +381,16 @@ class VoiceService extends ChangeNotifier {
         about: 'غرفة صوتية اسمها "${r.title}" فيها ناس يسولفون، وأنت جالس على المايك',
         history: history,
       );
-      if (r.closed || !aiOnMics(r).contains(u)) return;
-      r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: text, user: u));
+      if (r.closed || !aiOnMics(r).any((x) => x.aiId == u.aiId)) return;
+      if (r.live) {
+        // في الغرف الحقيقية تنشر الرسالة للجميع وكل جهاز ينطقها
+        await LiveVoice.instance.postAi(r, p, text);
+      } else {
+        r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: text, user: u));
+        if (speakerOn) Speech.instance.speak(text, female: p.female);
+      }
       u.speaking = true;
       notifyListeners();
-      if (speakerOn) Speech.instance.speak(text, female: p.female);
       // الحلقة تبقى مضيئة بقدر طول الكلام تقريباً
       await Future.delayed(Duration(milliseconds: 600 + text.length * 70));
       u.speaking = false;
@@ -388,6 +410,10 @@ class VoiceService extends ChangeNotifier {
       _listeningRoom = r;
       Speech.instance.listen((t) {
         if (_listeningRoom != r) return;
+        if (r.live) {
+          LiveVoice.instance.sendChat(r, '🎤 $t');
+          return;
+        }
         r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: '🎤 $t', user: me()));
         notifyListeners();
         aiRespond(r, t);
@@ -497,8 +523,9 @@ class VoiceService extends ChangeNotifier {
     VoiceTheme theme = VoiceTheme.classic,
     String? announcement,
   }) {
+    final live = LiveVoice.instance.enabled;
     final room = VoiceRoom(
-      id: _newId(),
+      id: live ? LiveVoice.instance.newId() : _newId(),
       title: title.trim().isEmpty ? 'غرفة ${me().name}' : title.trim(),
       host: me()..frame = SeatFrame.host,
       category: category,
@@ -511,6 +538,10 @@ class VoiceService extends ChangeNotifier {
     room.messages.add(VoiceMessage(
         kind: VoiceMsgKind.system, text: '🤖 ${aiPersonas.first.name} (ذكاء اصطناعي) على المايك، كلّمها بالكتابة أو بصوتك'));
     rooms.insert(0, room);
+    if (live) {
+      room.live = true;
+      LiveVoice.instance.publish(room);
+    }
     notifyListeners();
     return room;
   }
@@ -526,7 +557,9 @@ class VoiceService extends ChangeNotifier {
     if (bannedUsers.contains(me().name)) return 'حسابك موقوف من الغرف الصوتية';
     if (r.kicked.contains(id)) return 'تم طردك من هذه الغرفة';
     if (r.locked && !isHost(r)) return 'الغرفة مقفلة من المضيف';
-    if (!isHost(r)) {
+    if (r.live) {
+      LiveVoice.instance.enter(r);
+    } else if (!isHost(r)) {
       r.listeners++;
       r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: me()));
     }
@@ -536,6 +569,7 @@ class VoiceService extends ChangeNotifier {
 
   void leave(VoiceRoom r) {
     if (minimized == r) minimized = null;
+    if (r.live) LiveVoice.instance.exit(r);
     final s = mySeat(r);
     if (s != null) r.seats[s].user = null;
     micOn = false;
@@ -556,6 +590,13 @@ class VoiceService extends ChangeNotifier {
     seat.user = me();
     if (r.listeners > 0 && old == null) r.listeners--;
     micOn = true;
+    if (r.live) {
+      LiveVoice.instance.claimSeat(r, i).then((err) {
+        if (err != null) r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: err));
+        LiveVoice.instance.micChanged();
+        notifyListeners();
+      });
+    }
     _syncListening(r);
     notifyListeners();
     return null;
@@ -567,6 +608,10 @@ class VoiceService extends ChangeNotifier {
     r.seats[s].user = null;
     r.listeners++;
     micOn = false;
+    if (r.live) {
+      LiveVoice.instance.releaseSeat(r, s);
+      LiveVoice.instance.micChanged();
+    }
     _syncListening(r);
     notifyListeners();
   }
@@ -576,6 +621,10 @@ class VoiceService extends ChangeNotifier {
     final s = mySeat(r);
     if (s != null && r.seats[s].muted) return;
     micOn = !micOn;
+    if (r.live) {
+      if (s != null) LiveVoice.instance.setMicFlag(r, s, micOn);
+      LiveVoice.instance.micChanged();
+    }
     _syncListening(r);
     notifyListeners();
   }
@@ -587,12 +636,14 @@ class VoiceService extends ChangeNotifier {
     final seat = r.seats[i];
     if (!seat.empty) return;
     seat.locked = !seat.locked;
+    if (r.live) LiveVoice.instance.setLocked(r);
     notifyListeners();
   }
 
   void toggleMute(VoiceRoom r, int i) {
     final seat = r.seats[i];
     seat.muted = !seat.muted;
+    if (r.live) LiveVoice.instance.setSeatMuted(r, i, seat.muted);
     if (seat.user?.isMe == true && seat.muted) micOn = false;
     seat.user?.speaking = false;
     notifyListeners();
@@ -604,6 +655,7 @@ class VoiceService extends ChangeNotifier {
     if (u == null) return;
     r.seats[i].user = null;
     r.seats[i].muted = false;
+    if (r.live) LiveVoice.instance.releaseSeat(r, i);
     r.listeners++;
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: 'تم إنزال ${u.name} من المايك'));
     notifyListeners();
@@ -618,6 +670,7 @@ class VoiceService extends ChangeNotifier {
       }
     }
     r.kicked.add(u.id);
+    if (r.live) LiveVoice.instance.kick(r, u);
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: 'تم طرد ${u.name} من الغرفة'));
     notifyListeners();
   }
@@ -626,6 +679,15 @@ class VoiceService extends ChangeNotifier {
   void invite(VoiceRoom r) {
     final free = r.seats.where((s) => s.empty && !s.locked).firstOrNull;
     if (free == null) return;
+    if (r.live) {
+      // في الغرف الحقيقية ندعو شخصية AI بدل المحاكاة
+      final p = aiPersonas.where((p) => !aiOnMics(r).any((u) => u.aiId == p.id)).firstOrNull;
+      if (p == null) return;
+      free.user = aiUser(p);
+      LiveVoice.instance.seatAi(r, free.index, p);
+      notifyListeners();
+      return;
+    }
     free.user = _bot()..frame = r.theme == VoiceTheme.party ? SeatFrame.party : SeatFrame.none;
     if (r.listeners > 0) r.listeners--;
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: '${free.user!.name} صعد للمايك ${free.index + 1}'));
@@ -659,6 +721,7 @@ class VoiceService extends ChangeNotifier {
       if (s.user != null) r.listeners++;
       if (s.user?.isMe == true) micOn = false;
     }
+    if (r.live) LiveVoice.instance.update(r);
     notifyListeners();
   }
 
@@ -677,12 +740,14 @@ class VoiceService extends ChangeNotifier {
     if (locked != null) r.locked = locked;
     if (chatMuted != null) r.chatMuted = chatMuted;
     if (category != null) r.category = category;
+    if (r.live) LiveVoice.instance.update(r);
     notifyListeners();
   }
 
   /// تحويل الغرفة لصالة لعب (أو إرجاعها غرفة صوتية بـ null).
   void setGame(VoiceRoom r, String? game) {
     r.game = game;
+    if (r.live) LiveVoice.instance.update(r);
     r.messages.add(VoiceMessage(
       kind: VoiceMsgKind.system,
       text: game == null ? 'رجعت الغرفة لغرفة صوتية' : '🎮 تحولت الغرفة لصالة ${gameTitles[game] ?? game}، اجلسوا على المايك للمشاركة',
@@ -691,6 +756,10 @@ class VoiceService extends ChangeNotifier {
   }
 
   void close(VoiceRoom r, {String reason = 'أغلق المضيف الغرفة'}) {
+    if (r.live) {
+      LiveVoice.instance.close(r, reason);
+      LiveVoice.instance.exit(r, hostClose: false);
+    }
     r.closed = true;
     if (minimized == r) minimized = null;
     for (final s in r.seats) {
@@ -708,6 +777,10 @@ class VoiceService extends ChangeNotifier {
     final t = text.trim();
     if (t.isEmpty) return null;
     if (r.chatMuted && !isHost(r)) return 'الدردشة مقفلة من المضيف';
+    if (r.live) {
+      LiveVoice.instance.sendChat(r, t);
+      return null;
+    }
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: t, user: me()));
     notifyListeners();
     aiRespond(r, t);
@@ -738,6 +811,7 @@ class VoiceService extends ChangeNotifier {
     r.recordGift(from, to, g, count);
     final names = to.length == 1 ? to.first.name : 'كل من على المايك (${to.length})';
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.gift, text: 'أرسل ${g.title} ×$count إلى $names', user: from, gift: g, count: count, to: to));
+    if (r.live) LiveVoice.instance.sendGift(r, g, to, count, 'أرسل ${g.title} ×$count إلى $names');
     notifyListeners();
     return null;
   }
@@ -757,6 +831,11 @@ class VoiceService extends ChangeNotifier {
   /// يرجع الهدية إن أرسل أحدهم هدية (لعرض التأثير).
   VoiceMessage? tick(VoiceRoom r) {
     if (r.closed) return null;
+    if (r.live) {
+      // غرفة حقيقية: لا محاكاة، فقط هدايا وصلت من الآخرين
+      final fx = LiveVoice.instance.incomingFx;
+      return fx.isEmpty ? null : fx.removeAt(0);
+    }
     VoiceMessage? gift;
     for (final s in r.seats) {
       final u = s.user;

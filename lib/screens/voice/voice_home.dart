@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/theme.dart';
+import '../../core/voice/live_voice.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
 import 'voice_room_screen.dart';
@@ -27,6 +28,8 @@ class _VoiceHomeState extends State<VoiceHome> {
   void initState() {
     super.initState();
     svc.ensureDemo();
+    // الغرف الحقيقية من السيرفر تظهر أعلى القائمة
+    LiveVoice.instance.startListing();
   }
 
   List<VoiceRoom> get _rooms {
@@ -378,6 +381,15 @@ class _RoomCard extends StatelessWidget {
                               fontWeight: FontWeight.w900,
                             ),
                           ),
+                        ),
+                      ],
+                      if (room.live) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(color: const Color(0xFFFF3B5C), borderRadius: BorderRadius.circular(8)),
+                          child: const Text('● مباشر',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.white)),
                         ),
                       ],
                       if (party && game == null) ...[
