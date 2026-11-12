@@ -125,7 +125,7 @@ class ProfileTab extends StatelessWidget {
                         onTap: () {
                           Clipboard.setData(ClipboardData(text: p.id));
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('تم نسخ رقم اللاعب'), behavior: SnackBarBehavior.floating),
+                            const SnackBar(duration: Duration(seconds: 2), content: Text('تم نسخ رقم اللاعب'), behavior: SnackBarBehavior.floating),
                           );
                         },
                         child: _Tag(icon: Icons.tag_rounded, text: p.id),

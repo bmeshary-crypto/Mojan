@@ -1,22 +1,27 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../core/firebase/cloud.dart';
 import '../core/firebase/support.dart';
+import '../core/image_pick.dart';
 import '../core/theme.dart';
 import '../widgets/account_widgets.dart';
 import '../widgets/animated_background.dart';
 
 /// يفتح صفحة «تواصل مع الإدارة». [draft] نص جاهز في خانة الكتابة (مثل طلب شحن باقة).
 /// [userId] للأدمن: يفتح محادثة لاعب معيّن.
-void openSupport(BuildContext context, {String? draft, String? userId, String? userName}) {
+/// [pack] باقة الشحن المطلوبة (العملات، السعر): يوصل الطلب للإدارة تلقائياً.
+void openSupport(BuildContext context, {String? draft, String? userId, String? userName, (int, String)? pack}) {
   Navigator.of(context).push(MaterialPageRoute(
-    builder: (_) => SupportScreen(draft: draft, userId: userId, userName: userName),
+    builder: (_) => SupportScreen(draft: draft, userId: userId, userName: userName, pack: pack),
   ));
 }
 
 class SupportScreen extends StatefulWidget {
-  const SupportScreen({super.key, this.draft, this.userId, this.userName});
+  const SupportScreen({super.key, this.draft, this.userId, this.userName, this.pack});
   final String? draft;
+  final (int, String)? pack;
   final String? userId;
   final String? userName;
 
@@ -43,8 +48,96 @@ class _SupportScreenState extends State<SupportScreen> {
       }
       final id = _chatId;
       if (id != null) Support.instance.markRead(id, asAdmin: _asAdmin).ignore();
+      final pack = widget.pack;
+      if (id != null && pack != null && !_asAdmin) {
+        Support.instance.requestTopup(id, pack.$1, pack.$2).catchError((_) => _toast('ما قدرنا نرسل الطلب، جرّب مرة ثانية'));
+      }
     }
   }
+
+  Future<void> _choose(String method) async {
+    final id = _chatId;
+    if (id == null || _sending) return;
+    setState(() => _sending = true);
+    try {
+      await Support.instance.chooseMethod(id, method);
+    } catch (_) {
+      _toast('ما قدرنا نرسل، جرّب مرة ثانية');
+    }
+    if (mounted) setState(() => _sending = false);
+  }
+
+  Future<void> _attach() async {
+    final id = _chatId;
+    if (id == null || _sending) return;
+    final img = await pickImageJpeg();
+    if (img == null) return;
+    setState(() => _sending = true);
+    try {
+      await Support.instance.sendProof(id, img);
+      _toast('أرسلنا صورة التحويل ✅');
+    } catch (_) {
+      _toast('الصورة كبيرة أو صار خطأ، جرّب صورة ثانية');
+    }
+    if (mounted) setState(() => _sending = false);
+  }
+
+  void _showImage(Uint8List bytes) => showDialog<void>(
+        context: context,
+        builder: (c) => Dialog(
+          backgroundColor: Colors.black,
+          insetPadding: const EdgeInsets.all(12),
+          child: InkWell(
+            onTap: () => Navigator.pop(c),
+            child: InteractiveViewer(child: Image.memory(bytes, fit: BoxFit.contain)),
+          ),
+        ),
+      );
+
+  /// شريط طلب الشحن عند الأدمن: موافقة وشحن، أو رفض.
+  Widget _pendingBar() => StreamBuilder<Map<String, dynamic>?>(
+        stream: Support.instance.chat(_chatId!),
+        builder: (context, snap) {
+          final p = snap.data?['pending'];
+          if (p is! Map || p['coins'] is! num) return const SizedBox.shrink();
+          final coins = (p['coins'] as num).toInt();
+          final method = payMethods[p['method']] ?? 'لم يختر بعد';
+          final proof = p['proof'] == true;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: GlassCard(
+              color: AppColors.gold.withValues(alpha: .16),
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('💰 طلب شحن $coins عملة (${p['price'] ?? '-'} ر.س)',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                Text('طريقة الدفع: $method · صورة التحويل: ${proof ? '✅ وصلت' : '⏳ ما وصلت'}',
+                    style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 12.5)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: FilledButton(
+                      key: const ValueKey('topup-approve'),
+                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFF14955E)),
+                      onPressed: () async {
+                        await Support.instance.approveTopup(_chatId!, coins);
+                        _toast('تم شحن $coins عملة ✅');
+                      },
+                      child: const Text('✅ موافقة وشحن'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    key: const ValueKey('topup-reject'),
+                    onPressed: () => Support.instance.rejectTopup(_chatId!),
+                    child: const Text('❌ رفض'),
+                  ),
+                ]),
+              ]),
+            ),
+          );
+        },
+      );
 
   @override
   void dispose() {
@@ -69,7 +162,7 @@ class _SupportScreenState extends State<SupportScreen> {
   void _toast(String t) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(t), behavior: SnackBarBehavior.floating));
+      ..showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text(t), behavior: SnackBarBehavior.floating));
   }
 
   Future<void> _grant() async {
@@ -118,6 +211,7 @@ class _SupportScreenState extends State<SupportScreen> {
                 ),
             ]),
             if (!_asAdmin) _adminCard(),
+            if (_asAdmin && online) _pendingBar(),
             Expanded(
               child: !online
                   ? const Center(
@@ -153,6 +247,15 @@ class _SupportScreenState extends State<SupportScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                 child: Row(children: [
+                  if (!_asAdmin) ...[
+                    IconButton(
+                      key: const ValueKey('support-attach'),
+                      tooltip: 'إرفاق صورة التحويل',
+                      onPressed: _sending ? null : _attach,
+                      icon: const Icon(Icons.attach_file_rounded),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   Expanded(
                     child: TextField(
                       key: const ValueKey('support-input'),
@@ -236,7 +339,41 @@ class _SupportScreenState extends State<SupportScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (m.fromAdmin && !_asAdmin)
             const Text('الإدارة', style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w900)),
-          Text(m.text, style: const TextStyle(fontWeight: FontWeight.w700)),
+          if (m.auto && _asAdmin)
+            const Text('رد تلقائي', style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w900)),
+          if (m.img != null)
+            GestureDetector(
+              onTap: () => _showImage(m.img!),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.memory(m.img!, width: 220, fit: BoxFit.cover),
+              ),
+            )
+          else
+            Text(m.text, style: TextStyle(fontWeight: m.kind == 'topup' ? FontWeight.w900 : FontWeight.w700)),
+          if (m.kind == 'methods' && !_asAdmin) ...[
+            const SizedBox(height: 8),
+            for (final e in payMethods.entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: SizedBox(
+                  width: 230,
+                  child: FilledButton(
+                    key: ValueKey('pay-${e.key}'),
+                    onPressed: _sending ? null : () => _choose(e.key),
+                    child: Text(e.value),
+                  ),
+                ),
+              ),
+          ],
+          if (m.kind == 'details' && !_asAdmin) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _sending ? null : _attach,
+              icon: const Icon(Icons.attach_file_rounded),
+              label: const Text('إرفاق صورة التحويل'),
+            ),
+          ],
         ]),
       ),
     );

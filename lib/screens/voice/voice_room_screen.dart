@@ -12,6 +12,7 @@ import '../../core/shop.dart';
 import '../../core/theme.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
+import '../../games/sky_wheel/sky_wheel_screen.dart';
 import '../../widgets/account_widgets.dart';
 import 'voice_sheets.dart';
 import 'voice_widgets.dart';
@@ -178,6 +179,24 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     Future.delayed(const Duration(milliseconds: 2600), () {
       if (mounted && _giftKey == k) setState(() => _giftFx = null);
     });
+  }
+
+  /// يفتح عجلة السماء فوق الغرفة (الصوت والمحادثة يكملون).
+  void _openSkyWheel() {
+    final h = MediaQuery.sizeOf(context).height;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: SizedBox(height: h * .86, child: const SkyWheelScreen(key: ValueKey('room-sky-wheel'))),
+        ),
+      ),
+    );
   }
 
   Future<void> _gift({VoiceUser? to}) async {
@@ -1178,6 +1197,14 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               _raiseHand,
               colors: const [Color(0xFF8E6CFF), Color(0xFF5B3BD6)],
             ),
+          const SizedBox(width: 6),
+          // عجلة السماء بإطار أصغر وأنت داخل الغرفة
+          _round(
+            'btn-sky-wheel',
+            artImage('sw_crown', 34, fallback: Icons.attractions_rounded),
+            _openSkyWheel,
+            colors: const [Color(0xFF7CC8FF), Color(0xFF5B49C9)],
+          ),
           const SizedBox(width: 6),
           _round(
             'btn-gift',

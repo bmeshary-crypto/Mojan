@@ -134,10 +134,22 @@ class SkyWheelGame {
     return total.floor();
   }
 
+  /// النتائج القادمة محسوبة مسبقاً (يشوفها الأدمن فقط).
+  final List<String> upcoming = [];
+
+  List<String> peekUpcoming([int n = 6]) {
+    while (upcoming.length < n) {
+      upcoming.add(pickWinner());
+    }
+    return upcoming.take(n).toList();
+  }
+
   /// يبدأ السحب ويحدد الكابينة الفائزة.
   String startSpin({String? forced}) {
     phase = SkyPhase.spinning;
-    winner = forced ?? pickWinner();
+    peekUpcoming();
+    final next = upcoming.removeAt(0);
+    winner = forced ?? next;
     return winner!;
   }
 

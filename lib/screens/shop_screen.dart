@@ -64,7 +64,7 @@ class _ShopScreenState extends State<ShopScreen> {
   void _toast(String text) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showSnackBar(SnackBar(duration: const Duration(seconds: 2), 
         behavior: SnackBarBehavior.floating,
         content: Text(text, style: const TextStyle(fontWeight: FontWeight.w800)),
       ));
@@ -372,7 +372,7 @@ class _ShopScreenState extends State<ShopScreen> {
         children: [
           for (final (i, (coins, price)) in coinPacks.indexed)
             GestureDetector(
-              onTap: () => openSupport(context, draft: 'أبغى أشحن باقة $coins عملة ($price ر.س)'),
+              onTap: () => openSupport(context, pack: (coins, price)),
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(

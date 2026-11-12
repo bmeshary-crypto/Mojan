@@ -71,7 +71,7 @@ class _LudoScreenState extends State<LudoScreen> {
     if (s.entry > 0 && !Account.instance.spend(s.entry)) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
+        ..showSnackBar(SnackBar(duration: const Duration(seconds: 2), persist: false, 
           behavior: SnackBarBehavior.floating,
           content: const Text('عملاتك لا تكفي لرسوم الدخول', style: TextStyle(fontWeight: FontWeight.w700)),
           action: SnackBarAction(label: 'المتجر', onPressed: () => openShop(context)),

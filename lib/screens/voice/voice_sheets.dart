@@ -53,7 +53,7 @@ void voiceToast(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
-      SnackBar(
+      SnackBar(duration: const Duration(seconds: 2), 
         behavior: SnackBarBehavior.floating,
         content: Text(
           text,

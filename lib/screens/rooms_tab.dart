@@ -39,7 +39,7 @@ class _RoomsTabState extends State<RoomsTab> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        const SnackBar(
+        const SnackBar(duration: Duration(seconds: 2), 
           behavior: SnackBarBehavior.floating,
           content: Text(
             'الانضمام لغرفة صديق برمزها يعمل بعد تشغيل السيرفر',

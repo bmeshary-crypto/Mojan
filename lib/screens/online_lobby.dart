@@ -69,7 +69,7 @@ class _OnlineLobbyState extends State<OnlineLobby> {
 
   void _toast(String t) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(t), behavior: SnackBarBehavior.floating));
+    ..showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text(t), behavior: SnackBarBehavior.floating));
 
   Future<void> _run(Future<String?> Function() f) async {
     if (_working) return;

@@ -63,7 +63,7 @@ Future<void> openAdmin(BuildContext context) async {
     if (ok != true) {
       if (ok == false && context.mounted && pin.text.isNotEmpty) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('الرمز غير صحيح')));
+            .showSnackBar(const SnackBar(duration: Duration(seconds: 2), content: Text('الرمز غير صحيح')));
       }
       return;
     }
@@ -730,7 +730,7 @@ class _UsersState extends State<_Users> {
                     style: FilledButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
                     onPressed: () {
                       admin.grantCoins(n);
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration: Duration(seconds: 2), 
                         behavior: SnackBarBehavior.floating,
                         content: Text('تمت إضافة $n عملة لحسابك ✅'),
                       ));
@@ -810,7 +810,7 @@ class _CloudUsersState extends State<_CloudUsers> {
   void _reload() => setState(() => _users = Cloud.instance.adminUsers());
 
   void _snack(String t) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text(t)));
+      .showSnackBar(SnackBar(duration: Duration(seconds: 2), behavior: SnackBarBehavior.floating, content: Text(t)));
 
   Future<void> _grant(Map<String, dynamic> u) async {
     final c = TextEditingController(text: '1000');
@@ -1118,6 +1118,16 @@ class _SupportInbox extends StatelessWidget {
       builder: (context, snap) {
         final list = snap.data ?? const [];
         return _list([
+          _card(
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.account_balance_wallet_rounded, color: AppColors.gold),
+              title: const Text('تفاصيل طرق الدفع', style: TextStyle(fontWeight: FontWeight.w900)),
+              subtitle: const Text('رقم الحساب البنكي و STC Pay والمحفظة اللي تطلع للاعب'),
+              trailing: const Icon(Icons.edit_rounded),
+              onTap: () => _editPayments(context),
+            ),
+          ),
           if (list.isEmpty) _card(child: Text(snap.hasError ? 'تعذر تحميل الرسائل' : 'لا توجد رسائل بعد')),
           for (final c in list)
             _card(
@@ -1130,7 +1140,9 @@ class _SupportInbox extends StatelessWidget {
                 trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   if (_ts(c['lastAt']) != null)
                     Text(_ago(_ts(c['lastAt'])!), style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-                  if (c['unreadAdmin'] == true)
+                  if (c['pending'] is Map && (c['pending'] as Map)['coins'] != null)
+                    const Text('💰 شحن', style: TextStyle(color: AppColors.seeko, fontWeight: FontWeight.w900, fontSize: 12))
+                  else if (c['unreadAdmin'] == true)
                     const Text('جديد', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w900, fontSize: 12)),
                 ]),
                 onTap: () => openSupport(context, userId: c['uid'] as String, userName: c['name'] as String?),
@@ -1139,5 +1151,38 @@ class _SupportInbox extends StatelessWidget {
         ]);
       },
     );
+  }
+}
+
+Future<void> _editPayments(BuildContext context) async {
+  final cfg = await Support.instance.paymentConfig();
+  if (!context.mounted) return;
+  final ctl = {for (final k in payMethods.keys) k: TextEditingController(text: cfg[k] ?? '')};
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('تفاصيل طرق الدفع'),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final e in payMethods.entries)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: TextField(
+                controller: ctl[e.key],
+                minLines: 1,
+                maxLines: 4,
+                decoration: InputDecoration(labelText: e.value, hintText: 'مثلاً: الاسم ورقم الحساب/الآيبان'),
+              ),
+            ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('إلغاء')),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('حفظ')),
+      ],
+    ),
+  );
+  if (ok == true) {
+    await Support.instance.setPaymentConfig({for (final e in ctl.entries) e.key: e.value.text.trim()});
   }
 }

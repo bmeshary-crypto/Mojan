@@ -53,10 +53,14 @@ service cloud.firestore {
       allow read, write: if isOwner(uid) || isAdmin();
       match /messages/{id} {
         allow read: if isOwner(uid) || isAdmin();
-        allow create: if (isOwner(uid) && request.resource.data.from == 'user' && request.resource.data.text is string && request.resource.data.text.size() <= 500)
+        allow create: if (isOwner(uid) && request.resource.data.from in ['user', 'auto'] && request.resource.data.text is string && request.resource.data.text.size() <= 800)
           || (isAdmin() && request.resource.data.from == 'admin');
         allow delete: if isAdmin();
       }
+    }
+    match /config/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
     }
     match /reports/{id} {
       allow create: if signedIn() && request.resource.data.by == request.auth.uid;

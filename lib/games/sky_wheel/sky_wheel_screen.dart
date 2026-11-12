@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
+import '../../core/admin/admin.dart';
 import '../../core/haptics.dart';
 import '../../core/theme.dart';
 import '../../screens/shop_screen.dart';
@@ -214,6 +215,7 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
         SnackBar(
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
+          persist: false,
           content: Text(t, style: const TextStyle(fontWeight: FontWeight.w800)),
           action: t.contains('رصيد')
               ? SnackBarAction(
@@ -285,6 +287,10 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
                                   _stats(),
                                   const SizedBox(height: 10),
                                   _historyStrip(),
+                                  if (AdminService.instance.isAdmin) ...[
+                                    const SizedBox(height: 8),
+                                    _adminUpcoming(),
+                                  ],
                                 ],
                               ),
                             ),
@@ -808,6 +814,41 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
         card('sw-coins', 'رصيدك', '$coins'),
         card('sw-today', 'ربحك اليوم', '${game.todayWin}'),
       ],
+    );
+  }
+
+  /// للأدمن فقط: النتائج القادمة بالترتيب وفرصة كل كابينة.
+  Widget _adminUpcoming() {
+    final next = game.peekUpcoming();
+    return Container(
+      key: const ValueKey('sw-admin-upcoming'),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: Colors.black38,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.gold.withValues(alpha: .6)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('🔒 للأدمن فقط: النتائج القادمة',
+            style: TextStyle(fontWeight: FontWeight.w900, color: AppColors.gold, fontSize: 13)),
+        const SizedBox(height: 6),
+        Row(children: [
+          for (final (i, id) in next.indexed)
+            Expanded(
+              child: Column(children: [
+                Image.asset('assets/images/${skyPod(id).art}.webp', width: 30, height: 30),
+                Text(i == 0 ? 'الجاية' : '+${i + 1}',
+                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: i == 0 ? AppColors.gold : Colors.white70)),
+              ]),
+            ),
+        ]),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 2, children: [
+          for (final p in skyPods)
+            Text('${p.title} ×${p.mult}: ${(SkyWheelGame.chanceOf(p.id) * 100).toStringAsFixed(1)}%',
+                style: const TextStyle(fontSize: 10.5, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
+        ]),
+      ]),
     );
   }
 

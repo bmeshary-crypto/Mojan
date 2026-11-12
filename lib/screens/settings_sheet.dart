@@ -54,6 +54,17 @@ Future<void> showSettingsSheet(BuildContext context) {
                     style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
+                SwitchListTile(
+                  key: const ValueKey('sounds-switch'),
+                  value: acc.sounds,
+                  activeThumbColor: AppColors.gold,
+                  onChanged: acc.setSounds,
+                  secondary: const Icon(Icons.music_note_rounded),
+                  title: const Text(
+                    'أصوات النقر',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
                 const ListTile(
                   leading: Icon(Icons.language_rounded),
                   title: Text(

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mojan/core/online/online_games.dart';
+import 'package:mojan/games/sky_wheel/sky_wheel_engine.dart';
 
 Timestamp _t(int s) => Timestamp.fromMillisecondsSinceEpoch(1700000000000 + s * 1000);
 
@@ -46,5 +47,14 @@ void main() {
     expect(m.filled, 1);
     expect(m.full, isFalse);
     expect(m.hostName, 'Moka');
+  });
+
+  test('sky wheel: the admin preview is exactly what comes next', () {
+    final g = SkyWheelGame();
+    final next = g.peekUpcoming();
+    expect(next.length, 6);
+    expect(g.startSpin(), next[0]);
+    g.next();
+    expect(g.startSpin(), next[1]);
   });
 }

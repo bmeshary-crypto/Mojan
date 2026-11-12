@@ -9,6 +9,7 @@ import 'core/ai/ai_brain.dart';
 import 'core/ai/speech.dart';
 import 'core/firebase/cloud.dart';
 import 'core/screenshot.dart';
+import 'core/sfx.dart';
 import 'core/theme.dart';
 import 'screens/splash_screen.dart';
 import 'screens/voice/mini_room_bubble.dart';
@@ -44,7 +45,12 @@ class MojanApp extends StatelessWidget {
       // فقاعة الغرفة الصوتية المصغّرة تطفو فوق كل الشاشات
       builder: (context, child) =>
           Stack(children: [
-            RepaintBoundary(key: appShotKey, child: child ?? const SizedBox.shrink()),
+            // صوت نقر خفيف مع كل لمسة (يتوقف من الإعدادات)
+            Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) => Sfx.instance.tap(),
+              child: RepaintBoundary(key: appShotKey, child: child ?? const SizedBox.shrink()),
+            ),
             const MiniRoomBubble(),
             // إشعار الإدارة (مثل وصول عملات الشحن)
             ValueListenableBuilder<String?>(
