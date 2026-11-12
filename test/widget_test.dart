@@ -3,6 +3,6 @@ import 'package:mojan/games/game_registry.dart';
 
 void main() {
   test('registry has all games', () {
-    expect(GameRegistry.games.map((g) => g.id), ['ludo', 'seeko', 'quiz', 'truth_dare', 'sky_wheel']);
+    expect(GameRegistry.games.map((g) => g.id), ['ludo', 'seeko', 'quiz', 'truth_dare', 'sky_wheel', 'fruits', 'treasure', 'pegs', 'rocket']);
   });
 }

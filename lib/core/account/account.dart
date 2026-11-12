@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../games/ludo/ludo_engine.dart';
+import '../ban.dart';
 import '../firebase/cloud.dart';
 import '../shop.dart';
 
@@ -56,11 +57,15 @@ const gameTitles = {
   'quiz': 'أسئلة وأجوبة',
   'truth_dare': 'صراحة أو جرأة',
   'sky_wheel': 'عجلة السماء',
+  'fruits': 'سوق الفواكه',
+  'treasure': 'صناديق الكنز',
+  'pegs': 'هرم المسامير',
+  'rocket': 'صاروخ المجرة',
 };
 
 /// ألعاب الرهان بالعملات لا تدخل في مجموع المباريات والنقاط العام
 /// (نقاطها = العملات المربوحة، فتطغى على باقي الألعاب).
-const coinGames = {'sky_wheel'};
+const coinGames = {'sky_wheel', 'fruits', 'treasure', 'pegs', 'rocket'};
 
 final achievements = <Achievement>[
   Achievement(
@@ -661,6 +666,7 @@ class Account extends ChangeNotifier {
   }
 
   bool spend(int coins) {
+    if (coins > 0 && Restrictions.instance.check('coins') != null) return false;
     final p = profile;
     if (p == null || coins < 0 || p.coins < coins) return false;
     p.coins -= coins;
@@ -680,6 +686,18 @@ class Account extends ChangeNotifier {
     _save();
   }
 
+  /// نتيجة جولة في ألعاب العملات الجديدة (الفواكه، الكنز، المسامير، الصاروخ).
+  void recordCoinRound(String game, {required int bet, required int won}) {
+    final p = profile;
+    if (p == null || bet <= 0) return;
+    final s = p.statsFor(game)
+      ..played += 1
+      ..points += won;
+    if (won > bet) s.wins += 1;
+    if (won > s.best) s.best = won;
+    _save();
+  }
+
   void earn(int coins) {
     if (profile == null || coins <= 0) return;
     profile!.coins += coins;
@@ -690,6 +708,8 @@ class Account extends ChangeNotifier {
   String? buy(ShopItem item) {
     final p = profile;
     if (p == null) return 'سجّل دخولك أولاً';
+    final limited = Restrictions.instance.check('coins');
+    if (limited != null) return limited;
     final cosmetic = item.kind != ShopKind.item && item.kind != ShopKind.bundle;
     if (cosmetic && p.owns(item.id)) return 'تملكه بالفعل';
     if (p.coins < item.price) return 'عملاتك لا تكفي';

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../account/account.dart';
 import '../account/auth_backend.dart';
 import '../account/leaderboard.dart';
+import '../ban.dart';
 import 'firebase_config.dart';
 
 /// الاتصال بـ Firebase (المشروع mojan-11d86): الحسابات وحفظ الملف الشخصي ولوحة المتصدرين.
@@ -54,7 +55,8 @@ class Cloud {
     _meSub = _db.collection('users').doc(id).snapshots().listen((doc) async {
       final data = doc.data();
       if (data == null) return;
-      banned.value = data['banned'] == true;
+      Restrictions.instance.set(isAdmin ? null : BanInfo.parse(data['banned']));
+      banned.value = Restrictions.instance.fullBan.value;
       final edit = data['edit'];
       if (edit is Map) {
         try {
@@ -151,11 +153,22 @@ class Cloud {
   Future<void> adminBanDevice(String device, bool ban) async {
     final snap = await _db.collection('users').where('device', isEqualTo: device).get();
     for (final d in snap.docs) {
+      if (adminUids.contains(d.id)) continue;
       await d.reference.set({'banned': ban}, SetOptions(merge: true));
     }
   }
 
   Future<void> adminBan(String id, bool ban) => _db.collection('users').doc(id).set({'banned': ban}, SetOptions(merge: true));
+
+  /// حظر أو تقييد عدة حسابات بمدة (ban = null يفك الحظر والقيود).
+  Future<void> adminSetBan(List<String> ids, BanInfo? ban) async {
+    for (final id in ids) {
+      await _db.collection('users').doc(id).set(
+        {'banned': ban == null ? FieldValue.delete() : ban.toJson()},
+        SetOptions(merge: true),
+      );
+    }
+  }
 
   Future<void> init() async {
     try {
@@ -239,6 +252,7 @@ class Cloud {
     _meSub = null;
     _watching = null;
     banned.value = false;
+    Restrictions.instance.set(null);
     _weekKey = null;
     _weekBase = {};
     try {

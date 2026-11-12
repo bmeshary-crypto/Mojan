@@ -1122,7 +1122,7 @@ Future<String?> showGamePicker(BuildContext context) => _sheet<String>(
           crossAxisSpacing: 10,
           childAspectRatio: 1.3,
           children: [
-            for (final g in GameRegistry.games)
+            for (final g in GameRegistry.games.where((g) => !coinGames.contains(g.id) || g.id == 'sky_wheel'))
               GestureDetector(
                 key: ValueKey('pick-game-${g.id}'),
                 onTap: () => Navigator.pop(ctx, g.id),

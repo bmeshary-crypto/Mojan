@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/account/account.dart';
 import 'core/ai/ai_brain.dart';
 import 'core/ai/speech.dart';
+import 'core/ban.dart';
 import 'core/firebase/cloud.dart';
 import 'core/screenshot.dart';
 import 'core/sfx.dart';
@@ -87,16 +88,20 @@ class MojanApp extends StatelessWidget {
               builder: (_, text, _) => text == null ? const SizedBox.shrink() : _AdminNotice(text: text),
             ),
             ValueListenableBuilder<bool>(
-              valueListenable: Cloud.instance.banned,
+              valueListenable: Restrictions.instance.fullBan,
               builder: (_, banned, _) => banned
-                  ? const ColoredBox(
-                      color: Color(0xF0120A26),
+                  ? ColoredBox(
+                      color: const Color(0xF0120A26),
                       child: Center(
                         child: Padding(
-                          padding: EdgeInsets.all(28),
-                          child: Text('تم إيقاف حسابك من الإدارة 🚫\nللاستفسار تواصل مع إدارة MOJAN.',
+                          padding: const EdgeInsets.all(28),
+                          child: Text(
+                              'تم إيقاف حسابك من الإدارة 🚫\n'
+                              '${Restrictions.instance.current.value?.until == null ? 'الإيقاف دائم' : 'ينتهي الإيقاف ${Restrictions.instance.current.value!.remaining().replaceFirst('باقي', 'بعد')}'}'
+                              '${(Restrictions.instance.current.value?.reason ?? '').isEmpty ? '' : '\nالسبب: ${Restrictions.instance.current.value!.reason}'}'
+                              '\nللاستفسار تواصل مع إدارة MOJAN.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800, decoration: TextDecoration.none)),
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800, decoration: TextDecoration.none, height: 1.6)),
                         ),
                       ),
                     )

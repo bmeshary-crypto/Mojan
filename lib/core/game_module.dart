@@ -6,7 +6,8 @@ enum PlayMode {
   local('على نفس الجهاز', Icons.groups_rounded),
   online('أونلاين', Icons.public_rounded),
   rooms('غرف', Icons.meeting_room_rounded),
-  live('جولات مباشرة', Icons.bolt_rounded);
+  live('جولات مباشرة', Icons.bolt_rounded),
+  solo('العب الآن', Icons.play_arrow_rounded);
 
   const PlayMode(this.label, this.icon);
   final String label;

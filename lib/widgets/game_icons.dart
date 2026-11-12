@@ -331,3 +331,21 @@ class GameArt extends StatelessWidget {
         errorBuilder: (_, _, _) => fallback,
       );
 }
+
+/// رسمة بطاقة من إيموجي (للألعاب اللي ما لها صورة بعد).
+class EmojiArt extends StatelessWidget {
+  const EmojiArt(this.big, {super.key, this.small = ''});
+  final String big;
+  final String small;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(big, style: const TextStyle(fontSize: 72, shadows: [Shadow(color: Colors.black38, blurRadius: 14, offset: Offset(0, 6))])),
+            if (small.isNotEmpty) Text(small, style: const TextStyle(fontSize: 26)),
+          ],
+        ),
+      );
+}

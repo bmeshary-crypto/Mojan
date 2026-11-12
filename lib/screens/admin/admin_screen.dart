@@ -7,7 +7,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/admin/admin.dart';
+import '../../core/ban.dart';
 import '../../core/firebase/cloud.dart';
+import '../../core/firebase/firebase_config.dart';
 import '../../core/firebase/support.dart';
 import '../../core/theme.dart';
 import '../../core/voice/voice.dart';
@@ -907,11 +909,16 @@ class _CloudUsersState extends State<_CloudUsers> {
     }
   }
 
-  Future<void> _ban(Map<String, dynamic> u) async {
-    final ban = u['banned'] != true;
+  Future<void> _ban(Map<String, dynamic> u, List<Map<String, dynamic>> users) async {
+    final res = await showDialog<_BanResult>(
+      context: context,
+      builder: (_) => _BanDialog(target: u, users: users),
+    );
+    if (res == null) return;
     try {
-      await Cloud.instance.adminBan(u['uid'] as String, ban);
-      _snack(ban ? 'تم إيقاف ${u['name']}' : 'تم رفع الإيقاف عن ${u['name']}');
+      await Cloud.instance.adminSetBan(res.ids, res.ban);
+      final n = res.ids.length == 1 ? '${u['name']}' : '${res.ids.length} حسابات';
+      _snack(res.ban == null ? 'تم فك الحظر والقيود عن $n ✅' : (res.ban!.full ? 'تم حظر $n (${res.ban!.remaining()})' : 'تم تقييد $n (${res.ban!.remaining()})'));
       _reload();
     } catch (e) {
       _snack('تعذر التنفيذ: $e');
@@ -960,13 +967,13 @@ class _CloudUsersState extends State<_CloudUsers> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: u['banned'] == true ? const Color(0xFFFF7A7A) : Colors.white,
+                            color: _banOf(u)?.full == true ? const Color(0xFFFF7A7A) : Colors.white,
                           ),
                         ),
                         Text(
                           '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}'
                           '${_pendingGrants(u) > 0 ? '  •  ⏳ ${_pendingGrants(u)} شحن بانتظار دخول اللاعب' : ''}'
-                          '${same(u) > 1 ? '  •  ⚠️ ${same(u)} حسابات بنفس الجهاز' : ''}${u['banned'] == true ? '  •  موقوف' : ''}',
+                          '${same(u) > 1 ? '  •  ⚠️ ${same(u)} حسابات بنفس الجهاز' : ''}${_banOf(u) == null ? '' : '  •  ${_banOf(u)!.full ? '🚫 محظور' : '⛔ مقيد'} (${_banOf(u)!.remaining()})'}',
                           style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                         ),
                       ]),
@@ -982,9 +989,10 @@ class _CloudUsersState extends State<_CloudUsers> {
                       icon: const Icon(Icons.add_card_rounded, color: AppColors.gold),
                     ),
                     IconButton(
-                      tooltip: u['banned'] == true ? 'رفع الإيقاف' : 'إيقاف',
-                      onPressed: () => _ban(u),
-                      icon: Icon(u['banned'] == true ? Icons.lock_open_rounded : Icons.block_rounded,
+                      key: ValueKey('ban-${u['uid']}'),
+                      tooltip: _banOf(u) != null ? 'الحظر والقيود (مفعل)' : 'حظر أو تقييد',
+                      onPressed: () => _ban(u, users),
+                      icon: Icon(_banOf(u) != null ? Icons.lock_clock_rounded : Icons.block_rounded,
                           color: const Color(0xFFFF7A7A)),
                     ),
                   ]),
@@ -1200,4 +1208,228 @@ int _pendingGrants(Map<String, dynamic> u) {
   final old = u['grant'];
   if (old is Map && old['coins'] is num) sum += (old['coins'] as num).toInt();
   return sum;
+}
+
+
+/// الحظر الفعال الآن على مستند لاعب (أو null).
+BanInfo? _banOf(Map<String, dynamic> u) {
+  final b = BanInfo.parse(u['banned']);
+  return b != null && b.active ? b : null;
+}
+
+class _BanResult {
+  const _BanResult(this.ids, this.ban);
+  final List<String> ids;
+  final BanInfo? ban;
+}
+
+/// نافذة الحظر: نوعه (كامل أو قيود)، مدته، والحسابات المشمولة من نفس الجهاز.
+class _BanDialog extends StatefulWidget {
+  const _BanDialog({required this.target, required this.users});
+  final Map<String, dynamic> target;
+  final List<Map<String, dynamic>> users;
+
+  @override
+  State<_BanDialog> createState() => _BanDialogState();
+}
+
+class _BanDialogState extends State<_BanDialog> {
+  static const _presets = [
+    ('ساعة', Duration(hours: 1)),
+    ('6 ساعات', Duration(hours: 6)),
+    ('يوم', Duration(days: 1)),
+    ('3 أيام', Duration(days: 3)),
+    ('أسبوع', Duration(days: 7)),
+    ('شهر', Duration(days: 30)),
+  ];
+
+  bool _full = true;
+  final Set<String> _limits = {};
+  Duration? _dur = const Duration(days: 1);
+  bool _custom = false;
+  final _amount = TextEditingController(text: '2');
+  bool _days = false;
+  final _reason = TextEditingController();
+  late final List<Map<String, dynamic>> _linked;
+  late final Set<String> _ids = {widget.target['uid'] as String};
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.target['device'];
+    _linked = [
+      widget.target,
+      if (d != null)
+        for (final u in widget.users)
+          if (u['device'] == d && u['uid'] != widget.target['uid'] && !adminUids.contains(u['uid'])) u,
+    ];
+    final cur = _banOf(widget.target);
+    if (cur != null) {
+      _full = cur.full;
+      _limits.addAll(cur.limits);
+      _reason.text = cur.reason;
+    }
+  }
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Duration? get _duration {
+    if (!_custom) return _dur;
+    final n = int.tryParse(_amount.text.trim()) ?? 0;
+    if (n <= 0) return const Duration(hours: 1);
+    return _days ? Duration(days: n) : Duration(hours: n);
+  }
+
+  Widget _chip(String label, bool on, VoidCallback tap, {Key? key}) => ChoiceChip(
+        key: key,
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+        selected: on,
+        onSelected: (_) => setState(tap),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final anyBanned = _linked.any((u) => _banOf(u) != null);
+    final valid = _ids.isNotEmpty && (_full || _limits.isNotEmpty);
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('حظر أو تقييد ${widget.target['name'] ?? 'لاعب'}', style: const TextStyle(fontWeight: FontWeight.w900)),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final u in _linked)
+                if (_banOf(u) != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text('الحالي على ${u['name']}: ${_banOf(u)!.describe()}',
+                        style: const TextStyle(color: Color(0xFFFF9A9A), fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
+              const Text('النوع', style: TextStyle(fontWeight: FontWeight.w900)),
+              Wrap(spacing: 8, children: [
+                _chip('حظر كامل', _full, () => _full = true, key: const ValueKey('ban-full')),
+                _chip('قيود فقط', !_full, () => _full = false, key: const ValueKey('ban-limits')),
+              ]),
+              if (!_full)
+                for (final e in banLimits.entries)
+                  CheckboxListTile(
+                    key: ValueKey('limit-${e.key}'),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: _limits.contains(e.key),
+                    onChanged: (v) => setState(() => v == true ? _limits.add(e.key) : _limits.remove(e.key)),
+                    title: Text('منع ${e.value}'),
+                  ),
+              const SizedBox(height: 8),
+              const Text('المدة', style: TextStyle(fontWeight: FontWeight.w900)),
+              Wrap(spacing: 6, runSpacing: 4, children: [
+                for (final (label, d) in _presets)
+                  _chip(label, !_custom && _dur == d, () {
+                    _custom = false;
+                    _dur = d;
+                  }),
+                _chip('دائم', !_custom && _dur == null, () {
+                  _custom = false;
+                  _dur = null;
+                }, key: const ValueKey('ban-forever')),
+                _chip('مدة أخرى', _custom, () => _custom = true, key: const ValueKey('ban-custom')),
+              ]),
+              if (_custom)
+                Row(children: [
+                  SizedBox(
+                    width: 80,
+                    child: TextField(
+                      key: const ValueKey('ban-amount'),
+                      controller: _amount,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _chip('ساعات', !_days, () => _days = false),
+                  const SizedBox(width: 6),
+                  _chip('أيام', _days, () => _days = true, key: const ValueKey('ban-days')),
+                ]),
+              TextField(
+                key: const ValueKey('ban-reason'),
+                controller: _reason,
+                maxLength: 80,
+                decoration: const InputDecoration(labelText: 'السبب (يظهر للاعب، اختياري)'),
+              ),
+              if (_linked.length > 1) ...[
+                Text('حسابات على نفس الجهاز (${_linked.length})',
+                    style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFFF9A9A))),
+                Wrap(spacing: 8, children: [
+                  TextButton(
+                    key: const ValueKey('ban-all-accounts'),
+                    onPressed: () => setState(() => _ids.addAll([for (final u in _linked) u['uid'] as String])),
+                    child: const Text('تحديد الكل'),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _ids
+                      ..clear()
+                      ..add(widget.target['uid'] as String)),
+                    child: const Text('هذا الحساب فقط'),
+                  ),
+                ]),
+                for (final u in _linked)
+                  CheckboxListTile(
+                    key: ValueKey('ban-acc-${u['uid']}'),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: _ids.contains(u['uid']),
+                    onChanged: (v) => setState(() => v == true ? _ids.add(u['uid'] as String) : _ids.remove(u['uid'])),
+                    title: Text('${u['name'] ?? 'لاعب'}${u['uid'] == widget.target['uid'] ? ' (المختار)' : ''}'),
+                    subtitle: Text(
+                      '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}${_banOf(u) == null ? '' : '  •  ${_banOf(u)!.full ? 'محظور' : 'مقيد'}'}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+        if (anyBanned)
+          OutlinedButton(
+            key: const ValueKey('ban-lift'),
+            onPressed: _ids.isEmpty ? null : () => Navigator.pop(context, _BanResult(_ids.toList(), null)),
+            child: Text(_ids.length > 1 ? 'فك الحظر (${_ids.length})' : 'فك الحظر'),
+          ),
+        FilledButton(
+          key: const ValueKey('ban-apply'),
+          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFF5A5F)),
+          onPressed: !valid
+              ? null
+              : () {
+                  final d = _duration;
+                  Navigator.pop(
+                    context,
+                    _BanResult(
+                      _ids.toList(),
+                      BanInfo(
+                        full: _full,
+                        limits: _full ? const {} : Set.of(_limits),
+                        until: d == null ? null : DateTime.now().add(d),
+                        reason: _reason.text.trim(),
+                      ),
+                    ),
+                  );
+                },
+          child: Text(_full ? 'حظر${_ids.length > 1 ? ' (${_ids.length})' : ''}' : 'تطبيق القيود${_ids.length > 1 ? ' (${_ids.length})' : ''}'),
+        ),
+      ],
+    );
+  }
 }

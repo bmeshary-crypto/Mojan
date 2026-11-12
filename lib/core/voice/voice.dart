@@ -7,6 +7,7 @@ import '../ai/speech.dart';
 import 'live_voice.dart';
 
 import '../account/account.dart';
+import '../ban.dart';
 
 /// أقسام الغرف الصوتية.
 enum VoiceCategory {
@@ -555,6 +556,8 @@ class VoiceService extends ChangeNotifier {
     if (r.closed) return 'هذه الغرفة مغلقة';
     final id = me().id;
     if (bannedUsers.contains(me().name)) return 'حسابك موقوف من الغرف الصوتية';
+    final limited = Restrictions.instance.check('rooms');
+    if (limited != null) return limited;
     if (r.kicked.contains(id)) return 'تم طردك من هذه الغرفة';
     if (r.locked && !isHost(r)) return 'الغرفة مقفلة من المضيف';
     if (r.live) {
@@ -585,6 +588,8 @@ class VoiceService extends ChangeNotifier {
     if (!seat.empty) return 'المقعد مشغول';
     if (seat.locked && !isHost(r)) return 'المقعد مقفل';
     if (isHost(r)) return 'أنت المضيف ومكانك في الأعلى';
+    final noMic = Restrictions.instance.check('mic');
+    if (noMic != null) return noMic;
     final old = mySeat(r);
     if (old != null) r.seats[old].user = null;
     seat.user = me();
@@ -620,6 +625,7 @@ class VoiceService extends ChangeNotifier {
     if (!onMic(r)) return;
     final s = mySeat(r);
     if (s != null && r.seats[s].muted) return;
+    if (!micOn && Restrictions.instance.check('mic') != null) return;
     micOn = !micOn;
     if (r.live) {
       if (s != null) LiveVoice.instance.setMicFlag(r, s, micOn);
@@ -777,6 +783,8 @@ class VoiceService extends ChangeNotifier {
     final t = text.trim();
     if (t.isEmpty) return null;
     if (r.chatMuted && !isHost(r)) return 'الدردشة مقفلة من المضيف';
+    final noChat = Restrictions.instance.check('chat');
+    if (noChat != null) return noChat;
     if (r.live) {
       LiveVoice.instance.sendChat(r, t);
       return null;
@@ -804,6 +812,8 @@ class VoiceService extends ChangeNotifier {
   /// إرسال هدية لعدة أشخاص (مثل كل من على المايكات). السعر × العدد × عدد المستلمين.
   String? sendGiftTo(VoiceRoom r, VoiceGift g, List<VoiceUser> to, {int count = 1}) {
     if (to.isEmpty) return 'اختر من ترسل له';
+    final noCoins = Restrictions.instance.check('coins');
+    if (noCoins != null) return noCoins;
     final cost = g.price * count * to.length;
     if (!Account.instance.spend(cost)) return 'عملاتك لا تكفي';
     r.heat += cost;

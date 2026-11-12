@@ -5,6 +5,10 @@ import '../core/theme.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/online_lobby.dart';
 import '../widgets/game_icons.dart';
+import 'coin_games/fruits.dart';
+import 'coin_games/pegs.dart';
+import 'coin_games/rocket.dart';
+import 'coin_games/treasure.dart';
 import 'ludo/ludo_screen.dart';
 import 'quiz/quiz_screen.dart';
 import 'seeko/seeko_screen.dart';
@@ -85,6 +89,46 @@ class GameRegistry {
       modes: const [PlayMode.live],
       iconBuilder: (_) => const GameArt('assets/images/sky_wheel.webp', fallback: Icon(Icons.attractions_rounded, size: 80)),
       screenBuilder: (_, _) => const SkyWheelScreen(),
+    ),
+    GameModule(
+      id: 'fruits',
+      title: 'سوق الفواكه',
+      tagline: 'راهن على الفاكهة واربح حتى ×45',
+      colors: const [Color(0xFF5CF2B5), Color(0xFF16A06B), Color(0xFF0B5E42)],
+      players: 'الكل',
+      modes: const [PlayMode.live],
+      iconBuilder: (_) => const GameArt('assets/images/fruits.webp', fallback: EmojiArt('🍉', small: '🍓🍍')),
+      screenBuilder: (_, _) => const FruitsScreen(),
+    ),
+    GameModule(
+      id: 'treasure',
+      title: 'صناديق الكنز',
+      tagline: 'افتح الصناديق واسحب قبل الوحش',
+      colors: const [Color(0xFFFFC46B), Color(0xFFB8641E), Color(0xFF5A2E0E)],
+      players: '1',
+      modes: const [PlayMode.solo],
+      iconBuilder: (_) => const GameArt('assets/images/treasure.webp', fallback: EmojiArt('🧰', small: '💎👹')),
+      screenBuilder: (_, _) => const TreasureScreen(),
+    ),
+    GameModule(
+      id: 'pegs',
+      title: 'هرم المسامير',
+      tagline: 'أسقط الكرة واصطد حتى ×1000',
+      colors: const [Color(0xFF7CB8FF), Color(0xFF3A5BD9), Color(0xFF1A2A7A)],
+      players: '1',
+      modes: const [PlayMode.solo],
+      iconBuilder: (_) => const GameArt('assets/images/pegs.webp', fallback: EmojiArt('🔺', small: '⚪⚪')),
+      screenBuilder: (_, _) => const PegsScreen(),
+    ),
+    GameModule(
+      id: 'rocket',
+      title: 'صاروخ المجرة',
+      tagline: 'اسحب أرباحك قبل ما ينفجر',
+      colors: const [Color(0xFF9B7BFF), Color(0xFF3B2A9F), Color(0xFF120C45)],
+      players: 'الكل',
+      modes: const [PlayMode.live],
+      iconBuilder: (_) => const GameArt('assets/images/rocket.webp', fallback: EmojiArt('🚀', small: '✨💥')),
+      screenBuilder: (_, _) => const RocketScreen(),
     ),
   ];
 
