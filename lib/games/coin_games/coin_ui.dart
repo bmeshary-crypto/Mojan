@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/account/account.dart';
+import '../../core/admin/admin.dart';
 import '../../core/ban.dart';
 import '../../core/theme.dart';
 import '../../screens/shop_screen.dart';
@@ -243,3 +244,59 @@ class CoinActionButton extends StatelessWidget {
     ),
   );
 }
+
+/// للأدمن فقط: شريط النتائج الجاية في ألعاب الحظ.
+class AdminUpcoming extends StatelessWidget {
+  const AdminUpcoming({super.key, required this.items, this.title = 'النتائج الجاية', this.compact = false});
+  final List<Widget> items;
+  final String title;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!AdminService.instance.isAdmin) return const SizedBox.shrink();
+    return Container(
+      key: const ValueKey('admin-upcoming'),
+      margin: EdgeInsets.symmetric(horizontal: 10, vertical: compact ? 2 : 4),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold.withValues(alpha: .7)),
+      ),
+      child: Row(
+        children: [
+          Text('🔒 $title', style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.gold, fontSize: 11)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final (i, w) in items.indexed)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          w,
+                          Text(i == 0 ? 'الجاية' : '+${i + 1}', style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: i == 0 ? AppColors.gold : Colors.white60)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// نص صغير لعنصر في شريط الأدمن.
+Widget adminChip(String t, {Color color = Colors.white}) => Container(
+  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+  decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
+  child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: color)),
+);

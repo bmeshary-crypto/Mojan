@@ -122,6 +122,13 @@ class _TreasureScreenState extends State<TreasureScreen> {
       ),
       child: Column(
         children: [
+          if (_playing)
+            AdminUpcoming(
+              title: 'مكان الوحش',
+              items: [
+                for (var f = _step; f < treasureFloors; f++) adminChip('ط${f + 1}: ${_monsters[f] + 1}', color: const Color(0xFFFF7A7A)),
+              ],
+            ),
           Expanded(child: _tower()),
           if (_outcome != null)
             Padding(

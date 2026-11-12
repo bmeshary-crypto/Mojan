@@ -251,6 +251,13 @@ class _FruitsScreenState extends State<FruitsScreen> {
       child: Column(
         children: [
           _historyRow(),
+          if (_synced)
+            AdminUpcoming(
+              items: [
+                for (var k = phase == FruitPhase.betting ? 0 : 1; k < 8; k++)
+                  Text(fruitSlots[fruitWinnerFor(_round + k)].emoji, style: const TextStyle(fontSize: 20)),
+              ],
+            ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(12),

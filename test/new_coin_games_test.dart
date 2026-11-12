@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mojan/core/account/account.dart';
+import 'package:mojan/core/admin/admin.dart';
 import 'package:mojan/core/voice/voice.dart';
 import 'package:mojan/games/coin_games/lucky_slots.dart';
 import 'package:mojan/games/coin_games/star_league.dart';
@@ -110,6 +111,21 @@ void main() {
     final won = acc.profile!.coins - (start - 1000);
     expect(starClubs.map((c) => c.mult * 100), contains(won));
     expect(acc.profile!.statsFor('star_league').played, 1);
+    await finish(tester);
+  });
+
+  testWidgets('admin sees upcoming results, players do not', (tester) async {
+    await pumpApp(tester, LuckySlotsScreen(random: Random(7), speed: .2));
+    expect(find.byKey(const ValueKey('admin-upcoming')), findsNothing);
+    await finish(tester);
+    AdminService.instance.adminOverride = true;
+    addTearDown(() => AdminService.instance.adminOverride = null);
+    await pumpApp(tester, LuckySlotsScreen(random: Random(7), speed: .2));
+    expect(find.byKey(const ValueKey('admin-upcoming')), findsOneWidget);
+    expect(find.text('الجاية'), findsOneWidget);
+    await finish(tester);
+    await pumpApp(tester, SultanScreen(random: Random(7), speed: .2));
+    expect(find.byKey(const ValueKey('admin-upcoming')), findsOneWidget);
     await finish(tester);
   });
 }

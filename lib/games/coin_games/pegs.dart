@@ -71,6 +71,27 @@ class _PegsScreenState extends State<PegsScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  /// مسارات الكرات الجاية محسوبة مسبقاً (الأدمن يشوفها).
+  final List<List<bool>> _queue = [];
+
+  List<List<bool>> get _upcoming {
+    _fill();
+    return _queue;
+  }
+
+  void _fill() {
+    while (_queue.length < 8) {
+      _queue.add([for (var i = 0; i < pegRows; i++) _rng.nextBool()]);
+    }
+  }
+
+  List<bool> _takeNext() {
+    _fill();
+    final p = _queue.removeAt(0);
+    _fill();
+    return p;
+  }
+
   Duration get _fall => Duration(milliseconds: widget.rowMs * (pegRows + 1));
 
   void _drop() {
@@ -78,7 +99,7 @@ class _PegsScreenState extends State<PegsScreen> with SingleTickerProviderStateM
     if (!takeBet(context, _chip)) return;
     Haptics.lightImpact();
     Sfx.instance.tap();
-    final path = [for (var i = 0; i < pegRows; i++) _rng.nextBool()];
+    final path = _takeNext();
     final start = _ticker.isActive ? _now : Duration.zero;
     if (!_ticker.isActive) {
       _now = Duration.zero;
@@ -133,6 +154,15 @@ class _PegsScreenState extends State<PegsScreen> with SingleTickerProviderStateM
       ),
       child: Column(
         children: [
+          AdminUpcoming(
+            items: [
+              for (final path in _upcoming)
+                () {
+                  final m = _risk.slots[path.where((r) => r).length];
+                  return adminChip(fmtMult(m), color: m >= 10 ? AppColors.gold : (m >= 1 ? const Color(0xFF2EE59D) : const Color(0xFFFF7A7A)));
+                }(),
+            ],
+          ),
           SizedBox(
             height: 34,
             child: ListView(

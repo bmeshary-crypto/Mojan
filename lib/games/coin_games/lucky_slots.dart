@@ -97,6 +97,29 @@ class _LuckySlotsScreenState extends State<LuckySlotsScreen> {
 
   int get _bet => classicBets[_betIndex];
 
+  /// النتائج محسوبة مسبقاً بالترتيب (الأدمن يشوفها).
+  final List<List<List<String>>> _queue = [];
+
+  List<List<List<String>>> get _upcoming {
+    _fill();
+    return _queue;
+  }
+
+  void _fill() {
+    while (_queue.length < 8) {
+      _queue.add([
+        for (var i = 0; i < 3; i++) [pickClassic(_rng), pickClassic(_rng), pickClassic(_rng)],
+      ]);
+    }
+  }
+
+  List<List<String>> _takeNext() {
+    _fill();
+    final c = _queue.removeAt(0);
+    _fill();
+    return c;
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -111,9 +134,7 @@ class _LuckySlotsScreenState extends State<LuckySlotsScreen> {
     }
     Haptics.selectionClick();
     final bet = _bet;
-    final cols = [
-      for (var i = 0; i < 3; i++) [pickClassic(_rng), pickClassic(_rng), pickClassic(_rng)],
-    ];
+    final cols = _takeNext();
     setState(() {
       _spinning = true;
       _lastWin = 0;
@@ -222,6 +243,21 @@ class _LuckySlotsScreenState extends State<LuckySlotsScreen> {
       onMinus: !_spinning && !_auto && _betIndex > 0 ? () => setState(() => _betIndex--) : null,
       onPlus: !_spinning && !_auto && _betIndex < classicBets.length - 1 ? () => setState(() => _betIndex++) : null,
       floating: _lastWin > 0 && !_spinning && winTier(_lastMult.toDouble()) == null ? FloatingWin(key: ValueKey('fw$_winKey'), amount: _lastWin) : null,
+      header: AdminUpcoming(
+        items: [
+          for (final c in _upcoming)
+            () {
+              final m = classicPay([c[0][1], c[1][1], c[2][1]]);
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < 3; i++) SizedBox(width: 16, height: 16, child: _symbol(c[i][1])),
+                  adminChip(m > 0 ? ltr('×$m') : '—', color: m >= 8 ? AppColors.gold : Colors.white),
+                ],
+              );
+            }(),
+        ],
+      ),
       machine: AspectRatio(aspectRatio: .78, child: _machine()),
     );
   }

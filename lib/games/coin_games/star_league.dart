@@ -290,6 +290,17 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
                   children: [
                     _logo(),
                     _topBar(),
+                    if (_synced)
+                      AdminUpcoming(
+                        compact: true,
+                        items: [
+                          for (var k = phase == StarPhase.betting ? 0 : 1; k < 8; k++)
+                            () {
+                              final c = starClubs[starWinnerFor(_round + k)];
+                              return Row(mainAxisSize: MainAxisSize.min, children: [ClubCrest(club: c, size: 22), adminChip(ltr('×${c.mult}'))]);
+                            }(),
+                        ],
+                      ),
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, c) {

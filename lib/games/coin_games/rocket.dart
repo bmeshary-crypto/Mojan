@@ -294,6 +294,19 @@ class _RocketScreenState extends State<RocketScreen> with SingleTickerProviderSt
     setState(() {});
   }
 
+  /// للأدمن: نقاط انفجار الجولات الجاية.
+  List<Widget> _adminNext() {
+    var sl = _slot!;
+    final out = <Widget>[];
+    if (phase != RocketPhase.waiting) sl = sl.next();
+    for (var k = 0; k < 8; k++) {
+      final c = sl.crash;
+      out.add(adminChip('×${c.toStringAsFixed(2)}', color: c >= 10 ? const Color(0xFFFFB13D) : (c >= 2 ? const Color(0xFF2EE59D) : const Color(0xFFFF7A7A))));
+      sl = sl.next();
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     final inRound = _myBet > 0 && _myOut == null && phase != RocketPhase.crashed;
@@ -313,6 +326,7 @@ class _RocketScreenState extends State<RocketScreen> with SingleTickerProviderSt
       ),
       child: Column(
         children: [
+          if (_synced && _slot != null) AdminUpcoming(items: _adminNext()),
           SizedBox(
             height: 34,
             child: ListView(

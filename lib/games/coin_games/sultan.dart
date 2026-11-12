@@ -195,6 +195,27 @@ class _SultanScreenState extends State<SultanScreen> {
 
   int get _bet => _free > 0 ? _freeBet : sultanBets[_betIndex];
 
+  /// اللفات الجاية محسوبة مسبقاً (الأدمن يشوفها).
+  final List<List<List<String>>> _queue = [];
+
+  List<List<List<String>>> get _upcoming {
+    _fill();
+    return _queue;
+  }
+
+  void _fill() {
+    while (_queue.length < 8) {
+      _queue.add(sultanGrid(_rng));
+    }
+  }
+
+  List<List<String>> _takeNext() {
+    _fill();
+    final g = _queue.removeAt(0);
+    _fill();
+    return g;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -220,7 +241,7 @@ class _SultanScreenState extends State<SultanScreen> {
     }
     Haptics.selectionClick();
     final bet = _bet;
-    final grid = sultanGrid(_rng);
+    final grid = _takeNext();
     setState(() {
       _spinning = true;
       _last = null;
@@ -323,7 +344,27 @@ class _SultanScreenState extends State<SultanScreen> {
       onHelp: _paytable,
       onMinus: !locked && _betIndex > 0 ? () => setState(() => _betIndex--) : null,
       onPlus: !locked && _betIndex < sultanBets.length - 1 ? () => setState(() => _betIndex++) : null,
-      header: Column(children: [_jackpots(), _keysBar()]),
+      header: Column(
+        children: [
+          _jackpots(),
+          _keysBar(),
+          AdminUpcoming(
+            compact: true,
+            items: [
+              for (final g in _upcoming)
+                () {
+                  final r = sultanEvaluate(g);
+                  final t = [
+                    r.mult > 0 ? ltr('×${r.mult.toStringAsFixed(r.mult >= 10 ? 0 : 1)}') : '—',
+                    if (r.coins >= 3) '🪙${r.coins}',
+                    if (r.keys > 0) '🗝️${r.keys}',
+                  ].join(' ');
+                  return adminChip(t, color: r.mult >= 8 || r.coins >= 5 ? AppColors.gold : Colors.white);
+                }(),
+            ],
+          ),
+        ],
+      ),
       floating: _lastWin > 0 && !_spinning && winTier(_lastWin / max(1, _bet)) == null ? FloatingWin(key: ValueKey('fw$_winKey'), amount: _lastWin) : null,
       machine: AspectRatio(aspectRatio: 5 / 3.55, child: _board()),
     );
