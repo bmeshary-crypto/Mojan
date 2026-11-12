@@ -16,6 +16,7 @@ import '../../games/game_registry.dart';
 import '../../games/sky_wheel/sky_wheel_screen.dart';
 import '../../widgets/account_widgets.dart';
 import 'voice_sheets.dart';
+import 'entrance_fx.dart';
 import 'voice_widgets.dart';
 
 /// داخل الغرفة الصوتية: المضيف، المايكات، الدردشة، الهدايا، وصالة اللعب.
@@ -108,7 +109,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       _entryKey++;
     });
     final k = _entryKey;
-    Future.delayed(const Duration(milliseconds: 3200), () {
+    Future.delayed(const Duration(milliseconds: 3600), () {
       if (mounted && _entryKey == k) setState(() => _entryFx = null);
     });
   }
@@ -1228,7 +1229,6 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
 
   /// دخولية مستخدم: المركبة تعبر الشاشة مع شريط اسمه.
   Widget _entryOverlay(VoiceUser u) {
-    final w = MediaQuery.sizeOf(context).width;
     return Positioned(
       left: 0,
       right: 0,
@@ -1236,7 +1236,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       child: IgnorePointer(
         key: const ValueKey('entry-fx'),
         child: SizedBox(
-          height: 190,
+          height: 250,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -1292,22 +1292,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
               ),
               Positioned(
                 top: 0,
-                child: artImage(entranceArt(u.entrance!), 150)
-                    .animate(key: ValueKey('ev$_entryKey'))
-                    // تدخل من اليسار وتقف في المنتصف ثم تخرج يميناً
-                    .moveX(
-                      begin: -w,
-                      end: 0,
-                      duration: 900.ms,
-                      curve: Curves.easeOutCubic,
-                    )
-                    .then(delay: 1300.ms)
-                    .moveX(
-                      begin: 0,
-                      end: w,
-                      duration: 800.ms,
-                      curve: Curves.easeInCubic,
-                    ),
+                left: 0,
+                right: 0,
+                height: 200,
+                child: Entrance3D(u.entrance!, key: ValueKey('ev$_entryKey')),
               ),
             ],
           ),
