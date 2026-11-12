@@ -38,6 +38,12 @@ const entryStyles = <String, EntryStyle>{
   'carriage': EntryStyle(EntryParticle.sparkle, [Color(0xFFFFF2A8), Color(0xFFFFC93D), Color(0xFFFF7AB6)], rise: .2),
 };
 
+/// دخوليات لها إطارات حركة حقيقية (`entf_NAME_I.webp`) تتبدل وهي تطير.
+const entranceFrames = <String, int>{'falcon': 4, 'dragon': 4, 'lion': 4, 'unicorn': 4};
+
+/// كم إطار في الثانية لكل دخولية متحركة.
+const _frameFps = 9.0;
+
 EntryStyle entryStyleFor(String name) => entryStyles[name] ?? const EntryStyle(EntryParticle.sparkle, _gold);
 
 /// حالة المركبة في لحظة t (0..1) من عمر الدخولية.
@@ -91,6 +97,16 @@ class _Entrance3DState extends State<Entrance3D> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  int get _frames => entranceFrames[widget.name] ?? 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    for (var i = 0; i < _frames; i++) {
+      precacheImage(AssetImage('assets/images/entf_${widget.name}_$i.webp'), context).ignore();
+    }
+  }
+
   bool get _premium {
     try {
       return shopItem('entrance.${widget.name}').price >= 8000;
@@ -99,8 +115,18 @@ class _Entrance3DState extends State<Entrance3D> with SingleTickerProviderStateM
     }
   }
 
-  Widget _vehicle(EntryPose p, {double alpha = 1, double? shine}) {
-    Widget img = artImage(entranceArt(widget.name), widget.size);
+  Widget _vehicle(EntryPose p, {double alpha = 1, double? shine, double t = 0}) {
+    final n = _frames;
+    Widget img = n == 0
+        ? artImage(entranceArt(widget.name), widget.size)
+        : Image.asset(
+            'assets/images/entf_${widget.name}_${(t * widget.duration.inMilliseconds / 1000 * _frameFps).floor() % n}.webp',
+            width: widget.size,
+            height: widget.size,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (_, _, _) => artImage(entranceArt(widget.name), widget.size),
+          );
     if (shine != null) {
       img = ShaderMask(
         blendMode: BlendMode.srcATop,
@@ -149,8 +175,8 @@ class _Entrance3DState extends State<Entrance3D> with SingleTickerProviderStateM
               ),
               // ظل/أثر حركة خلف المركبة
               if (p.moving)
-                for (var k = 3; k >= 1; k--) _vehicle(entryPose((t - .018 * k).clamp(0, 1), w), alpha: .22 / k),
-              _vehicle(p, shine: shine),
+                for (var k = 3; k >= 1; k--) _vehicle(entryPose((t - .018 * k).clamp(0, 1), w), alpha: .22 / k, t: t),
+              _vehicle(p, shine: shine, t: t),
             ],
           );
         },
@@ -261,4 +287,50 @@ class _EntryFxPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_EntryFxPainter old) => old.t != t || old.w != w;
+}
+
+/// صورة دخولية؛ لو لها إطارات حركة تتبدل باستمرار (للمتجر والمعاينة).
+class EntranceArt extends StatefulWidget {
+  const EntranceArt(this.name, {super.key, required this.size});
+  final String name;
+  final double size;
+
+  @override
+  State<EntranceArt> createState() => _EntranceArtState();
+}
+
+class _EntranceArtState extends State<EntranceArt> with SingleTickerProviderStateMixin {
+  int get _n => entranceFrames[widget.name] ?? 0;
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: Duration(milliseconds: (math.max(_n, 1) * 1000 / _frameFps).round()),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (_n > 0) _c.repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_n == 0) return artImage(entranceArt(widget.name), widget.size);
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) => Image.asset(
+        'assets/images/entf_${widget.name}_${(_c.value * _n).floor() % _n}.webp',
+        width: widget.size,
+        height: widget.size,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => artImage(entranceArt(widget.name), widget.size),
+      ),
+    );
+  }
 }

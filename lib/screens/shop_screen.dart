@@ -13,6 +13,7 @@ import '../widgets/account_widgets.dart';
 import '../widgets/animated_background.dart';
 import '../widgets/daily_bonus.dart';
 import 'support_screen.dart';
+import 'voice/entrance_fx.dart';
 
 /// يفتح المتجر. [tab]: 0 عملات، 1 سكنات، 2 أدوات، 3 حقيبتي.
 /// أرقام تبويبات المتجر.
@@ -252,7 +253,7 @@ class _ShopScreenState extends State<ShopScreen> {
           _styleCard(
             p,
             e,
-            _art(entranceArt(e.id.split('.').last), 84)
+            EntranceArt(e.id.split('.').last, size: 84)
                 .animate(onPlay: (c) => c.repeat(reverse: true))
                 .moveX(begin: -4, end: 4, duration: 1100.ms, curve: Curves.easeInOut),
           ),
