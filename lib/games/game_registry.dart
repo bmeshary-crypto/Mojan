@@ -4,6 +4,7 @@ import '../core/game_module.dart';
 import '../core/theme.dart';
 import '../screens/coming_soon_screen.dart';
 import '../widgets/game_icons.dart';
+import 'ludo/ludo_online_lobby.dart';
 import 'ludo/ludo_screen.dart';
 import 'quiz/quiz_screen.dart';
 import 'seeko/seeko_screen.dart';
@@ -22,7 +23,7 @@ class GameRegistry {
       modes: const [PlayMode.vsComputer, PlayMode.local, PlayMode.online],
       iconBuilder: (_) => const GameArt('assets/images/ludo.webp', fallback: LudoIcon()),
       screenBuilder: (_, mode) =>
-          mode == PlayMode.online ? ComingSoonScreen(gameId: 'ludo', mode: mode) : LudoScreen(mode: mode),
+          mode == PlayMode.online ? const LudoOnlineLobby() : LudoScreen(mode: mode),
     ),
     GameModule(
       id: 'seeko',

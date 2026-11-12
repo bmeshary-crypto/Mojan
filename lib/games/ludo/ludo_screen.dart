@@ -7,6 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/account/account.dart';
 import '../../core/game_module.dart';
 import '../../core/haptics.dart';
+import '../../core/online/online_ludo.dart';
 import '../../core/shop.dart';
 import '../../core/theme.dart';
 import '../../widgets/game_ui.dart';
@@ -574,6 +575,31 @@ class _BackBar extends StatelessWidget {
   }
 }
 
+/// مباراة لودو أونلاين بعد امتلاء الغرفة.
+class LudoOnlineScreen extends StatelessWidget {
+  const LudoOnlineScreen({super.key, required this.match});
+  final OnlineMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    final setup = LudoSetup(players: match.size);
+    final mine = match.seatOf(OnlineLudo.instance.uid);
+    return Scaffold(
+      body: AnimatedBackground(
+        child: SafeArea(
+          child: _LudoTable(
+            setup: setup,
+            humans: {setup.colors[mine < 0 ? 0 : mine]},
+            online: match,
+            onRestart: () => Navigator.maybePop(context),
+            onSetup: () => Navigator.maybePop(context),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// طاولة اللعب نفسها.
 class _LudoTable extends StatefulWidget {
   const _LudoTable({
@@ -582,9 +608,13 @@ class _LudoTable extends StatefulWidget {
     required this.humans,
     required this.onRestart,
     required this.onSetup,
+    this.online,
   });
   final LudoSetup setup;
   final Set<LudoColor> humans;
+
+  /// مباراة أونلاين (null = على نفس الجهاز أو ضد الكمبيوتر).
+  final OnlineMatch? online;
   final VoidCallback onRestart;
   final VoidCallback onSetup;
 
@@ -612,6 +642,92 @@ class _LudoTableState extends State<_LudoTable> {
   bool _leaving = false;
 
   bool get _solo => widget.humans.length == 1;
+
+  // ---------- أونلاين ----------
+  bool get _online => widget.online != null;
+  late OnlineMatch _match = widget.online!;
+  int _applied = 0;
+  final Map<int, Map<String, dynamic>> _pending = {};
+  final List<StreamSubscription<Object?>> _subs = [];
+  Timer? _beat;
+
+  int _seatOfColor(LudoColor c) => s.colors.indexOf(c);
+  OnlineSeat? _seat(LudoColor c) => _online ? _match.seats[_seatOfColor(c)] : null;
+
+  /// هل هذا الجهاز هو من يحرك هذا اللون؟ (لاعبه، أو لاعب AI ونحن المتحكم)
+  bool _iControl(LudoColor c) {
+    if (!_online) return true;
+    final seat = _seat(c);
+    if (seat == null) return false;
+    if (!seat.isAi) return seat.uid == OnlineLudo.instance.uid;
+    return _match.controllerSeat == _match.seatOf(OnlineLudo.instance.uid);
+  }
+
+  void _startOnline() {
+    final svc = OnlineLudo.instance;
+    _subs.add(svc.actions(_match.id).listen((list) {
+      for (final a in list) {
+        final seq = (a['seq'] as num).toInt();
+        if (seq >= _applied) _pending[seq] = a;
+      }
+      _drain();
+    }));
+    _subs.add(svc.watch(_match.id).listen((m) {
+      if (m == null || _disposed) return;
+      final wasControl = _iControl(game.current);
+      setState(() => _match = m);
+      if (!wasControl && _iControl(game.current)) _resumeControl();
+    }));
+    svc.heartbeat(_match.id);
+    _beat = Timer.periodic(const Duration(seconds: 8), (_) {
+      svc.heartbeat(_match.id);
+      // المتحكم يحوّل اللاعب المنقطع إلى AI حتى لا تتوقف المباراة
+      final me = _match.seatOf(svc.uid);
+      if (me < 0 || _match.controllerSeat != me) return;
+      final newest = _match.seats.map((x) => x?.seen).whereType<DateTime>().fold<DateTime?>(
+          null, (a, b) => a == null || b.isAfter(a) ? b : a);
+      for (var i = 0; i < _match.size; i++) {
+        final st = _match.seats[i];
+        if (st == null || st.isAi || i == me || st.seen == null || newest == null) continue;
+        if (newest.difference(st.seen!).inSeconds > OnlineMatch.staleSeconds) svc.seatToAi(_match, i);
+      }
+    });
+  }
+
+  /// صرنا نحن المتحكم في هذا الدور (لاعب انقطع أو انسحب).
+  void _resumeControl() {
+    if (_busy || _over) return;
+    if (game.phase == LudoPhase.waitingRoll) {
+      _scheduleAi();
+    } else if (game.phase == LudoPhase.waitingMove && !_humanTurn && _pending[_applied] == null) {
+      _doMove(game.chooseAiMove());
+    }
+  }
+
+  /// تطبيق حركات اللاعبين الآخرين بالترتيب.
+  void _drain() {
+    if (!_online || _busy || _disposed || game.phase == LudoPhase.gameOver) return;
+    final a = _pending.remove(_applied);
+    if (a == null) return;
+    switch (a['t']) {
+      case 'roll' when game.phase == LudoPhase.waitingRoll:
+        _applied++;
+        _roll((a['v'] as num).toInt());
+      case 'move' when game.phase == LudoPhase.waitingMove:
+        final m = game.legalMoves.where((m) => m.token.id == (a['token'] as num).toInt()).firstOrNull;
+        _applied++;
+        if (m != null) _doMove(m, remote: true);
+      default:
+        _applied++;
+        _drain();
+    }
+  }
+
+  void _send(Map<String, Object?> action) {
+    if (!_online) return;
+    OnlineLudo.instance.post(_match.id, _applied, action);
+    _applied++;
+  }
   bool get _humanTurn => widget.humans.contains(game.current);
   LudoColor get _me => widget.humans.first;
   String get _diceSkin => Account.instance.profile?.diceSkin ?? 'classic';
@@ -631,16 +747,22 @@ class _LudoTableState extends State<_LudoTable> {
     }
     game = LudoGame(players: s.colors, rules: s.rules, teams: s.teams, power: s.power, items: items);
     _status = _turnText();
+    if (_online) _startOnline();
     _scheduleAi();
   }
 
   @override
   void dispose() {
     _disposed = true;
+    for (final x in _subs) {
+      x.cancel();
+    }
+    _beat?.cancel();
     super.dispose();
   }
 
   String _nameOf(LudoColor c) {
+    if (_online) return c == _me ? 'أنت' : (_seat(c)?.name ?? 'لاعب');
     if (_solo) {
       if (c == _me) return 'أنت';
       if (s.teams && game.allies(c, _me)) return 'شريكك';
@@ -661,9 +783,10 @@ class _LudoTableState extends State<_LudoTable> {
   }
 
   void _scheduleAi() {
-    if (_humanTurn || game.phase != LudoPhase.waitingRoll) return;
+    _drain();
+    if (_humanTurn || game.phase != LudoPhase.waitingRoll || !_iControl(game.current)) return;
     Future.delayed(const Duration(milliseconds: 700), () async {
-      if (_disposed || _humanTurn || game.phase != LudoPhase.waitingRoll || _busy) return;
+      if (_disposed || _humanTurn || game.phase != LudoPhase.waitingRoll || _busy || !_iControl(game.current)) return;
       final used = game.aiUseItem();
       if (used != null) {
         _busy = true;
@@ -724,8 +847,11 @@ class _LudoTableState extends State<_LudoTable> {
         ),
       );
 
-  Future<void> _roll() async {
+  Future<void> _roll([int? forced]) async {
     if (_busy || game.phase != LudoPhase.waitingRoll) return;
+    // الرقم يتحدد مرة وحدة عند صاحب الدور ويوصل لكل اللاعبين
+    final value = forced ?? (game.controlledValue ?? _rng.nextInt(6) + 1);
+    if (forced == null) _send({'t': 'roll', 'v': value});
     _busy = true;
     Haptics.mediumImpact();
     setState(() => _rolling = true);
@@ -736,7 +862,7 @@ class _LudoTableState extends State<_LudoTable> {
     }
     final player = game.current;
     final doubled = game.doubleActive;
-    final hasMoves = game.roll();
+    final hasMoves = game.roll(value);
     if (_disposed) return;
     setState(() {
       _rolling = false;
@@ -751,6 +877,14 @@ class _LudoTableState extends State<_LudoTable> {
       _busy = false;
       setState(() => _status = _turnText());
       _scheduleAi();
+      return;
+    }
+
+    if (!_iControl(player)) {
+      // ننتظر حركة اللاعب الآخر
+      _busy = false;
+      setState(() => _status = 'دور ${_nameOf(player)}…');
+      _drain();
       return;
     }
 
@@ -774,8 +908,9 @@ class _LudoTableState extends State<_LudoTable> {
     setState(() => _status = 'اختر القطعة التي تريد تحريكها');
   }
 
-  Future<void> _doMove(LudoMove m) async {
+  Future<void> _doMove(LudoMove m, {bool remote = false}) async {
     _busy = true;
+    if (!remote) _send({'t': 'move', 'token': m.token.id});
     final before = {for (final t in game.allTokens) t: t.pos};
     final result = game.move(m);
     _shown
@@ -804,6 +939,7 @@ class _LudoTableState extends State<_LudoTable> {
     setState(() {});
 
     if (game.phase == LudoPhase.gameOver) {
+      if (_online) OnlineLudo.instance.finish(_match.id);
       await _wait(400);
       if (!_disposed) _showResults();
       return;
@@ -893,6 +1029,8 @@ class _LudoTableState extends State<_LudoTable> {
         context,
         message: bet
             ? 'المباراة ما خلصت، وإذا انسحبت تخسر رسوم الدخول (${s.entry} عملة) وتنحسب خسارة.'
+            : _online
+                ? 'المباراة ما خلصت، وإذا انسحبت تنحسب خسارة ويكمل لاعب ذكاء اصطناعي مكانك.'
             : _solo
                 ? 'المباراة ما خلصت، وإذا انسحبت تنحسب خسارة.'
                 : 'المباراة ما خلصت، وإذا انسحبت تضيع اللعبة على الجميع.',
@@ -900,6 +1038,7 @@ class _LudoTableState extends State<_LudoTable> {
       _leaving = false;
       if (!ok || !mounted) return;
       if (_solo) Account.instance.recordGame('ludo', won: false);
+      if (_online) OnlineLudo.instance.leave(_match);
       // نسمح بالخروج بعد التأكيد (حتى لا يظهر السؤال مرة ثانية)
       setState(() => _over = true);
       await WidgetsBinding.instance.endOfFrame;
@@ -922,7 +1061,7 @@ class _LudoTableState extends State<_LudoTable> {
       child: Column(
         children: [
           _BackBar(
-            title: 'لودو',
+            title: _online ? 'لودو أونلاين' : 'لودو',
             subtitle: [
               if (s.teams) '2 ضد 2',
               if (s.power) '⚡ باور',
@@ -936,7 +1075,7 @@ class _LudoTableState extends State<_LudoTable> {
                 onPressed: () => showLudoHelp(context),
                 icon: const Icon(Icons.help_outline_rounded),
               ),
-              if (s.entry == 0)
+              if (s.entry == 0 && !_online)
                 IconButton(
                   key: const ValueKey('ludo-setup'),
                   tooltip: 'إعدادات اللعبة',
@@ -1064,7 +1203,9 @@ class _LudoTableState extends State<_LudoTable> {
             color: active ? color : Colors.white24,
             boxShadow: active ? [BoxShadow(color: color, blurRadius: 16)] : null,
           ),
-          child: _solo && c == _me && Account.instance.signedIn
+          child: _online && _seat(c) != null
+              ? PlayerAvatar(index: _seat(c)!.avatar, size: 42, ring: false)
+              : _solo && c == _me && Account.instance.signedIn
               ? PlayerAvatar(index: Account.instance.profile!.avatar, size: 42, ring: false)
               : CircleAvatar(
                   backgroundColor: Color.lerp(color, Colors.black, .35),
