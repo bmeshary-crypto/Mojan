@@ -12,6 +12,7 @@ import 'seeko_engine.dart';
 import '../../core/haptics.dart';
 import '../../core/account/account.dart';
 import '../../core/online/online_games.dart';
+import '../../core/voice/match_voice.dart';
 
 const seekoTeamColors = [Color(0xFF2EBD59), Color(0xFF2F8BF5), Color(0xFFF2453D)];
 
@@ -281,7 +282,12 @@ class _SeekoTableState extends State<_SeekoTable> {
   void initState() {
     super.initState();
     _status = _turnText();
-    if (_online) _startOnline();
+    if (_online) {
+      _startOnline();
+      // الكل يسمع من البداية، والمايك مقفول لين يفتحه اللاعب (زي لودو)
+      MatchVoice.instance.start(_match.id);
+      MatchVoice.instance.addListener(_voiceChanged);
+    }
     _afterTurnChange(first: true);
   }
 
@@ -292,9 +298,30 @@ class _SeekoTableState extends State<_SeekoTable> {
       x.cancel();
     }
     _beat?.cancel();
+    if (_online) {
+      MatchVoice.instance.removeListener(_voiceChanged);
+      MatchVoice.instance.stop();
+    }
     // الانسحاب أثناء اللعب: يكمل الذكاء الاصطناعي مكاننا
     if (_online && game.phase == SeekoPhase.playing) OnlineGames.instance.leave(_match);
     super.dispose();
+  }
+
+  void _voiceChanged() {
+    if (!_disposed) setState(() {});
+  }
+
+  Future<void> _toggleMic() async {
+    final v = MatchVoice.instance;
+    if (!v.active) {
+      final err = v.start(_match.id);
+      if (err != null) {
+        setState(() => _status = err);
+        return;
+      }
+    }
+    final ok = await v.toggleMic();
+    if (!ok && !_disposed) setState(() => _status = 'ما قدرنا نشغل المايك، اسمح للمتصفح باستخدامه');
   }
 
   String _turnText() =>
@@ -456,7 +483,26 @@ class _SeekoTableState extends State<_SeekoTable> {
           children: [
             GameTopBar(
               title: 'سيكو',
-              trailing: IconButton(onPressed: widget.onSetup, icon: const Icon(Icons.tune_rounded)),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (_online) ...[
+                  IconButton(
+                    key: const ValueKey('seeko-mic'),
+                    tooltip: MatchVoice.instance.micOn ? 'اقفل المايك' : 'افتح المايك',
+                    onPressed: _toggleMic,
+                    icon: Icon(
+                      MatchVoice.instance.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+                      color: MatchVoice.instance.micOn ? const Color(0xFF3DDC84) : Colors.white70,
+                    ),
+                  ),
+                  IconButton(
+                    key: const ValueKey('seeko-speaker'),
+                    tooltip: MatchVoice.instance.speakerOn ? 'كتم أصوات اللاعبين' : 'تشغيل أصوات اللاعبين',
+                    onPressed: MatchVoice.instance.toggleSpeaker,
+                    icon: Icon(MatchVoice.instance.speakerOn ? Icons.volume_up_rounded : Icons.volume_off_rounded),
+                  ),
+                ],
+                IconButton(onPressed: widget.onSetup, icon: const Icon(Icons.tune_rounded)),
+              ]),
             ),
             _scores(),
             Expanded(
@@ -517,6 +563,11 @@ class _SeekoTableState extends State<_SeekoTable> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _Chip(team: game.teamOf(p), size: 16),
+                    if (_online && _match.seats[p]?.uid != null && MatchVoice.instance.micsOpen.contains(_match.seats[p]!.uid))
+                      const Padding(
+                        padding: EdgeInsets.only(right: 3),
+                        child: Icon(Icons.mic_rounded, size: 14, color: Color(0xFF3DDC84)),
+                      ),
                     const SizedBox(width: 5),
                     Flexible(
                       child: Text(nameOf(p),
