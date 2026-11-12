@@ -1,11 +1,14 @@
 {
     "name": "MOJAN موجان",
     "short_name": "MOJAN",
-    "start_url": ".",
+    "start_url": "./",
+    "scope": "./",
+    "lang": "ar",
+    "dir": "rtl",
     "display": "standalone",
     "background_color": "#16185F",
     "theme_color": "#16185F",
-    "description": "A new Flutter project.",
+    "description": "MOJAN منصة ألعاب جماعية",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

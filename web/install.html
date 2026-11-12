@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ثبّت MOJAN</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="icons/Icon-192.png">
+<style>
+  :root { --bg:#16185F; --card:#22256f; --gold:#FFC23D; --text:#fff; --muted:#c6c3f0; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif; background: radial-gradient(circle at top, #2D1B69, var(--bg)); color: var(--text); min-height: 100vh; }
+  main { max-width: 480px; margin: 0 auto; padding: 28px 16px 40px; text-align: center; }
+  img.logo { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
+  h1 { margin: 14px 0 4px; font-size: 28px; }
+  p.sub { color: var(--muted); margin: 0 0 22px; }
+  .card { background: var(--card); border-radius: 20px; padding: 18px; margin-bottom: 14px; text-align: right; border: 1px solid rgba(255,255,255,.12); }
+  .card h2 { margin: 0 0 10px; font-size: 20px; }
+  .btn { display: block; text-align: center; background: var(--gold); color: #1a1033; font-weight: 800; text-decoration: none; padding: 14px; border-radius: 14px; font-size: 17px; margin-top: 8px; }
+  .btn.alt { background: rgba(255,255,255,.12); color: var(--text); }
+  ol { margin: 0; padding-right: 20px; line-height: 1.9; }
+  .note { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo" src="icons/Icon-192.png" alt="MOJAN">
+  <h1>MOJAN</h1>
+  <p class="sub">ألعاب جماعية وغرف صوتية</p>
+
+  <section class="card" id="android">
+    <h2>📱 أندرويد</h2>
+    <a class="btn" href="https://github.com/bmeshary-crypto/Mojan/releases/download/android/mojan.apk">حمّل التطبيق (APK)</a>
+    <ol class="note">
+      <li>افتح الملف بعد التحميل.</li>
+      <li>إذا طلب الجوال، اسمح بالتثبيت من هذا المصدر.</li>
+      <li>اضغط «تثبيت» وبيطلع لك MOJAN مع تطبيقاتك.</li>
+    </ol>
+  </section>
+
+  <section class="card" id="ios">
+    <h2>🍎 آيفون</h2>
+    <ol>
+      <li>افتح هذي الصفحة في <b>Safari</b> (مو من داخل الواتس).</li>
+      <li>اضغط زر المشاركة <b>⬆️</b> تحت.</li>
+      <li>اختر <b>«إضافة إلى الشاشة الرئيسية»</b> ثم <b>«إضافة»</b>.</li>
+    </ol>
+    <p class="note">بيطلع لك أيقونة MOJAN مع تطبيقاتك ويفتح بملء الشاشة مثل أي تطبيق.</p>
+  </section>
+
+  <a class="btn alt" href="./">العب الحين من المتصفح</a>
+</main>
+<script>
+  // نعرض قسم جهازك أولاً
+  var ua = navigator.userAgent || '';
+  var ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (ios) { var a = document.getElementById('android'); a.parentNode.appendChild(a); a.parentNode.insertBefore(document.querySelector('.btn.alt'), null); }
+</script>
+</body>
+</html>
