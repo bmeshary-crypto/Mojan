@@ -5,5 +5,5 @@ class UpdateCheck {
   static final instance = UpdateCheck._();
   final available = ValueNotifier<bool>(false);
   void start() {}
-  void reload() {}
+  Future<void> reload() async {}
 }

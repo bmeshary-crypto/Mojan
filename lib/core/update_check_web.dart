@@ -32,5 +32,14 @@ class UpdateCheck {
     } catch (_) {}
   }
 
-  void reload() => web.window.location.reload();
+  /// يحدّث ملفات الموقع في كاش المتصفح أول، وإلا ممكن يرجع يفتح النسخة القديمة.
+  Future<void> reload() async {
+    try {
+      await Future.wait([
+        for (final f in ['main.dart.js', 'flutter_bootstrap.js', 'index.html', 'flutter.js'])
+          web.window.fetch(f.toJS, web.RequestInit(cache: 'reload')).toDart,
+      ]).timeout(const Duration(seconds: 15));
+    } catch (_) {}
+    web.window.location.reload();
+  }
 }
