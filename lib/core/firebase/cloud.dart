@@ -40,6 +40,9 @@ class Cloud {
 
   /// حساب موقوف من الإدارة.
   final banned = ValueNotifier<bool>(false);
+
+  /// إشعار من الإدارة يظهر للاعب (مثل وصول عملات الشحن).
+  final notice = ValueNotifier<String?>(null);
   StreamSubscription? _meSub;
   String? _watching;
 
@@ -64,17 +67,43 @@ class Cloud {
           debugPrint('edit failed: $e');
         }
       }
-      final grant = data['grant'];
-      if (grant is Map && grant['coins'] is num) {
-        final coins = (grant['coins'] as num).toInt();
-        try {
-          await doc.reference.update({'grant': FieldValue.delete()});
-          if (coins > 0) Account.instance.earn(coins);
-        } catch (e) {
-          debugPrint('grant failed: $e');
-        }
-      }
+      if (data['grants'] is Map || data['grant'] is Map) await _claimGrants(doc.reference);
     }, onError: (e) => debugPrint('watchMe: $e'));
+  }
+
+  /// يستلم كل شحنات الإدارة المعلقة مرة واحدة (معاملة حتى لا يضيع أو يتكرر شيء).
+  bool _claiming = false;
+  Future<void> _claimGrants(DocumentReference<Map<String, dynamic>> ref) async {
+    if (_claiming) return;
+    final acc = Account.instance;
+    if (acc.profile?.id != ref.id) return;
+    _claiming = true;
+    try {
+      final total = await _db.runTransaction<int>((tx) async {
+        final d = await tx.get(ref);
+        final data = d.data() ?? const {};
+        var sum = 0;
+        final grants = data['grants'];
+        if (grants is Map) {
+          for (final g in grants.values) {
+            if (g is Map && g['coins'] is num) sum += (g['coins'] as num).toInt();
+          }
+        }
+        final old = data['grant'];
+        if (old is Map && old['coins'] is num) sum += (old['coins'] as num).toInt();
+        tx.update(ref, {'grants': FieldValue.delete(), 'grant': FieldValue.delete()});
+        return sum;
+      });
+      if (total > 0) {
+        acc.earn(total);
+        await saveNow(acc.profile!);
+        notice.value = 'تم شحن حسابك بـ $total عملة 🪙\nاستمتعوا باللعب! 🎉';
+      }
+    } catch (e) {
+      debugPrint('grant failed: $e');
+    } finally {
+      _claiming = false;
+    }
   }
 
   // ---- أدوات الأدمن ----
@@ -85,8 +114,30 @@ class Cloud {
     return [for (final d in snap.docs) {...d.data(), 'uid': d.id}];
   }
 
-  Future<void> adminGrant(String id, int coins) =>
-      _db.collection('users').doc(id).set({'grant': {'coins': coins, 'at': FieldValue.serverTimestamp()}}, SetOptions(merge: true));
+  /// شحن عملات للاعب: تنضاف لحسابه فوراً إذا كان فاتح اللعبة، أو أول ما يفتحها، ويوصله إشعار
+  /// ورسالة من الإدارة في محادثة الدعم.
+  Future<void> adminGrant(String id, int coins) async {
+    final key = '${DateTime.now().millisecondsSinceEpoch}';
+    await _db.collection('users').doc(id).set({
+      'grants': {key: {'coins': coins, 'at': FieldValue.serverTimestamp()}},
+    }, SetOptions(merge: true));
+    try {
+      final ref = _db.collection('support').doc(id);
+      await ref.collection('messages').add({
+        'from': 'admin',
+        'text': 'تم إضافة $coins عملة شحن لحسابك 🪙 استمتعوا باللعب! 🎉',
+        'at': FieldValue.serverTimestamp(),
+      });
+      await ref.set({
+        'lastText': 'تم شحن $coins عملة',
+        'lastAt': FieldValue.serverTimestamp(),
+        'unreadUser': true,
+        'unreadAdmin': false,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('grant message failed: $e');
+    }
+  }
 
   /// تعديل ملف لاعب: يُطبق على جهازه عند فتح التطبيق.
   Future<void> adminEdit(String id, {String? name, String? bio, int? avatar}) => _db.collection('users').doc(id).set({

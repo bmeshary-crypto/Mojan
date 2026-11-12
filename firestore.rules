@@ -9,9 +9,10 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn();
       // اللاعب لا يغير حالة الإيقاف، ويستطيع فقط حذف هدية العملات بعد استلامها
-      allow create: if isOwner(uid) && !('banned' in request.resource.data) && !('grant' in request.resource.data) && !('edit' in request.resource.data);
+      allow create: if isOwner(uid) && !('banned' in request.resource.data) && !('grant' in request.resource.data) && !('grants' in request.resource.data) && !('edit' in request.resource.data);
       allow update: if isAdmin() || (isOwner(uid) && !changed().hasAny(['banned'])
         && (!changed().hasAny(['grant']) || !('grant' in request.resource.data))
+        && (!changed().hasAny(['grants']) || !('grants' in request.resource.data))
         && (!changed().hasAny(['edit']) || !('edit' in request.resource.data)));
       allow delete: if isAdmin();
     }

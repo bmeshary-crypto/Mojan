@@ -93,7 +93,6 @@ class _SupportScreenState extends State<SupportScreen> {
     );
     if (n == null || n <= 0 || widget.userId == null) return;
     await Cloud.instance.adminGrant(widget.userId!, n);
-    await Support.instance.send(widget.userId!, 'تم شحن $n عملة لحسابك 🪙 بالتوفيق!', asAdmin: true);
     _toast('أرسلنا $n عملة ✅');
   }
 

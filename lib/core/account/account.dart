@@ -454,6 +454,7 @@ class Account extends ChangeNotifier {
       if (saved != null) {
         profile = _fromCloud(saved, uid);
         await _save();
+        cloud.watchMe(uid);
       }
       return;
     }
@@ -467,6 +468,7 @@ class Account extends ChangeNotifier {
     }
     await _save();
     await cloud.saveNow(profile!);
+    cloud.watchMe(uid);
   }
 
   /// استرجاع ملف لاعب سبق له الدخول بهذا الحساب (من جهاز آخر مثلاً).
