@@ -18,6 +18,7 @@ import '../../screens/shop_screen.dart';
 import '../../widgets/account_widgets.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/bouncy_button.dart';
+import '../../widgets/celebration.dart';
 import 'ludo_board.dart';
 import 'ludo_engine.dart';
 
@@ -686,6 +687,10 @@ class _LudoTableState extends State<_LudoTable> {
   int _diceFace = 6;
   String _status = '';
   LudoToken? _hopping;
+
+  /// احتفالات دخول البيت الظاهرة الآن.
+  final _bursts = <int, LudoColor>{};
+  var _burstSeq = 0;
   bool _disposed = false;
   bool _over = false;
   bool _leaving = false;
@@ -1040,7 +1045,22 @@ class _LudoTableState extends State<_LudoTable> {
       if (_disposed) return;
     }
     _shown.clear();
+    if (m.to == LudoGeo.finished) {
+      final id = ++_burstSeq;
+      _bursts[id] = m.token.color;
+      Haptics.mediumImpact();
+      Sfx.instance.home();
+      Sfx.instance.noise(.35, vol: .12, freq: 3200, delay: .3);
+      Sfx.instance.noise(.3, vol: .1, freq: 2400, delay: .45);
+      if (!result.playerFinished && game.phase != LudoPhase.gameOver) {
+        _status = '🎉 ${_nameOf(m.token.color)} دخّل قطعة البيت!';
+      }
+    }
     setState(() {});
+    if (m.to == LudoGeo.finished && game.phase != LudoPhase.gameOver) {
+      await _wait(900);
+      if (_disposed) return;
+    }
 
     if (game.phase == LudoPhase.gameOver) {
       if (_online) OnlineGames.instance.finish(_match.id);
@@ -1049,7 +1069,6 @@ class _LudoTableState extends State<_LudoTable> {
       return;
     }
     if (result.playerFinished) {
-      Sfx.instance.home();
       setState(() => _status = '${_nameOf(m.token.color)} أنهى كل القطع!');
       await _wait(900);
     } else if (result.picked != null) {
@@ -1102,10 +1121,25 @@ class _LudoTableState extends State<_LudoTable> {
     } else {
       reward = Account.instance.recordGame('ludo', won: false);
     }
+    final first = game.ranking.first;
+    String realName(LudoColor c) {
+      final n = _nameOf(c);
+      return n == 'أنت' ? (Account.instance.profile?.name ?? 'أنت') : n;
+    }
+    final winnerName = s.teams
+        ? s.colors.where((c) => game.allies(c, first)).map(realName).join(' و ')
+        : realName(first);
+    Sfx.instance.win();
+    Sfx.instance.noise(.4, vol: .14, freq: 3000, delay: .5);
+    Sfx.instance.noise(.4, vol: .12, freq: 2200, delay: .9);
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => _ResultsDialog(
+      barrierColor: Colors.black.withValues(alpha: .72),
+      builder: (ctx) => Stack(children: [
+        const Positioned.fill(child: WinFireworks()),
+        _ResultsDialog(
+        winnerName: winnerName,
         reward: reward,
         ranking: game.ranking,
         nameOf: _nameOf,
@@ -1122,6 +1156,7 @@ class _LudoTableState extends State<_LudoTable> {
           Navigator.maybePop(context);
         },
       ),
+      ]),
     );
   }
 
@@ -1508,6 +1543,21 @@ class _LudoTableState extends State<_LudoTable> {
                   ),
                 ),
               for (final t in sorted) _tokenWidget(t, positions[t]!, groups, cs, movable.contains(t)),
+              for (final e in _bursts.entries)
+                Positioned(
+                  key: ValueKey('burst-${e.key}'),
+                  left: LudoLayout.finishSpot(e.value).dx * cs - cs * 3,
+                  top: LudoLayout.finishSpot(e.value).dy * cs - cs * 3,
+                  width: cs * 6,
+                  height: cs * 6,
+                  child: HomeBurst(
+                    color: ludoColors[e.value]!,
+                    size: cs * 6,
+                    onDone: () {
+                      if (mounted) setState(() => _bursts.remove(e.key));
+                    },
+                  ),
+                ),
             ],
           );
         }),
@@ -1601,12 +1651,14 @@ class _ResultsDialog extends StatelessWidget {
     required this.humanWon,
     required this.onAgain,
     required this.onHome,
+    this.winnerName = '',
     this.teams = false,
     this.entry = 0,
     this.payout = 0,
     this.reward,
   });
   final Reward? reward;
+  final String winnerName;
   final List<LudoColor> ranking;
   final String Function(LudoColor) nameOf;
   final bool humanWon;
@@ -1637,10 +1689,10 @@ class _ResultsDialog extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(humanWon ? '🏆' : '🎲', style: const TextStyle(fontSize: 56))
+              const Text('🏆', style: TextStyle(fontSize: 56))
                   .animate()
                   .scale(duration: 700.ms, curve: Curves.elasticOut, begin: Offset.zero),
-              Text(title, style: AppTheme.display.copyWith(fontSize: 30, color: AppColors.gold)),
+              WinBanner(name: winnerName.isEmpty ? winner : winnerName, subtitle: title),
               const SizedBox(height: 14),
               for (final (i, c) in ranking.indexed)
                 Container(
