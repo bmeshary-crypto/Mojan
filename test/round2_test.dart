@@ -118,7 +118,7 @@ void main() {
   });
 
   testWidgets('sky wheel screen: bet, spin, result, ranking, rules and leave guard', (tester) async {
-    await pumpApp(tester, const SkyWheelScreen(betSeconds: 4, stepMs: .05));
+    await pumpApp(tester, const SkyWheelScreen(betSeconds: 4, stepMs: .05, shared: false));
     expect(find.text('عجلة السماء'), findsOneWidget);
     await tapKey(tester, 'sw-chip-100', 100);
     await tapKey(tester, 'sw-pod-crown', 100);

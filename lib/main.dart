@@ -12,6 +12,7 @@ import 'core/firebase/cloud.dart';
 import 'core/screenshot.dart';
 import 'core/sfx.dart';
 import 'core/update_check.dart';
+import 'core/rounds/shared_rounds.dart';
 import 'core/theme.dart';
 import 'screens/vip_screen.dart';
 import 'screens/splash_screen.dart';
@@ -30,6 +31,7 @@ Future<void> main() async {
     ),
   );
   UpdateCheck.instance.start();
+  SharedClock.sync();
   runApp(const MojanApp());
 }
 

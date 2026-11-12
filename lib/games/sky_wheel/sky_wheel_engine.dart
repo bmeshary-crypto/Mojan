@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import '../../core/rounds/shared_rounds.dart';
+
 /// كابينة في عجلة السماء: صورة ومضاعف ربح.
 class SkyPod {
   const SkyPod(this.id, this.title, this.art, this.mult);
@@ -60,8 +62,60 @@ class SkyWinner {
 /// احتمال كل كابينة يتناسب عكسياً مع مضاعفها، فيرجع للاعبين في المتوسط
 /// قرابة 97٪ من رهاناتهم. هذه عملات افتراضية داخل اللعبة فقط.
 class SkyWheelGame {
-  SkyWheelGame({Random? random, this.round = 1}) : _rng = random ?? Random();
+  SkyWheelGame({Random? random, this.round = 1, this.synced = false}) : _rng = random ?? Random();
   final Random _rng;
+
+  /// جولات موحدة لكل الأجهزة: النتيجة والرهانات الآلية والفائزين محسوبة من رقم الجولة.
+  final bool synced;
+  int _botTick = 0;
+
+  /// طول الجولة الموحدة: 15 ثانية رهان + دوران + عرض النتيجة.
+  static const rounds = FixedRounds(25000);
+  static const betMs = 15000;
+  static const spinMs = 5200;
+
+  /// الكابينة الفائزة في جولة موحدة معينة (نفسها على كل الأجهزة).
+  static String winnerFor(int round) => _pick(roundRng('sky', round, 'win'));
+
+  static String _pick(Random r) {
+    var x = r.nextDouble() * totalWeight;
+    for (final p in skyPods) {
+      x -= weightOf(p);
+      if (x <= 0) return p.id;
+    }
+    return skyPods.last.id;
+  }
+
+  /// كبار الفائزين الآليين في جولة (نفس الأسماء على كل الأجهزة في الوضع الموحد).
+  static List<SkyWinner> botWinners(Random r, String win, List<(String, int)> botPool) => [
+        for (var i = 0, n = 3 + r.nextInt(3); i < n; i++)
+          () {
+            final (name, av) = botPool[r.nextInt(botPool.length)];
+            final stake = skyChips[r.nextInt(3)] * (1 + r.nextInt(4));
+            return SkyWinner(name, av, min(stake * skyPod(win).mult, skyBotCap));
+          }(),
+      ];
+
+  void _addHourly(List<SkyWinner> winners) {
+    for (final x in winners) {
+      final prev = hourly[x.name];
+      final sum = (prev?.amount ?? 0) + x.amount;
+      hourly[x.name] = SkyWinner(x.name, x.avatar, x.isMe ? sum : min(sum, skyBotCap), isMe: x.isMe);
+    }
+  }
+
+  /// يجهز اللعبة لجولة موحدة: آخر النتائج وترتيب الساعة من الجولات السابقة.
+  void loadShared(int current, List<(String, int)> botPool, {required int hourStartRound}) {
+    round = current;
+    history
+      ..clear()
+      ..addAll([for (var r = current - 1; r > current - 9; r--) winnerFor(r)]);
+    hourly.clear();
+    for (var r = hourStartRound; r < current; r++) {
+      final w = winnerFor(r);
+      _addHourly(botWinners(roundRng('sky', r, 'top'), w, botPool));
+    }
+  }
 
   int round;
   SkyPhase phase = SkyPhase.betting;
@@ -105,11 +159,12 @@ class SkyWheelGame {
   /// رهانات اللاعبين الآخرين (محاكاة حتى يشتغل السيرفر).
   void botsBet() {
     if (phase != SkyPhase.betting) return;
+    final rng = synced ? roundRng('sky', round, 'bets${_botTick++}') : _rng;
     for (var i = 0; i < 3; i++) {
-      final key = _rng.nextDouble() < .2
-          ? skyGroups[_rng.nextInt(skyGroups.length)].id
-          : skyPods[_rng.nextInt(skyPods.length)].id;
-      totals[key] = min((totals[key] ?? 0) + skyChips[_rng.nextInt(3)] * (1 + _rng.nextInt(5)), skyBotCap);
+      final key = rng.nextDouble() < .2
+          ? skyGroups[rng.nextInt(skyGroups.length)].id
+          : skyPods[rng.nextInt(skyPods.length)].id;
+      totals[key] = min((totals[key] ?? 0) + skyChips[rng.nextInt(3)] * (1 + rng.nextInt(5)), skyBotCap);
     }
   }
 
@@ -138,6 +193,7 @@ class SkyWheelGame {
   final List<String> upcoming = [];
 
   List<String> peekUpcoming([int n = 6]) {
+    if (synced) return [for (var i = 0; i < n; i++) winnerFor(round + i)];
     while (upcoming.length < n) {
       upcoming.add(pickWinner());
     }
@@ -147,6 +203,10 @@ class SkyWheelGame {
   /// يبدأ السحب ويحدد الكابينة الفائزة.
   String startSpin({String? forced}) {
     phase = SkyPhase.spinning;
+    if (synced) {
+      winner = forced ?? winnerFor(round);
+      return winner!;
+    }
     peekUpcoming();
     final next = upcoming.removeAt(0);
     winner = forced ?? next;
@@ -163,20 +223,11 @@ class SkyWheelGame {
     if (history.length > 20) history.removeLast();
 
     final winners = <SkyWinner>[
-      for (var i = 0; i < 3 + _rng.nextInt(3); i++)
-        () {
-          final (name, av) = botPool[_rng.nextInt(botPool.length)];
-          final stake = skyChips[_rng.nextInt(3)] * (1 + _rng.nextInt(4));
-          return SkyWinner(name, av, min(stake * skyPod(w).mult, skyBotCap));
-        }(),
+      ...botWinners(synced ? roundRng('sky', round, 'top') : _rng, w, botPool),
       if (lastPayout > 0) SkyWinner(myName, myAvatar, lastPayout, isMe: true),
     ]..sort((a, b) => b.amount.compareTo(a.amount));
     roundWinners = winners.take(3).toList();
-    for (final x in winners) {
-      final prev = hourly[x.name];
-      final sum = (prev?.amount ?? 0) + x.amount;
-      hourly[x.name] = SkyWinner(x.name, x.avatar, x.isMe ? sum : min(sum, skyBotCap), isMe: x.isMe);
-    }
+    _addHourly(winners);
     return lastPayout;
   }
 
@@ -188,6 +239,7 @@ class SkyWheelGame {
   /// جولة جديدة.
   void next() {
     round++;
+    _botTick = 0;
     phase = SkyPhase.betting;
     myBets.clear();
     totals.clear();

@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../core/account/account.dart';
 import '../../core/haptics.dart';
+import '../../core/rounds/shared_rounds.dart';
 import '../../core/sfx.dart';
 import '../../core/theme.dart';
 import '../../widgets/account_widgets.dart';
@@ -24,6 +25,39 @@ double rocketCrashPoint(Random r) {
 double rocketMultAt(double seconds) => exp(rocketGrowth * seconds);
 
 enum RocketPhase { waiting, flying, crashed }
+
+/// جولة صاروخ موحدة: الجولات متسلسلة من بداية اليوم (UTC)، وطول كل وحدة
+/// يعتمد على وين ينفجر الصاروخ. كل الأجهزة تحسب نفس السلسلة.
+class RocketSlot {
+  RocketSlot(this.day, this.k, this.start)
+      : crash = rocketCrashPoint(roundRng('rocket', day * 100000 + k, 'crash')) {
+    end = start + rocketWaitMs + (log(crash) / rocketGrowth * 1000).ceil() + rocketAfterMs;
+  }
+  final int day, k, start;
+  final double crash;
+  late final int end;
+  int get id => day * 100000 + k;
+
+  RocketSlot next() {
+    final n = RocketSlot(day, k + 1, end);
+    // يوم جديد: السلسلة تبدأ من جديد عند منتصف الليل عند الكل
+    return n.start ~/ 86400000 != day ? rocketSlotAt(n.start) : n;
+  }
+}
+
+const rocketWaitMs = 6000;
+const rocketAfterMs = 3000;
+
+RocketSlot rocketSlotAt(int ms, [List<double>? past]) {
+  final day = ms ~/ 86400000;
+  var s = RocketSlot(day, 0, day * 86400000);
+  while (s.end <= ms) {
+    past?.insert(0, s.crash);
+    if (past != null && past.length > 12) past.removeLast();
+    s = RocketSlot(day, s.k + 1, s.end);
+  }
+  return s;
+}
 
 class _Rider {
   _Rider(this.name, this.bet, this.target);
@@ -53,7 +87,10 @@ class RocketScreen extends StatefulWidget {
 }
 
 class _RocketScreenState extends State<RocketScreen> with SingleTickerProviderStateMixin {
-  late final Random _rng = widget.random ?? Random();
+  late Random _rng = widget.random ?? Random();
+  bool get _synced => widget.random == null;
+  RocketSlot? _slot;
+  int? _slotId;
   late final Ticker _ticker = createTicker(_onTick);
   RocketPhase phase = RocketPhase.waiting;
   Duration _phaseStart = Duration.zero;
@@ -76,8 +113,60 @@ class _RocketScreenState extends State<RocketScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _newRound();
+    if (_synced) {
+      _slot = rocketSlotAt(SharedClock.nowMs(), _history);
+      _syncTick();
+    } else {
+      _newRound();
+    }
     _ticker.start();
+  }
+
+  /// يحسب حالة الصاروخ من الساعة الموحدة (نفس اللحظة على كل الأجهزة).
+  void _syncTick() {
+    final now = SharedClock.nowMs();
+    var slot = _slot!;
+    while (now >= slot.end) {
+      slot = slot.next();
+    }
+    _slot = slot;
+    if (slot.id != _slotId) {
+      if (_slotId != null && phase != RocketPhase.crashed) {
+        _mult = _crash;
+        _explode();
+      }
+      _slotId = slot.id;
+      _rng = roundRng('rocket', slot.id, 'riders');
+      _newRound();
+      _crash = slot.crash;
+    }
+    final e = (now - slot.start) / 1000;
+    if (e < rocketWaitMs / 1000) {
+      _left = rocketWaitMs / 1000 - e;
+      return;
+    }
+    final m = rocketMultAt(e - rocketWaitMs / 1000);
+    if (m >= _crash) {
+      if (phase != RocketPhase.crashed) {
+        _mult = _crash;
+        _explode();
+      }
+      return;
+    }
+    if (phase == RocketPhase.waiting) {
+      phase = RocketPhase.flying;
+      Sfx.instance.tone(180, 520, .6, type: 'sawtooth', vol: .06);
+    }
+    _mult = m;
+    for (final r in _riders) {
+      if (r.out == null && _mult >= r.target) {
+        if (r.you) {
+          _cashOut(at: r.target);
+        } else {
+          r.out = r.target;
+        }
+      }
+    }
   }
 
   @override
@@ -111,6 +200,11 @@ class _RocketScreenState extends State<RocketScreen> with SingleTickerProviderSt
 
   void _onTick(Duration t) {
     _now = t;
+    if (_synced) {
+      _syncTick();
+      setState(() {});
+      return;
+    }
     final e = _elapsed;
     switch (phase) {
       case RocketPhase.waiting:

@@ -12,6 +12,7 @@ import '../../core/theme.dart';
 import '../../screens/shop_screen.dart';
 import '../../widgets/account_widgets.dart';
 import '../../widgets/game_ui.dart';
+import '../../core/rounds/shared_rounds.dart';
 import 'sky_wheel_engine.dart';
 
 /// لاعبون تجريبيون حتى يشتغل السيرفر (الاسم، رقم الصورة: زوجي بنت وفردي ولد).
@@ -50,7 +51,11 @@ class SkyWheelScreen extends StatefulWidget {
     this.betSeconds = 15,
     this.random,
     this.stepMs = 1.0,
+    this.shared = true,
   });
+
+  /// جولات موحدة مع كل الأجهزة (تنطفي في الاختبارات).
+  final bool shared;
 
   /// مدة الرهان في كل جولة.
   final int betSeconds;
@@ -101,7 +106,13 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
     game = SkyWheelGame(
       random: widget.random,
       round: (now.hour * 60 + now.minute) * 60 ~/ 25 + 1,
+      synced: _synced,
     );
+    if (_synced) {
+      _loadShared();
+      _enterSharedRound();
+      return;
+    }
     // نتائج سابقة حتى لا يكون الشريط فارغاً
     for (var i = 0; i < 8; i++) {
       game.history.add(game.pickWinner());
@@ -109,10 +120,55 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
     _startClock();
   }
 
+  /// الجولات موحدة لكل الأجهزة (في الاختبارات نمرر random فتصير محلية).
+  bool get _synced => widget.shared && widget.random == null;
+  static const _rounds = SkyWheelGame.rounds;
+  int _hourRound = 0;
+  Timer? _wait;
+
+  int get _roundStart => _rounds.startOf(game.round);
+
+  void _loadShared() {
+    final now = SharedClock.nowMs();
+    final hourStart = now - now % 3600000;
+    _hourRound = _rounds.roundAt(hourStart);
+    game.loadShared(_rounds.roundAt(now), _botPool, hourStartRound: _hourRound);
+  }
+
+  /// يدخل الجولة الحالية من النقطة اللي وصلت لها عند الكل.
+  void _enterSharedRound() {
+    final off = SharedClock.nowMs() - _roundStart;
+    if (off < SkyWheelGame.betMs) {
+      // رهانات الآخرين اللي صارت قبل ما أدخل
+      for (var k = 0; k < off ~/ 1000; k++) {
+        game.botsBet();
+      }
+      _startClock();
+    } else if (off < SkyWheelGame.betMs + SkyWheelGame.spinMs - 600) {
+      _spin();
+    } else {
+      // الجولة خلصت تقريباً: نعرض نتيجتها وننتظر الجولة الجاية
+      game.startSpin();
+      _angle = -skyPods.indexWhere((p) => p.id == game.winner) * 2 * pi / skyPods.length;
+      game.phase = SkyPhase.result;
+      _waitNext();
+    }
+  }
+
+  void _waitNext() {
+    _wait?.cancel();
+    final ms = (_rounds.startOf(game.round + 1) - SharedClock.nowMs()).clamp(0, 30000);
+    _wait = Timer(Duration(milliseconds: ms), () {
+      if (_disposed) return;
+      _nextRound();
+    });
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _clock?.cancel();
+    _wait?.cancel();
     _idle.dispose();
     _spinCtl.dispose();
     super.dispose();
@@ -120,8 +176,30 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
 
   void _startClock() {
     _clock?.cancel();
-    _left = widget.betSeconds;
     _startIdle();
+    if (_synced) {
+      int leftNow() => ((_roundStart + SkyWheelGame.betMs - SharedClock.nowMs()) / 1000).ceil();
+      _left = leftNow().clamp(0, 99);
+      _clock = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (!mounted) return;
+        final l = leftNow();
+        if (l != _left) {
+          setState(() {
+            for (var i = l; i < _left; i++) {
+              game.botsBet();
+            }
+            _left = l.clamp(0, 99);
+          });
+          if (_left <= 3 && _left > 0) Haptics.selectionClick();
+        }
+        if (l <= 0) {
+          _clock?.cancel();
+          _spin();
+        }
+      });
+      return;
+    }
+    _left = widget.betSeconds;
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
@@ -149,7 +227,9 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
     }
     to += 4 * 2 * pi;
     _spinCtl.duration = Duration(
-      milliseconds: (5200 * widget.stepMs).round().clamp(1, 100000),
+      milliseconds: _synced
+          ? (_roundStart + SkyWheelGame.betMs + SkyWheelGame.spinMs - SharedClock.nowMs()).clamp(600, SkyWheelGame.spinMs)
+          : (5200 * widget.stepMs).round().clamp(1, 100000),
     );
     final curve = CurvedAnimation(parent: _spinCtl, curve: Curves.easeOutCubic);
     var lastLit = -1;
@@ -194,6 +274,10 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
       Haptics.heavyImpact();
     }
     setState(() => _resultOpen = true);
+    if (_synced) {
+      _waitNext();
+      return;
+    }
     await Future.delayed(const Duration(milliseconds: 4200));
     if (_disposed) return;
     _nextRound();
@@ -205,6 +289,15 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
       _resultOpen = false;
       game.next();
     });
+    if (_synced) {
+      final now = SharedClock.nowMs();
+      if (_rounds.roundAt(now - now % 3600000) != _hourRound || _rounds.roundAt(now) != game.round) {
+        // ساعة جديدة أو الجهاز تأخر (مثلاً كان بالخلفية): نرجع لنفس جولة الكل
+        setState(_loadShared);
+        _enterSharedRound();
+        return;
+      }
+    }
     _startClock();
   }
 

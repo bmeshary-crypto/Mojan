@@ -6,6 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/haptics.dart';
+import '../../core/rounds/shared_rounds.dart';
 import '../../core/sfx.dart';
 import '../../core/theme.dart';
 import 'coin_ui.dart';
@@ -65,7 +66,18 @@ class FruitsScreen extends StatefulWidget {
 /// موقع كل فاكهة في شبكة 3×3 (الوسط للعداد).
 const _ringCells = [0, 1, 2, 5, 8, 7, 6, 3];
 
+/// جولات الفواكه الموحدة: 12 ثانية رهان، والباقي للدوران والنتيجة.
+const fruitRounds = FixedRounds(20000);
+const fruitBetMs = 12000;
+
+/// الفاكهة الفائزة في جولة موحدة (نفسها على كل الأجهزة).
+int fruitWinnerFor(int round) => pickFruit(roundRng('fruits', round, 'win'));
+
 class _FruitsScreenState extends State<FruitsScreen> {
+  bool get _synced => widget.random == null;
+  int _round = 0;
+  Timer? _wait;
+
   late final Random _rng = widget.random ?? Random();
   FruitPhase phase = FruitPhase.betting;
   late int _left = widget.betSeconds;
@@ -84,13 +96,36 @@ class _FruitsScreenState extends State<FruitsScreen> {
   @override
   void initState() {
     super.initState();
+    if (_synced) {
+      _round = fruitRounds.current;
+      _history.addAll([for (var r = _round - 1; r > _round - 13; r--) fruitWinnerFor(r)]);
+      if (fruitRounds.elapsedMs >= fruitBetMs) {
+        // دخلت بعد ما قفل الرهان: نعرض نتيجة الجولة وننتظر الجاية
+        phase = FruitPhase.result;
+        _winner = fruitWinnerFor(_round);
+        _lit = _winner!;
+        _waitNext();
+        return;
+      }
+    }
     _startRound();
+  }
+
+  void _waitNext() {
+    _wait?.cancel();
+    final ms = (fruitRounds.startOf(_round + 1) - SharedClock.nowMs()).clamp(0, 30000);
+    _wait = Timer(Duration(milliseconds: ms), () {
+      if (_disposed) return;
+      _round = fruitRounds.current;
+      _startRound();
+    });
   }
 
   @override
   void dispose() {
     _disposed = true;
     _clock?.cancel();
+    _wait?.cancel();
     super.dispose();
   }
 
@@ -102,6 +137,23 @@ class _FruitsScreenState extends State<FruitsScreen> {
       _lastPay = 0;
     });
     _clock?.cancel();
+    if (_synced) {
+      int leftNow() => ((fruitRounds.startOf(_round) + fruitBetMs - SharedClock.nowMs()) / 1000).ceil();
+      _left = leftNow().clamp(0, 99);
+      _clock = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (_disposed) return;
+        final l = leftNow();
+        if (l != _left) {
+          setState(() => _left = l.clamp(0, 99));
+          if (_left <= 3 && _left > 0) Sfx.instance.tick();
+        }
+        if (l <= 0) {
+          _clock?.cancel();
+          _spin();
+        }
+      });
+      return;
+    }
     _clock = Timer.periodic(Duration(milliseconds: (1000 * widget.speed).round().clamp(1, 1000)), (_) {
       if (_disposed) return;
       setState(() => _left--);
@@ -142,7 +194,7 @@ class _FruitsScreenState extends State<FruitsScreen> {
   }
 
   Future<void> _spin() async {
-    final win = pickFruit(_rng);
+    final win = _synced ? fruitWinnerFor(_round) : pickFruit(_rng);
     setState(() => phase = FruitPhase.spinning);
     // ثلاث لفات كاملة ثم التوقف عند الفائز، مع تباطؤ تدريجي.
     final steps = 3 * 8 + ((win - _lit) % 8 + 8) % 8;
@@ -173,6 +225,10 @@ class _FruitsScreenState extends State<FruitsScreen> {
       if (total > 0) _lastBets = List.of(_bets);
       _bets.fillRange(0, _bets.length, 0);
     });
+    if (_synced) {
+      _waitNext();
+      return;
+    }
     await Future.delayed(Duration(milliseconds: (3200 * widget.speed).round()));
     if (_disposed) return;
     _startRound();
