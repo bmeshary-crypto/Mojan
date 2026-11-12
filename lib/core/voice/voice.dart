@@ -1,6 +1,9 @@
 import 'dart:math';
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ai/ai_brain.dart';
 import '../ai/speech.dart';
@@ -554,7 +557,50 @@ class VoiceService extends ChangeNotifier {
   String _newId() => (100000 + _rng.nextInt(899999)).toString();
 
   /// غرفتا النظام (الترحيب والبودكاست). باقي الغرف ينشئها المستخدمون فقط.
+  /// آخر الغرف اللي زرتها (معرف الغرفة ← وقت الزيارة)، محفوظة على الجهاز.
+  final Map<String, DateTime> visited = {};
+  bool _visitedLoaded = false;
+  static const _visitedKey = 'voice_visited';
+
+  Future<void> _loadVisited() async {
+    if (_visitedLoaded) return;
+    _visitedLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_visitedKey);
+      if (raw == null) return;
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      for (final e in m.entries) {
+        visited.putIfAbsent(e.key, () => DateTime.fromMillisecondsSinceEpoch((e.value as num).toInt()));
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('visited rooms: $e');
+    }
+  }
+
+  void _markVisited(VoiceRoom r) {
+    visited[r.id] = DateTime.now();
+    if (visited.length > 30) {
+      final old = visited.entries.toList()..sort((a, b) => a.value.compareTo(b.value));
+      for (final e in old.take(visited.length - 30)) {
+        visited.remove(e.key);
+      }
+    }
+    SharedPreferences.getInstance().then((p) => p.setString(
+          _visitedKey,
+          jsonEncode({for (final e in visited.entries) e.key: e.value.millisecondsSinceEpoch}),
+        )).catchError((Object _) => false);
+  }
+
+  /// آخر الغرف اللي زرتها (بدون غرفتي)، الأحدث أولاً.
+  List<VoiceRoom> get recent => (rooms.where((r) => visited.containsKey(r.id) && !r.host.isMe).toList()
+        ..sort((a, b) => visited[b.id]!.compareTo(visited[a.id]!)))
+      .take(10)
+      .toList();
+
   void ensureRooms() {
+    _loadVisited();
     for (final r in SystemRooms.instance.build()) {
       if (byId(r.id) == null) rooms.add(r);
     }
@@ -863,6 +909,7 @@ class VoiceService extends ChangeNotifier {
       r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: me()));
     }
     if (r.system != null) SystemRooms.instance.entered(r);
+    if (!hidden) _markVisited(r);
     Cloud.instance.setWhere('🎙️ ${r.title}');
     notifyListeners();
     return null;
@@ -1250,6 +1297,7 @@ class VoiceService extends ChangeNotifier {
     rooms.clear();
     reports.clear();
     following.clear();
+    visited.clear();
     bannedUsers.clear();
     micOn = false;
     minimized = null;

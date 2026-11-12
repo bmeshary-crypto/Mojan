@@ -87,7 +87,7 @@ class _VoiceHomeState extends State<VoiceHome> {
       listenable: svc,
       builder: (context, _) {
         final rooms = _rooms;
-        final saved = _filter == _Filter.all ? svc.saved : <VoiceRoom>[];
+        final recent = _filter == _Filter.all ? svc.recent : <VoiceRoom>[];
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
           children: [
@@ -139,29 +139,26 @@ class _VoiceHomeState extends State<VoiceHome> {
                 room: r,
                 onTap: () => openVoiceRoom(context, r),
               ).animate().fadeIn(delay: (60 * i).ms).slideX(begin: .08, end: 0),
-            if (saved.isNotEmpty) ...[
+            if (recent.isNotEmpty) ...[
               const SizedBox(height: 14),
               Row(
                 children: [
-                  const Icon(Icons.bookmark_rounded, color: AppColors.gold, size: 20),
+                  const Icon(Icons.history_rounded, color: AppColors.gold, size: 20),
                   const SizedBox(width: 6),
-                  Text('غرف محفوظة', style: AppTheme.display.copyWith(fontSize: 20)),
+                  Text('آخر الغرف اللي زرتها', style: AppTheme.display.copyWith(fontSize: 20)),
                   const Spacer(),
                   Text(
-                    '${saved.length} غرفة',
+                    '${recent.length} غرفة',
                     style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'غرف ما فيها أحد الآن. ادخل أي غرفة مفتوحة وترجع حيّة، وصاحب الغرفة يقدر يفتحها من جديد.',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-              ),
               const SizedBox(height: 8),
-              for (final r in saved)
+              for (final r in recent)
                 _SavedCard(
+                  key: ValueKey('recent-room-${r.id}'),
                   room: r,
+                  visitedAt: svc.visited[r.id],
                   onTap: () => openVoiceRoom(context, r),
                   onDelete: () => _delete(r),
                 ),
@@ -602,8 +599,9 @@ String lastSeenLabel(DateTime? t, {DateTime? now}) {
 }
 
 class _SavedCard extends StatelessWidget {
-  const _SavedCard({required this.room, required this.onTap, required this.onDelete});
+  const _SavedCard({super.key, required this.room, required this.onTap, required this.onDelete, this.visitedAt});
   final VoiceRoom room;
+  final DateTime? visitedAt;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
@@ -664,7 +662,9 @@ class _SavedCard extends StatelessWidget {
                       const SizedBox(width: 3),
                       Flexible(
                         child: Text(
-                          'آخر ظهور ${lastSeenLabel(room.lastActive)} · ${room.host.name}',
+                          visitedAt != null
+                              ? '${!room.closed && room.active ? '🟢 مفتوحة الحين' : 'زرتها ${lastSeenLabel(visitedAt)}'} · ${room.host.name}'
+                              : 'آخر ظهور ${lastSeenLabel(room.lastActive)} · ${room.host.name}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w700),

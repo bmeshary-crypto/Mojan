@@ -82,4 +82,22 @@ void main() {
     r.presentIds = r.freshHere();
     expect(r.active, isFalse, reason: 'nobody really there = saved room');
   });
+
+  test('my room is the banner room; visited rooms show newest first, mine excluded', () {
+    expect(svc.myRoom, isNull);
+    final mine = svc.create(title: 'غرفتي', category: VoiceCategory.chat)..live = true;
+    expect(svc.myRoom, mine);
+    final a = svc.create(title: 'أ', category: VoiceCategory.chat);
+    a.host = VoiceUser(id: 'a', name: 'أ', avatar: 1, isBot: false);
+    final b = svc.create(title: 'ب', category: VoiceCategory.chat);
+    b.host = VoiceUser(id: 'b', name: 'ب', avatar: 2, isBot: false);
+    svc.join(a);
+    svc.leave(a);
+    svc.join(b);
+    svc.leave(b);
+    svc.visited[a.id] = DateTime.now().add(const Duration(seconds: 1));
+    svc.join(mine);
+    svc.leave(mine);
+    expect(svc.recent, [a, b]);
+  });
 }
