@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/haptics.dart';
@@ -10,6 +9,8 @@ import '../../core/sfx.dart';
 import '../../core/theme.dart';
 import 'coin_ui.dart';
 import 'slot_reels.dart';
+import 'slot_shell.dart';
+import 'win_fx.dart';
 
 class ClassicSymbol {
   const ClassicSymbol(this.id, this.name, this.emoji, this.weight, this.three);
@@ -92,6 +93,7 @@ class _LuckySlotsScreenState extends State<LuckySlotsScreen> {
   int _lastWin = 0;
   int _lastMult = 0;
   bool _disposed = false;
+  int _winKey = 0;
 
   int get _bet => classicBets[_betIndex];
 
@@ -129,11 +131,15 @@ class _LuckySlotsScreenState extends State<LuckySlotsScreen> {
     final won = bet * mult;
     if (won > 0) {
       Account.instance.earn(won);
-      if (mult >= 4) {
-        Sfx.instance.win();
-        Haptics.heavyImpact();
+      Haptics.heavyImpact();
+      if (winTier(mult.toDouble()) != null && mounted) {
+        unawaited(showBigWin(context, amount: won, mult: mult.toDouble(), hero: SizedBox(width: 110, height: 110, child: _symbol(cols[0][1]))));
+      } else {
+        Sfx.instance.lineWin();
+        Sfx.instance.coins(mult >= 4 ? 8 : 4);
       }
     }
+    _winKey++;
     Account.instance.recordCoinRound('lucky_slots', bet: bet, won: won);
     setState(() {
       _spinning = false;
@@ -141,7 +147,7 @@ class _LuckySlotsScreenState extends State<LuckySlotsScreen> {
       _lastMult = mult;
     });
     if (_auto) {
-      await Future.delayed(Duration(milliseconds: ((mult >= 10 ? 1400 : 450) * widget.speed).round()));
+      await Future.delayed(Duration(milliseconds: ((winTier(mult.toDouble()) != null ? 3800 : (mult > 0 ? 900 : 450)) * widget.speed).round()));
       if (_disposed || !_auto) return;
       unawaited(_spin());
     }
@@ -196,172 +202,105 @@ class _LuckySlotsScreenState extends State<LuckySlotsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return CoinGameScaffold(
+    return SlotShell(
+      background: 'assets/images/bg_vegas.webp',
+      logo: 'assets/images/logo_lucky.webp',
       title: 'ماكينة الحظ',
-      colors: const [Color(0xFF8A0F1E), Color(0xFF3A0710)],
-      inPlay: _spinning,
+      accent: const Color(0xFF5A1080),
+      keyPrefix: 'slots',
+      inPlay: _spinning || _auto,
+      bet: _bet,
+      lastWin: _lastWin,
+      spinning: _spinning,
+      auto: _auto,
+      fast: _fast,
+      hint: '٧٧٧ تدفع ×100',
+      onSpin: _spinning || _auto ? null : _spin,
+      onAuto: _toggleAuto,
+      onFast: () => setState(() => _fast = !_fast),
       onHelp: _paytable,
-      child: Column(
-        children: [
-          const SizedBox(height: 8),
-          _marquee(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
-              child: Center(child: AspectRatio(aspectRatio: .95, child: _machine())),
-            ),
-          ),
-          _winBar(),
-          _controls(),
-        ],
-      ),
+      onMinus: !_spinning && !_auto && _betIndex > 0 ? () => setState(() => _betIndex--) : null,
+      onPlus: !_spinning && !_auto && _betIndex < classicBets.length - 1 ? () => setState(() => _betIndex++) : null,
+      floating: _lastWin > 0 && !_spinning && winTier(_lastMult.toDouble()) == null ? FloatingWin(key: ValueKey('fw$_winKey'), amount: _lastWin) : null,
+      machine: AspectRatio(aspectRatio: .78, child: _machine()),
     );
   }
 
-  Widget _marquee() => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      for (var i = 0; i < 7; i++)
-        Container(
-          width: 10,
-          height: 10,
-          margin: const EdgeInsets.symmetric(horizontal: 5),
-          decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFFFE07A)),
-        )
-            .animate(onPlay: (c) => c.repeat(reverse: true))
-            .fadeOut(delay: (i * 90).ms, duration: 500.ms, begin: 1),
-    ],
-  );
-
-  Widget _machine() => Container(
-    padding: const EdgeInsets.all(12),
+  Widget _paytableStrip() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(26),
-      gradient: const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFFE8E8EE), Color(0xFF9EA2AE), Color(0xFFD9DBE3)],
-      ),
-      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 18, offset: Offset(0, 8))],
+      color: const Color(0xFF0A0420),
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: const Color(0xFF7A3AFF), width: 1.5),
     ),
-    child: Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        color: const Color(0xFFB3121F),
-        border: Border.all(color: const Color(0xFF5E0910), width: 3),
-      ),
-      child: Stack(
-        children: [
-          SlotReels(
-            initial: _initial,
-            rows: 3,
-            controller: _reels,
-            symbol: _symbol,
-            highlight: !_spinning && _lastMult > 0 ? {(0, 1), (1, 1), (2, 1)} : const {},
-            reelDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFF9097A6), Colors.white, Colors.white, Color(0xFF9097A6)],
-                stops: [0, .25, .75, 1],
-              ),
-            ),
-          ),
-          // خط الربح في الوسط
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Center(
-                child: Container(height: 3, color: const Color(0xFFFFC93C).withValues(alpha: .85)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _winBar() => SizedBox(
-    height: 40,
-    child: Center(
-      child: _lastWin > 0
-          ? Text(
-              'ربحت ${fmtCoins(_lastWin)}  ${ltr('×$_lastMult')}',
-              key: const ValueKey('slots-win'),
-              style: AppTheme.display.copyWith(fontSize: 24, color: AppColors.gold),
-            ).animate().scale(duration: 350.ms, curve: Curves.elasticOut)
-          : Text(
-              _spinning ? 'بالتوفيق...' : 'اضغط لف وجرب حظك',
-              style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w800),
-            ),
-    ),
-  );
-
-  Widget _controls() => Padding(
-    padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
     child: Column(
       children: [
-        Row(
-          children: [
-            _round('slots-minus', Icons.remove_rounded, !_spinning && _betIndex > 0 ? () => setState(() => _betIndex--) : null),
-            Expanded(
-              child: Container(
-                height: 46,
-                margin: const EdgeInsets.symmetric(horizontal: 8),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: .35),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.gold.withValues(alpha: .5)),
+        for (final row in [classicSymbols.sublist(0, 3), classicSymbols.sublist(3)])
+          Row(
+            children: [
+              for (final s in row)
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (var k = 0; k < 3; k++) SizedBox(width: 15, height: 15, child: _symbol(s.id)),
+                      const SizedBox(width: 3),
+                      Text(ltr('×${s.three}'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFFFFE07A))),
+                    ],
+                  ),
                 ),
-                child: Text('الرهان ${fmtCoins(_bet)}', key: const ValueKey('slots-bet'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-              ),
-            ),
-            _round('slots-plus', Icons.add_rounded, !_spinning && _betIndex < classicBets.length - 1 ? () => setState(() => _betIndex++) : null),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            _toggle('slots-fast', '⚡ سريع', _fast, () => setState(() => _fast = !_fast)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: CoinActionButton(
-                key: const ValueKey('slots-spin'),
-                label: _spinning ? '...' : 'لف 🎰',
-                color: const Color(0xFFFFC93C),
-                onTap: _spinning || _auto ? null : _spin,
-              ),
-            ),
-            const SizedBox(width: 8),
-            _toggle('slots-auto', _auto ? '⏹ وقف' : '🔁 تلقائي', _auto, _toggleAuto),
-          ],
-        ),
+            ],
+          ),
       ],
     ),
   );
 
-  Widget _round(String key, IconData icon, VoidCallback? onTap) => IconButton.filled(
-    key: ValueKey(key),
-    onPressed: onTap,
-    style: IconButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: const Color(0xFF4A2600)),
-    icon: Icon(icon),
-  );
-
-  Widget _toggle(String key, String label, bool on, VoidCallback onTap) => SizedBox(
-    width: 78,
-    height: 60,
-    child: OutlinedButton(
-      key: ValueKey(key),
-      style: OutlinedButton.styleFrom(
-        padding: EdgeInsets.zero,
-        backgroundColor: on ? AppColors.gold.withValues(alpha: .25) : null,
-        side: BorderSide(color: on ? AppColors.gold : Colors.white24, width: on ? 2 : 1),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      onPressed: onTap,
-      child: FittedBox(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13))),
+  Widget _machine() => MachineFrame(
+    inner: const Color(0xFF7A0A18),
+    lit: _lastMult > 0 && !_spinning,
+    top: _paytableStrip(),
+    child: Stack(
+      children: [
+        SlotReels(
+          initial: _initial,
+          rows: 3,
+          controller: _reels,
+          symbol: _symbol,
+          highlight: !_spinning && _lastMult > 0 ? {(0, 1), (1, 1), (2, 1)} : const {},
+          reelDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF6A6E7A), Color(0xFFF4F4F8), Color(0xFFFFFFFF), Color(0xFFF4F4F8), Color(0xFF6A6E7A)],
+              stops: [0, .2, .5, .8, 1],
+            ),
+          ),
+        ),
+        // خط الربح في الوسط مع سهمين
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Center(
+              child: Row(
+                children: [
+                  const Text('▶', style: TextStyle(color: Color(0xFFFFC93C), fontSize: 14)),
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      height: _lastMult > 0 && !_spinning ? 5 : 2.5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFC93C).withValues(alpha: .9),
+                        boxShadow: _lastMult > 0 && !_spinning ? const [BoxShadow(color: Color(0xFFFFE04D), blurRadius: 12, spreadRadius: 2)] : null,
+                      ),
+                    ),
+                  ),
+                  const Text('◀', style: TextStyle(color: Color(0xFFFFC93C), fontSize: 14)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     ),
   );
 }

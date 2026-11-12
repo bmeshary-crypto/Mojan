@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/online_lobby.dart';
 import '../widgets/game_icons.dart';
+import 'blocks/blocks_screen.dart';
 import 'coin_games/fruits.dart';
 import 'coin_games/lucky_slots.dart';
 import 'coin_games/star_league.dart';
@@ -163,6 +164,16 @@ class GameRegistry {
       modes: const [PlayMode.solo],
       iconBuilder: (_) => const GameArt('assets/images/sultan.webp', fallback: EmojiArt('🪔', small: '🪙🗝️')),
       screenBuilder: (_, _) => const SultanScreen(),
+    ),
+    GameModule(
+      id: 'blocks',
+      title: 'مكعبات',
+      tagline: 'رتب القطع وامسح الصفوف',
+      colors: const [Color(0xFF7FA0FF), Color(0xFF3A5091), Color(0xFF1E2747)],
+      players: '1',
+      modes: const [PlayMode.solo],
+      iconBuilder: (_) => const GameArt('assets/images/blocks.webp', fallback: EmojiArt('🟧', small: '🟪🟩')),
+      screenBuilder: (_, _) => const BlocksScreen(),
     ),
   ];
 

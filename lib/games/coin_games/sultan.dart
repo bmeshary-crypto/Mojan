@@ -11,6 +11,8 @@ import '../../core/sfx.dart';
 import '../../core/theme.dart';
 import 'coin_ui.dart';
 import 'slot_reels.dart';
+import 'slot_shell.dart';
+import 'win_fx.dart';
 
 /// كنز السلطان: 5 بكرات × 3 صفوف و20 خط.
 ///
@@ -189,6 +191,7 @@ class _SultanScreenState extends State<SultanScreen> {
   SultanResult? _last;
   int _lastWin = 0;
   bool _disposed = false;
+  int _winKey = 0;
 
   int get _bet => _free > 0 ? _freeBet : sultanBets[_betIndex];
 
@@ -235,13 +238,28 @@ class _SultanScreenState extends State<SultanScreen> {
     final res = sultanEvaluate(grid);
     var won = res.winFor(bet);
     if (freeSpin) won *= sultanFreeMult;
+    final effMult = bet == 0 ? 0.0 : won / bet;
+    var big = false;
     if (won > 0) {
       Account.instance.earn(won);
-      if (res.mult >= 2) {
-        Sfx.instance.win();
-        Haptics.heavyImpact();
+      Haptics.heavyImpact();
+      final jackpot = res.coins >= 5 ? sultanJackpots.firstWhere((j) => min(res.coins, 8) >= j.$1).$2 : null;
+      if ((winTier(effMult) != null || jackpot != null) && mounted) {
+        big = true;
+        unawaited(showBigWin(
+          context,
+          amount: won,
+          mult: effMult,
+          title: jackpot != null ? 'جاكبوت $jackpot!' : null,
+          hero: SizedBox(width: 110, height: 110, child: _art(jackpot != null ? 'coin' : 'wild')),
+        ));
+      } else {
+        Sfx.instance.lineWin();
+        Sfx.instance.coins(effMult >= 2 ? 8 : 4);
       }
     }
+    if (res.keys > 0) Sfx.instance.pickup();
+    _winKey++;
     Account.instance.recordCoinRound('sultan', bet: freeSpin ? 0 : bet, won: won);
     var keys = _keys + res.keys;
     var unlocked = false;
@@ -266,11 +284,11 @@ class _SultanScreenState extends State<SultanScreen> {
     });
     unawaited(_saveKeys());
     if (unlocked && mounted) {
-      Sfx.instance.win();
+      Sfx.instance.bigWin();
       coinToast(context, '🗝️ فتحت الكنز! $sultanFreeSpins لفات مجانية وأرباحها ×$sultanFreeMult');
     }
     if (_auto || _free > 0) {
-      final pause = res.coinPay >= 5 || res.mult >= 10 ? 1600 : (unlocked ? 1800 : 500);
+      final pause = big ? 3800 : (unlocked ? 1800 : (won > 0 ? 1000 : 500));
       await Future.delayed(Duration(milliseconds: (pause * widget.speed).round()));
       if (_disposed) return;
       if (_auto || _free > 0) unawaited(_spin());
@@ -284,46 +302,51 @@ class _SultanScreenState extends State<SultanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return CoinGameScaffold(
+    final locked = _spinning || _free > 0 || _auto;
+    return SlotShell(
+      background: 'assets/images/bg_palace.webp',
+      logo: 'assets/images/logo_sultan.webp',
       title: 'كنز السلطان',
-      colors: const [Color(0xFF3B0A57), Color(0xFF1C0530)],
-      inPlay: _spinning || _free > 0,
-      leaveMessage: 'عندك لفات شغالة، وإذا خرجت تضيع عليك.',
+      accent: const Color(0xFF3B0A57),
+      keyPrefix: 'sultan',
+      inPlay: _spinning || _free > 0 || _auto,
+      bet: _bet,
+      lastWin: _lastWin,
+      spinning: _spinning,
+      auto: _auto,
+      fast: _fast,
+      spinLabel: _free > 0 ? '$_free' : 'لف',
+      hint: _free > 0 ? '🎁 لفات مجانية ×$sultanFreeMult • ربحها ${fmtCoins(_freeTotal)}' : '20 خط • رهان الخط ${fmtCoins(_bet / 20)}',
+      onSpin: _spinning || _auto || _free > 0 ? null : _spin,
+      onAuto: _toggleAuto,
+      onFast: () => setState(() => _fast = !_fast),
       onHelp: _paytable,
-      child: Column(
-        children: [
-          _jackpots(),
-          _keysBar(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-              child: Center(child: AspectRatio(aspectRatio: 5 / 3.15, child: _board())),
-            ),
-          ),
-          _winBar(),
-          _controls(),
-        ],
-      ),
+      onMinus: !locked && _betIndex > 0 ? () => setState(() => _betIndex--) : null,
+      onPlus: !locked && _betIndex < sultanBets.length - 1 ? () => setState(() => _betIndex++) : null,
+      header: Column(children: [_jackpots(), _keysBar()]),
+      floating: _lastWin > 0 && !_spinning && winTier(_lastWin / max(1, _bet)) == null ? FloatingWin(key: ValueKey('fw$_winKey'), amount: _lastWin) : null,
+      machine: AspectRatio(aspectRatio: 5 / 3.55, child: _board()),
     );
   }
 
   Widget _jackpots() => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+    padding: const EdgeInsets.fromLTRB(10, 4, 10, 0),
     child: Row(
       children: [
         for (final (n, name) in sultanJackpots)
           Expanded(
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 3),
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 3),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
                 gradient: LinearGradient(
-                  colors: n == 8
-                      ? const [Color(0xFFFFE07A), Color(0xFFC77A0A)]
-                      : const [Color(0xFF6A1D8E), Color(0xFF3A0F55)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: n == 8 ? const [Color(0xFFFFE07A), Color(0xFFC77A0A)] : const [Color(0xFF8A1020), Color(0xFF4A0610)],
                 ),
-                border: Border.all(color: AppColors.gold.withValues(alpha: .7)),
+                border: Border.all(color: const Color(0xFFFFC93C), width: 1.5),
+                boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 3))],
               ),
               child: Column(
                 children: [
@@ -336,26 +359,28 @@ class _SultanScreenState extends State<SultanScreen> {
                   FittedBox(
                     child: Text(
                       fmtCoins(_bet * sultanCoinPays[n]!),
-                      style: AppTheme.display.copyWith(fontSize: 16, color: n == 8 ? const Color(0xFF4A2600) : AppColors.gold),
+                      style: AppTheme.display.copyWith(fontSize: 16, color: n == 8 ? const Color(0xFF4A2600) : const Color(0xFFFFE07A)),
                     ),
                   ),
                 ],
               ),
-            ),
+            )
+                .animate(onPlay: (c) => c.repeat())
+                .shimmer(delay: (n * 400).ms, duration: 1600.ms, color: const Color(0x66FFFFFF)),
           ),
       ],
     ),
   );
 
   Widget _keysBar() => Padding(
-    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+    padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
     child: Row(
       children: [
         for (var i = 0; i < sultanKeysNeeded; i++)
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Opacity(
-              opacity: i < _keys ? 1 : .25,
+              opacity: i < _keys ? 1 : .3,
               child: SizedBox(width: 26, height: 26, child: _art('key')),
             ),
           ),
@@ -368,40 +393,48 @@ class _SultanScreenState extends State<SultanScreen> {
             key: const ValueKey('sultan-keys'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _free > 0 ? AppColors.gold : Colors.white70),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _free > 0 ? AppColors.gold : Colors.white, shadows: const [Shadow(color: Colors.black, blurRadius: 4)]),
           ),
         ),
       ],
     ),
   );
 
-  Widget _board() => Container(
-    padding: const EdgeInsets.all(7),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(20),
-      gradient: const LinearGradient(colors: [Color(0xFFFFE07A), Color(0xFFB8741A), Color(0xFFFFE07A)]),
-      boxShadow: [BoxShadow(color: (_free > 0 ? AppColors.gold : Colors.black).withValues(alpha: .6), blurRadius: 18)],
-    ),
-    child: Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: const Color(0xFF240637),
+  Widget _board() {
+    final res = _spinning ? null : _last;
+    return MachineFrame(
+      inner: const Color(0xFF240637),
+      lit: _lastWin > 0 && !_spinning || _free > 0,
+      child: Stack(
+        children: [
+          SlotReels(
+            initial: _initial,
+            rows: 3,
+            gap: 4,
+            controller: _reels,
+            symbol: _symbol,
+            highlight: res?.cells(_grid) ?? const {},
+            reelDecoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF2A0840), Color(0xFF4A1470), Color(0xFF2A0840)],
+              ),
+            ),
+          ),
+          if (res != null && res.lines.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(painter: _LinesPainter([for (final w in res.lines) w.line]))
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .fade(begin: 1, end: .35, duration: 600.ms),
+              ),
+            ),
+        ],
       ),
-      child: SlotReels(
-        initial: _initial,
-        rows: 3,
-        gap: 4,
-        controller: _reels,
-        symbol: _symbol,
-        highlight: _last?.cells(_grid) ?? const {},
-        reelDecoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          color: const Color(0xFF3A0F55),
-        ),
-      ),
-    ),
-  );
+    );
+  }
 
   Widget _art(String id) => SymbolArt('assets/images/sl_$id.webp', fallback: const {'key': '🗝️', 'coin': '🪙'}[id] ?? '⭐');
 
@@ -435,104 +468,6 @@ class _SultanScreenState extends State<SultanScreen> {
       ),
     );
   }
-
-  Widget _winBar() {
-    final r = _last;
-    return SizedBox(
-      height: 44,
-      child: Center(
-        child: _lastWin > 0
-            ? Column(
-                key: const ValueKey('sultan-win'),
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('ربحت ${fmtCoins(_lastWin)}', style: AppTheme.display.copyWith(fontSize: 22, color: AppColors.gold)),
-                  Text(
-                    [
-                      if (r!.lines.isNotEmpty) '${r.lines.length} خط',
-                      if (r.coinPay > 0) '${r.coins} عملات',
-                    ].join(' + '),
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white70),
-                  ),
-                ],
-              ).animate().scale(duration: 350.ms, curve: Curves.elasticOut)
-            : Text(
-                _spinning ? 'بالتوفيق...' : '20 خط • رهان الخط ${fmtCoins(_bet / 20)}',
-                style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w800),
-              ),
-      ),
-    );
-  }
-
-  Widget _controls() {
-    final locked = _spinning || _free > 0;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              _round('sultan-minus', Icons.remove_rounded, !locked && _betIndex > 0 ? () => setState(() => _betIndex--) : null),
-              Expanded(
-                child: Container(
-                  height: 46,
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: .35),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.gold.withValues(alpha: .5)),
-                  ),
-                  child: Text('الرهان ${fmtCoins(_bet)}', key: const ValueKey('sultan-bet'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-                ),
-              ),
-              _round('sultan-plus', Icons.add_rounded, !locked && _betIndex < sultanBets.length - 1 ? () => setState(() => _betIndex++) : null),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              _toggle('sultan-fast', '⚡ سريع', _fast, () => setState(() => _fast = !_fast)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: CoinActionButton(
-                  key: const ValueKey('sultan-spin'),
-                  label: _free > 0 ? 'مجانية ($_free)' : (_spinning ? '...' : 'لف ✨'),
-                  color: const Color(0xFFFFC93C),
-                  onTap: _spinning || _auto || _free > 0 ? null : _spin,
-                ),
-              ),
-              const SizedBox(width: 8),
-              _toggle('sultan-auto', _auto ? '⏹ وقف' : '🔁 تلقائي', _auto, _toggleAuto),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _round(String key, IconData icon, VoidCallback? onTap) => IconButton.filled(
-    key: ValueKey(key),
-    onPressed: onTap,
-    style: IconButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: const Color(0xFF4A2600)),
-    icon: Icon(icon),
-  );
-
-  Widget _toggle(String key, String label, bool on, VoidCallback onTap) => SizedBox(
-    width: 78,
-    height: 60,
-    child: OutlinedButton(
-      key: ValueKey(key),
-      style: OutlinedButton.styleFrom(
-        padding: EdgeInsets.zero,
-        backgroundColor: on ? AppColors.gold.withValues(alpha: .25) : null,
-        side: BorderSide(color: on ? AppColors.gold : Colors.white24, width: on ? 2 : 1),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      onPressed: onTap,
-      child: FittedBox(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13))),
-    ),
-  );
 
   void _paytable() => showDialog(
     context: context,
@@ -604,4 +539,35 @@ class _SultanScreenState extends State<SultanScreen> {
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('تمام'))],
     ),
   );
+}
+
+/// يرسم الخطوط الرابحة فوق البكرات بألوان مختلفة.
+class _LinesPainter extends CustomPainter {
+  _LinesPainter(this.lines);
+  final List<int> lines;
+
+  static const _colors = [Color(0xFFFFE04D), Color(0xFF4DE3FF), Color(0xFFFF5AA8), Color(0xFF7CFF6B), Color(0xFFFF9A3D)];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const gap = 4.0;
+    final rw = (size.width - gap * 4) / 5;
+    final rh = size.height / 3;
+    for (final (k, l) in lines.indexed) {
+      final pts = [
+        for (var r = 0; r < 5; r++) Offset(r * (rw + gap) + rw / 2, sultanLines[l][r] * rh + rh / 2),
+      ];
+      final path = Path()..moveTo(0, pts.first.dy);
+      for (final p in pts) {
+        path.lineTo(p.dx, p.dy);
+      }
+      path.lineTo(size.width, pts.last.dy);
+      final color = _colors[k % _colors.length];
+      canvas.drawPath(path, Paint()..color = color.withValues(alpha: .45)..style = PaintingStyle.stroke..strokeWidth = 9..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+      canvas.drawPath(path, Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 3.5..strokeJoin = StrokeJoin.round);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LinesPainter o) => o.lines != lines;
 }

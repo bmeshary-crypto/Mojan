@@ -82,6 +82,7 @@ class _SlotReelsState extends State<SlotReels> with SingleTickerProviderStateMix
           ..._visible(i),
           for (var k = 0; k < 10 + i * 4 + (_stop[i] ~/ 120); k++) filler(),
           ...finals[i],
+          filler(),
         ],
     ];
     _pos = List.filled(n, 0);
@@ -90,6 +91,7 @@ class _SlotReelsState extends State<SlotReels> with SingleTickerProviderStateMix
     _ticker
       ..stop()
       ..start();
+    Sfx.instance.spinStart();
     setState(() {});
     assert(finals.every((c) => c.length == rows));
     return _done!.future;
@@ -105,20 +107,20 @@ class _SlotReelsState extends State<SlotReels> with SingleTickerProviderStateMix
     final ms = elapsed.inMilliseconds;
     var all = true;
     for (var i = 0; i < _strips.length; i++) {
-      final end = (_strips[i].length - widget.rows).toDouble();
+      final end = (_strips[i].length - widget.rows - 1).toDouble();
       final t = (ms / _stop[i]).clamp(0.0, 1.0);
       // تسارع سريع ثم تباطؤ مع ارتداد خفيف عند التوقف.
-      _pos[i] = end * Curves.easeOutCubic.transform(t);
+      _pos[i] = end * const _LandCurve().transform(t);
       if (t < 1) {
         all = false;
       } else if (_landed.add(i)) {
-        Sfx.instance.tick();
+        Sfx.instance.reelStop(i);
       }
     }
     setState(() {});
     if (all) {
       _ticker.stop();
-      _strips = [for (var i = 0; i < _strips.length; i++) _strips[i].sublist(_strips[i].length - widget.rows)];
+      _strips = [for (var i = 0; i < _strips.length; i++) _strips[i].sublist(_strips[i].length - widget.rows - 1, _strips[i].length - 1)];
       _pos = List.filled(_strips.length, 0);
       _done?.complete();
     }
@@ -167,7 +169,7 @@ class _SlotReelsState extends State<SlotReels> with SingleTickerProviderStateMix
   Widget _cell(int reel, int row, String id, bool moving) {
     final lit = !_ticker.isActive && widget.highlight.contains((reel, row));
     Widget child = Padding(padding: const EdgeInsets.all(3), child: widget.symbol(id));
-    if (moving) child = Opacity(opacity: .75, child: child);
+    if (moving) child = Opacity(opacity: .8, child: Transform.scale(scaleY: 1.12, scaleX: .94, child: child));
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       margin: const EdgeInsets.all(1.5),
@@ -193,4 +195,16 @@ class SymbolArt extends StatelessWidget {
     fit: BoxFit.contain,
     errorBuilder: (_, _, _) => FittedBox(child: Text(fallback, style: const TextStyle(fontSize: 40))),
   );
+}
+
+/// تسارع ثم تباطؤ مع ارتداد بسيط آخر الحركة (شكل توقف البكرة الحقيقي).
+class _LandCurve extends Curve {
+  const _LandCurve();
+
+  @override
+  double transformInternal(double t) {
+    if (t < .88) return Curves.easeOutCubic.transform(t / .88) * 1.006;
+    final k = (t - .88) / .12;
+    return 1.006 - .006 * Curves.easeOut.transform(k);
+  }
 }

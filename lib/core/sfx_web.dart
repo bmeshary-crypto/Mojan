@@ -110,6 +110,71 @@ class Sfx {
   /// تكة قصيرة (مرور المؤشر، اصطدام الكرة).
   void tick() => tone(1400, 900, .04, type: 'triangle', vol: .08);
 
+  /// بداية اللف: سحبة ذراع وهواء.
+  void spinStart() {
+    noise(.35, vol: .25, freq: 700, q: .7, filter: 'lowpass');
+    tone(180, 520, .3, type: 'sawtooth', vol: .05);
+  }
+
+  /// توقف بكرة: طرقة معدنية.
+  void reelStop([int i = 0]) {
+    noise(.06, vol: .45, freq: 1200, q: 2);
+    tone(260 - i * 12.0, 120, .12, type: 'triangle', vol: .18);
+  }
+
+  /// رنين عملات متتالية.
+  void coins([int n = 6]) {
+    for (var i = 0; i < n; i++) {
+      final f = 2000 + _rng.nextInt(1600).toDouble();
+      tone(f, f * 1.02, .09, type: 'sine', vol: .09, delay: i * .06 + _rng.nextDouble() * .02);
+      tone(f * 1.5, f * 1.5, .06, type: 'triangle', vol: .05, delay: i * .06 + .01);
+    }
+  }
+
+  /// خط رابح: رنة صاعدة.
+  void lineWin() {
+    for (final (i, f) in [784.0, 988.0, 1175.0, 1568.0].indexed) {
+      tone(f, f, .1, type: 'square', vol: .06, delay: i * .05);
+    }
+  }
+
+  /// ربح كبير: فانفير ثلاث أكوردات ثم أربيجيو.
+  void bigWin() {
+    const chords = [
+      [523.0, 659.0, 784.0],
+      [587.0, 740.0, 880.0],
+      [659.0, 831.0, 988.0, 1319.0],
+    ];
+    for (final (i, ch) in chords.indexed) {
+      for (final f in ch) {
+        tone(f, f, i == 2 ? .7 : .22, type: 'sawtooth', vol: .05, delay: i * .24);
+        tone(f / 2, f / 2, i == 2 ? .7 : .22, type: 'triangle', vol: .08, delay: i * .24);
+      }
+    }
+    for (var i = 0; i < 12; i++) {
+      final f = [1319.0, 1568.0, 1760.0, 2093.0][i % 4];
+      tone(f, f, .08, type: 'sine', vol: .07, delay: .75 + i * .07);
+    }
+    coins(14);
+  }
+
+  /// عداد الأرباح يطلع.
+  void countTick() => tone(1800, 1700, .03, type: 'square', vol: .03);
+
+  /// صافرة حكم.
+  void whistle() {
+    for (var i = 0; i < 9; i++) {
+      tone(2900 + (i.isEven ? 120 : -120), 2900, .045, type: 'sine', vol: .1, delay: i * .04);
+    }
+    tone(2900, 2800, .25, type: 'sine', vol: .08, delay: .4);
+  }
+
+  /// هتاف الجمهور.
+  void cheer() {
+    noise(1.6, vol: .35, freq: 1100, q: .5);
+    noise(1.2, vol: .25, freq: 2400, q: .7, delay: .2);
+  }
+
   /// لحن فوز صغير.
   void win() {
     for (final (i, f) in [523.0, 659.0, 784.0, 1046.0].indexed) {

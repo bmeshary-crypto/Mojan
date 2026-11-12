@@ -9,32 +9,37 @@ import '../../core/haptics.dart';
 import '../../core/rounds/shared_rounds.dart';
 import '../../core/sfx.dart';
 import '../../core/theme.dart';
+import '../../widgets/account_widgets.dart';
+import '../../widgets/game_ui.dart';
 import 'coin_ui.dart';
+import 'win_fx.dart';
 
-/// نادي خيالي (أسماء وشعارات من تصميمنا، بدون أي علامة تجارية حقيقية).
+/// نادي خيالي (أسماء وشعارات من تصميمنا عبر Gemini، بدون أي علامة تجارية حقيقية).
 class StarClub {
-  const StarClub(this.name, this.emoji, this.mult, this.c1, this.c2);
+  const StarClub(this.name, this.art, this.emoji, this.mult, this.c1, this.c2);
   final String name;
+  final String art;
   final String emoji;
   final int mult;
   final Color c1;
   final Color c2;
 }
 
+/// بترتيب خانات الملعب: خانتين في كل سطر (يسار، يمين).
 const starClubs = [
-  StarClub('النسور', '🦅', 5, Color(0xFF2F7BFF), Color(0xFF0B2A6B)),
-  StarClub('الأسود', '🦁', 5, Color(0xFFFFC21A), Color(0xFFB3261E)),
-  StarClub('الذئاب', '🐺', 5, Color(0xFF8C9AB0), Color(0xFF1E2A44)),
-  StarClub('النمور', '🐯', 6, Color(0xFFFF8A1F), Color(0xFF2A1A0A)),
-  StarClub('الخيول', '🐎', 10, Color(0xFFC98A4B), Color(0xFF4A2A12)),
-  StarClub('القروش', '🦈', 15, Color(0xFF1FC6C9), Color(0xFF0A4048)),
-  StarClub('الأفاعي', '🐍', 20, Color(0xFF3DDC6A), Color(0xFF0E2E18)),
-  StarClub('الدببة', '🐻', 25, Color(0xFFB0413E), Color(0xFF3A0E12)),
-  StarClub('الثعالب', '🦊', 50, Color(0xFFFF6A2B), Color(0xFFF2F2F2)),
-  StarClub('الثيران', '🐂', 100, Color(0xFFE02424), Color(0xFFFFC93C)),
+  StarClub('النسور', 'eagle', '🦅', 2, Color(0xFF2F7BFF), Color(0xFF0B2A6B)),
+  StarClub('الأسود', 'lion', '🦁', 5, Color(0xFFFFC21A), Color(0xFFB3261E)),
+  StarClub('الذئاب', 'wolf', '🐺', 8, Color(0xFF8C9AB0), Color(0xFF1E2A44)),
+  StarClub('النمور', 'tiger', '🐯', 18, Color(0xFFFF8A1F), Color(0xFF2A1A0A)),
+  StarClub('الخيول', 'horse', '🐎', 66, Color(0xFFC98A4B), Color(0xFF4A2A12)),
+  StarClub('القروش', 'shark', '🦈', 50, Color(0xFF1FC6C9), Color(0xFF0A4048)),
+  StarClub('الثيران', 'bull', '🐂', 100, Color(0xFFE02424), Color(0xFFFFC93C)),
+  StarClub('الأفاعي', 'cobra', '🐍', 88, Color(0xFF3DDC6A), Color(0xFF0E2E18)),
+  StarClub('الدببة', 'bear', '🐻', 30, Color(0xFFB0413E), Color(0xFF3A0E12)),
+  StarClub('الثعالب', 'fox', '🦊', 20, Color(0xFFFF6A2B), Color(0xFFF2F2F2)),
 ];
 
-/// احتمال كل نادي يتناسب عكسياً مع مضاعفه، فالعائد ≈95% لأي نادي.
+/// احتمال كل نادي يتناسب عكسياً مع مضاعفه، فالعائد ≈98% لأي نادي.
 List<double> starChances() {
   final w = [for (final c in starClubs) 1 / c.mult];
   final sum = w.reduce((a, b) => a + b);
@@ -56,22 +61,8 @@ const starRounds = FixedRounds(25000);
 const starBetMs = 15000;
 int starWinnerFor(int round) => pickStarClub(roundRng('star_league', round, 'win'));
 
-/// الحلقة الخارجية: 20 خانة (7 فوق، 3 يمين، 7 تحت، 3 يسار) وكل نادي له خانتين.
-const starRingCols = 7;
-const starRingRows = 5;
-const starRing = [0, 5, 2, 8, 1, 6, 3, 9, 4, 7, 1, 6, 3, 9, 0, 5, 2, 8, 4, 7];
-
-/// موقع خانة الحلقة (عمود، صف) مع عقارب الساعة من أعلى اليسار.
-(int, int) starRingCell(int i) {
-  const c = starRingCols, r = starRingRows;
-  if (i < c) return (i, 0);
-  i -= c;
-  if (i < r - 2) return (c - 1, i + 1);
-  i -= r - 2;
-  if (i < c) return (c - 1 - i, r - 1);
-  i -= c;
-  return (0, r - 2 - i);
-}
+/// الحلقة الخارجية: 20 شعار حول الدائرة (من فوق مع عقارب الساعة) وكل نادي له خانتين.
+const starRing = [6, 1, 9, 2, 5, 0, 3, 7, 4, 8, 1, 6, 0, 9, 3, 5, 8, 2, 7, 4];
 
 const starChips = [100, 200, 500, 1000, 5000];
 
@@ -215,6 +206,7 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
     final win = _synced ? starWinnerFor(_round) : pickStarClub(_rng);
     final land = _landingCell(win, _synced ? _round : _rng.nextInt(2));
     setState(() => phase = StarPhase.spinning);
+    Sfx.instance.whistle();
     final n = starRing.length;
     final steps = 2 * n + ((land - _lit) % n + n) % n;
     for (var s = 1; s <= steps; s++) {
@@ -227,10 +219,16 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
     }
     final pay = _bets[win] * starClubs[win].mult;
     final total = _total;
+    Sfx.instance.cheer();
     if (pay > 0) {
       Account.instance.earn(pay);
-      Sfx.instance.win();
       Haptics.heavyImpact();
+      if (starClubs[win].mult >= 18 && mounted) {
+        unawaited(showBigWin(context, amount: pay, mult: starClubs[win].mult.toDouble(), hero: ClubCrest(club: starClubs[win], size: 120)));
+      } else {
+        Sfx.instance.win();
+        Sfx.instance.coins(8);
+      }
     } else if (total > 0) {
       Sfx.instance.lose();
     }
@@ -253,270 +251,602 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
     _startRound();
   }
 
+  void _help() => showHowTo(
+    context,
+    'دوري النجوم',
+    'اختر قيمة الرقاقة من تحت واضغط على النادي اللي تتوقع يفوز. تقدر تراهن على أكثر من نادي وأكثر من مرة. '
+        'لما يخلص العداد تدور الأضواء على شعارات الأندية حول الملعب، والنادي اللي يقف عنده الضوء يفوز ويدفع رهانك مضروب في رقمه.\n\n'
+        'كل ما كان المضاعف أعلى كان الفوز أندر: النسور ×2 تقريباً مرة كل جولتين، والثيران ×100 تقريباً مرة كل 100 جولة.\n\n'
+        'الجولات مباشرة ونفسها عند كل اللاعبين. الأندية وشعاراتها خيالية من تصميم موجان.',
+  );
+
   @override
   Widget build(BuildContext context) {
-    return CoinGameScaffold(
-      title: 'دوري النجوم',
-      colors: const [Color(0xFF0D5C2E), Color(0xFF073A1D)],
+    return LeaveGuardScaffold(
       inPlay: _total > 0 && phase != StarPhase.result,
-      onHelp: () => showHowTo(
-        context,
-        'دوري النجوم',
-        'اختر قيمة الرقاقة واضغط على النادي اللي تتوقع يفوز. تقدر تراهن على أكثر من نادي. '
-            'لما يخلص العداد تدور الأضواء حول الملعب، والنادي اللي يقف عنده الضوء يفوز ويدفع رهانك مضروب في رقمه.\n\n'
-            'كل ما كان المضاعف أعلى كان الفوز أندر: الثيران ×100 تقريباً مرة كل 105 جولات، والنسور ×5 تقريباً مرة كل 5 جولات.\n\n'
-            'الجولات مباشرة ونفسها عند كل اللاعبين. الأندية وشعاراتها من تصميم موجان.',
-      ),
-      child: Column(
+      child: Stack(
         children: [
-          _status(),
-          _historyRow(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-              child: Center(child: AspectRatio(aspectRatio: 1, child: _board())),
-            ),
-          ),
-          BetChips(value: _chip, steps: starChips, enabled: phase == StarPhase.betting, onChanged: (v) => setState(() => _chip = v)),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    key: const ValueKey('star-clear'),
-                    onPressed: phase == StarPhase.betting && _total > 0 ? _clear : null,
-                    icon: const Icon(Icons.undo_rounded),
-                    label: const Text('مسح', style: TextStyle(fontWeight: FontWeight.w800)),
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/sl_stadium.webp',
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              errorBuilder: (_, _, _) => const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF0B2A6B), Color(0xFF1D7A3E), Color(0xFF0E4A24)],
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    key: const ValueKey('star-repeat'),
-                    onPressed: phase == StarPhase.betting && _lastBets.any((b) => b > 0) ? _repeat : null,
-                    icon: const Icon(Icons.replay_rounded),
-                    label: const Text('كرر رهاني', style: TextStyle(fontWeight: FontWeight.w800)),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Column(
+                  children: [
+                    _logo(),
+                    _topBar(),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, c) {
+                          final size = min(c.maxWidth - 8, c.maxHeight - 4);
+                          return Center(child: SizedBox(width: size, height: size, child: _circle(size)));
+                        },
+                      ),
+                    ),
+                    _infoRow(),
+                    _historyStrip(),
+                    _chipsRow(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (phase == StarPhase.result && _winner != null) _resultPanel(),
         ],
       ),
     );
   }
 
-  Widget _status() {
-    final Widget child;
-    if (phase == StarPhase.betting) {
-      child = Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text('⚽ راهن الآن', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
-          const SizedBox(width: 10),
-          Container(
-            width: 40,
-            height: 40,
+  Widget _logo() => SizedBox(
+    height: 78,
+    child: Image.asset(
+      'assets/images/sl_logo.webp',
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => Center(child: Text('⚽ دوري النجوم', style: AppTheme.display.copyWith(fontSize: 30))),
+    ),
+  );
+
+  Widget _topBar() => Padding(
+    padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+    child: Row(
+      children: [
+        _greenRound(Icons.reply_rounded, () => Navigator.maybePop(context), 'star-back'),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ListenableBuilder(
+            listenable: Account.instance,
+            builder: (context, _) => Container(
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF6BE36B), Color(0xFF1F9A2E)]),
+                border: Border.all(color: Colors.white54),
+              ),
+              child: Row(
+                children: [
+                  const Text('الرصيد', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                  const Spacer(),
+                  const CoinIcon(size: 20),
+                  const SizedBox(width: 6),
+                  Text(fmtCoins(myCoins), key: const ValueKey('coin-balance'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFFFFE07A))),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        _greenRound(Icons.question_mark_rounded, _help, 'coin-help'),
+      ],
+    ),
+  );
+
+  Widget _greenRound(IconData icon, VoidCallback onTap, String key) => GestureDetector(
+    key: ValueKey(key),
+    onTap: onTap,
+    child: Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF7BEA6B), Color(0xFF1F8A2E)]),
+        border: Border.all(color: Colors.white70, width: 1.5),
+        boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      child: Icon(icon, color: Colors.white, size: 22),
+    ),
+  );
+
+  /// الدائرة الكبيرة: إطار ذهبي بالأضواء، حلقة الشعارات، والملعب بخانات المضاعفات.
+  Widget _circle(double s) {
+    final cx = s / 2;
+    final ringR = s * .425;
+    final crest = s * .092;
+    final inner = s * .355;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(child: CustomPaint(painter: _RimPainter(_bulbPhase))),
+        for (var i = 0; i < starRing.length; i++)
+          () {
+            final a = -pi / 2 + i * 2 * pi / starRing.length;
+            final x = cx + ringR * cos(a), y = cx + ringR * sin(a);
+            final lit = _lit == i && phase != StarPhase.betting;
+            return Positioned(
+              left: x - crest / 2 - 3,
+              top: y - crest / 2 - 3,
+              width: crest + 6,
+              height: crest + 6,
+              child: AnimatedContainer(
+                key: ValueKey('star-ring-$i'),
+                duration: const Duration(milliseconds: 70),
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: lit ? Border.all(color: const Color(0xFFFFF59A), width: 2.5) : null,
+                  boxShadow: lit ? const [BoxShadow(color: Color(0xFFFFE04D), blurRadius: 18, spreadRadius: 4)] : null,
+                ),
+                child: ClubCrest(club: starClubs[starRing[i]], size: crest),
+              ),
+            );
+          }(),
+        // الملعب
+        Positioned(
+          left: cx - inner,
+          top: cx - inner,
+          width: inner * 2,
+          height: inner * 2,
+          child: _pitch(inner),
+        ),
+        if (phase == StarPhase.betting)
+          Positioned(right: s * .02, top: s * .02, child: _alarm()),
+        if (phase == StarPhase.betting && _left >= widget.betSeconds - 1 && widget.betSeconds > 2)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Center(
+                child: Text(
+                  'استعد!',
+                  style: AppTheme.display.copyWith(
+                    fontSize: s * .12,
+                    color: const Color(0xFFFFD84D),
+                    shadows: const [Shadow(color: Color(0xFFB3261E), offset: Offset(3, 3)), Shadow(color: Colors.black54, blurRadius: 10)],
+                  ),
+                ).animate().scale(begin: const Offset(.3, .3), duration: 400.ms, curve: Curves.elasticOut),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  int get _bulbPhase => phase == StarPhase.spinning ? _lit : (_left % 2);
+
+  Widget _pitch(double r) {
+    const rows = 5;
+    final rowH = r * 2 * .9 / rows;
+    final top0 = r * .1;
+    return ClipOval(
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(colors: [Color(0xFF6CC56A), Color(0xFF3E9A48)]),
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(child: CustomPaint(painter: _GridPainter(rows, rowH, top0))),
+            for (var row = 0; row < rows; row++)
+              for (var side = 0; side < 2; side++) _cell(row * 2 + side, row, side, r, rowH, top0),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cell(int i, int row, int side, double r, double rowH, double top0) {
+    final c = starClubs[i];
+    final yMid = top0 + rowH * (row + .5);
+    final dy = (yMid - r).abs() + rowH * .25;
+    final half = sqrt(max(0, r * r - dy * dy));
+    final left = side == 0;
+    final x0 = left ? r - half : r;
+    final w = half;
+    final crest = min(rowH * .72, w * .42);
+    final won = phase == StarPhase.result && _winner == i;
+    final litNow = phase == StarPhase.spinning && starRing[_lit] == i;
+    final bet = _bets[i];
+    final crestW = SizedBox(width: crest, height: crest, child: ClubCrest(club: c, size: crest));
+    final multW = Text(
+      ltr('X${c.mult}'),
+      style: AppTheme.display.copyWith(
+        fontSize: rowH * .42,
+        color: won || litNow ? Colors.white : Colors.white.withValues(alpha: .6),
+        shadows: const [Shadow(color: Colors.black26, offset: Offset(1, 2))],
+      ),
+    );
+    return Positioned(
+      left: x0,
+      top: top0 + rowH * row,
+      width: w,
+      height: rowH,
+      child: GestureDetector(
+        key: ValueKey('star-club-$i'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _bet(i),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: BoxDecoration(
+            color: won ? const Color(0x55FFE04D) : (litNow ? const Color(0x33FFFFFF) : Colors.transparent),
+            border: won ? Border.all(color: const Color(0xFFFFE04D), width: 3) : null,
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: w * .06, vertical: rowH * .08),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      textDirection: TextDirection.ltr,
+                      mainAxisSize: MainAxisSize.min,
+                      children: left ? [crestW, SizedBox(width: w * .1), multW] : [multW, SizedBox(width: w * .1), crestW],
+                    ),
+                  ),
+                ),
+              ),
+              if (bet > 0)
+                Positioned(
+                  bottom: 1,
+                  left: left ? 2 : null,
+                  right: left ? null : 2,
+                  child: Text(
+                    fmtCoins(bet),
+                    key: ValueKey('star-bet-$i'),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 3)]),
+                  ),
+                ),
+              if (bet > 0)
+                Positioned(
+                  top: 1,
+                  left: left ? null : crest * .6,
+                  right: left ? crest * .6 : null,
+                  child: _chipIcon(_chipFor(bet), rowH * .38),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ).animate(target: won ? 1 : 0).shimmer(duration: 900.ms, color: const Color(0xFFFFF59A));
+  }
+
+  /// أكبر رقاقة تناسب المبلغ (للشكل فقط).
+  int _chipFor(int amount) => starChips.lastWhere((c) => c <= amount, orElse: () => starChips.first);
+
+  Widget _alarm() => Container(
+    width: 50,
+    height: 50,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: const RadialGradient(colors: [Color(0xFF2FAE4A), Color(0xFF0E5A22)]),
+      border: Border.all(color: const Color(0xFFFFB13D), width: 4),
+      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
+    ),
+    child: Text(
+      '${_left}s',
+      key: const ValueKey('star-timer'),
+      style: AppTheme.display.copyWith(fontSize: 18, color: _left <= 3 ? const Color(0xFFFF6B6B) : Colors.white),
+    ),
+  );
+
+  Widget _infoRow() => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
+    child: Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(ltr('NO.${_synced ? _round : _history.length + 1}'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+              Text('رهانك: ${fmtCoins(_total)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFFFFE07A))),
+            ],
+          ),
+        ),
+        if (_total > 0 && phase == StarPhase.betting)
+          TextButton(key: const ValueKey('star-clear'), onPressed: _clear, child: const Text('مسح', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white))),
+        GestureDetector(
+          key: const ValueKey('star-repeat'),
+          onTap: phase == StarPhase.betting && _lastBets.any((b) => b > 0) ? _repeat : null,
+          child: Container(
+            width: 62,
+            height: 62,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _left <= 3 ? const Color(0xFFE02424) : Colors.black.withValues(alpha: .4),
-              border: Border.all(color: AppColors.gold, width: 2),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: phase == StarPhase.betting && _lastBets.any((b) => b > 0)
+                    ? const [Color(0xFFFFE07A), Color(0xFFE59A12)]
+                    : const [Color(0xFFE6E6E6), Color(0xFF9A9A9A)],
+              ),
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))],
             ),
-            child: Text('$_left', key: const ValueKey('star-timer'), style: AppTheme.display.copyWith(fontSize: 20)),
-          ),
-          if (_total > 0) ...[
-            const SizedBox(width: 10),
-            Text('رهانك ${fmtCoins(_total)}', style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.gold)),
-          ],
-        ],
-      );
-    } else if (phase == StarPhase.spinning) {
-      child = const Text('🏟️ المباراة جارية...', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16));
-    } else {
-      final c = starClubs[_winner!];
-      child = Row(
-        key: const ValueKey('star-result'),
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text('🏆 فاز ${c.name} ${ltr('×${c.mult}')}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-          if (_lastPay > 0) ...[
-            const SizedBox(width: 10),
-            Text('+${fmtCoins(_lastPay)}', style: AppTheme.display.copyWith(fontSize: 22, color: AppColors.gold))
-                .animate()
-                .scale(duration: 400.ms, curve: Curves.elasticOut),
-          ],
-        ],
-      );
-    }
-    return SizedBox(height: 48, child: Center(child: FittedBox(child: child)));
-  }
-
-  Widget _historyRow() => SizedBox(
-    height: 38,
-    child: Row(
-      children: [
-        const SizedBox(width: 14),
-        Text('النتائج', style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 12)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              for (final (i, h) in _history.indexed)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
-                  child: Opacity(opacity: i == 0 ? 1 : .75, child: ClubCrest(club: starClubs[h], size: 30)),
-                ),
-            ],
+            child: const Text('كرر', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: Color(0xFF5A3A00))),
           ),
         ),
       ],
     ),
   );
 
-  Widget _board() => LayoutBuilder(
-    builder: (context, c) {
-      final cw = c.maxWidth / starRingCols;
-      final ch = c.maxHeight / starRingRows;
-      return Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: const LinearGradient(colors: [Color(0xFF1C2B4A), Color(0xFF0B1426)]),
-          border: Border.all(color: AppColors.gold, width: 2.5),
-          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16)],
-        ),
-        child: Stack(
-          children: [
-            for (var i = 0; i < starRing.length; i++)
-              () {
-                final (x, y) = starRingCell(i);
-                return Positioned(left: x * cw, top: y * ch, width: cw, height: ch, child: _ringCell(i));
-              }(),
-            Positioned(left: cw, top: ch, width: cw * (starRingCols - 2), height: ch * (starRingRows - 2), child: _pitch()),
-          ],
-        ),
-      );
-    },
-  );
-
-  Widget _ringCell(int i) {
-    final club = starRing[i];
-    final lit = _lit == i && phase != StarPhase.betting;
-    final won = phase == StarPhase.result && _lit == i;
-    return Padding(
-      padding: const EdgeInsets.all(2),
-      child: AnimatedContainer(
-        key: ValueKey('star-ring-$i'),
-        duration: const Duration(milliseconds: 80),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: lit ? const Color(0xFFFFF3B0) : Colors.black.withValues(alpha: .35),
-          border: Border.all(color: lit ? Colors.white : AppColors.gold.withValues(alpha: .35), width: lit ? 2.5 : 1),
-          boxShadow: lit ? const [BoxShadow(color: Color(0xFFFFD84D), blurRadius: 16, spreadRadius: 2)] : null,
-        ),
-        child: Padding(padding: const EdgeInsets.all(4), child: ClubCrest(club: starClubs[club], size: 40)),
-      ),
-    ).animate(target: won ? 1 : 0).scaleXY(end: 1.15, duration: 300.ms);
-  }
-
-  Widget _pitch() => Container(
-    margin: const EdgeInsets.all(4),
+  Widget _historyStrip() => Container(
+    height: 40,
+    margin: const EdgeInsets.fromLTRB(10, 2, 10, 6),
+    padding: const EdgeInsets.symmetric(horizontal: 6),
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(12),
-      gradient: const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF2FA65A), Color(0xFF1D7A3E)],
-      ),
-      border: Border.all(color: Colors.white54, width: 1.5),
+      color: const Color(0xFF0E3A2A).withValues(alpha: .85),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: const Color(0xFFFFC93C), width: 2),
     ),
-    child: CustomPaint(
-      painter: _PitchLines(),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Column(
-          children: [
-            for (var row = 0; row < 2; row++)
-              Expanded(
-                child: Row(
-                  children: [for (var col = 0; col < 5; col++) Expanded(child: _clubTile(row * 5 + col))],
+    child: Row(
+      children: [
+        const Text('◀', style: TextStyle(color: Color(0xFFFFC93C), fontSize: 12)),
+        Expanded(
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            children: [
+              for (final (i, h) in _history.indexed)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      ClubCrest(club: starClubs[h], size: 30),
+                      if (i == 0)
+                        Positioned(
+                          bottom: -3,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            color: const Color(0xFF2F7BFF),
+                            child: const Text('جديد', textAlign: TextAlign.center, style: TextStyle(fontSize: 7, fontWeight: FontWeight.w900)),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
+        const Text('▶', style: TextStyle(color: Color(0xFFFFC93C), fontSize: 12)),
+      ],
     ),
   );
 
-  Widget _clubTile(int i) {
-    final c = starClubs[i];
-    final bet = _bets[i];
-    final won = phase == StarPhase.result && _winner == i;
-    final litNow = phase == StarPhase.spinning && starRing[_lit] == i;
-    return GestureDetector(
-      key: ValueKey('star-club-$i'),
-      onTap: () => _bet(i),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        margin: const EdgeInsets.all(2.5),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          color: Colors.black.withValues(alpha: won || litNow ? .1 : .28),
-          border: Border.all(color: won ? AppColors.gold : (litNow ? Colors.white : Colors.white24), width: won ? 3 : 1.2),
-          boxShadow: won ? const [BoxShadow(color: Color(0xCCFFC93C), blurRadius: 16, spreadRadius: 1)] : null,
-        ),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Padding(
-                padding: const EdgeInsets.all(3),
-                child: Column(
-                  children: [
-                    Expanded(child: FittedBox(child: ClubCrest(club: c, size: 40))),
-                    FittedBox(child: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, height: 1.3))),
-                    FittedBox(child: Text(ltr('×${c.mult}'), style: AppTheme.display.copyWith(fontSize: 14, color: AppColors.gold, height: 1))),
-                  ],
+  Widget _chipsRow() => Padding(
+    padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+    child: Row(
+      textDirection: TextDirection.ltr,
+      children: [
+        for (final v in starChips)
+          Expanded(
+            child: GestureDetector(
+              key: ValueKey('chip-$v'),
+              onTap: phase == StarPhase.betting ? () => setState(() => _chip = v) : null,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: const Color(0xFF15233F).withValues(alpha: .9),
+                  border: Border.all(color: v == _chip ? const Color(0xFFFFE04D) : Colors.white24, width: v == _chip ? 3 : 1),
+                  boxShadow: v == _chip ? const [BoxShadow(color: Color(0x99FFE04D), blurRadius: 12)] : null,
                 ),
+                child: AspectRatio(aspectRatio: 1.1, child: Center(child: _chipIcon(v, 54))),
               ),
             ),
-            if (bet > 0)
-              Positioned(
-                top: 2,
-                left: 2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(color: AppColors.gold, borderRadius: BorderRadius.circular(8)),
-                  child: Text(fmtCoins(bet), style: const TextStyle(color: Color(0xFF4A2600), fontWeight: FontWeight.w900, fontSize: 10)),
+          ),
+      ],
+    ),
+  );
+
+  static const _chipColors = {
+    100: Color(0xFF2DB84A),
+    200: Color(0xFF2F7BFF),
+    500: Color(0xFF8E3DE0),
+    1000: Color(0xFFE5A50F),
+    5000: Color(0xFFD82A2A),
+  };
+
+  Widget _chipIcon(int v, double size) => SizedBox(
+    width: size,
+    height: size,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        Image.asset(
+          'assets/images/sl_chip_${starChips.indexOf(v)}.webp',
+          width: size,
+          height: size,
+          errorBuilder: (_, _, _) => Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _chipColors[v],
+              border: Border.all(color: Colors.white, width: size * .08),
+            ),
+          ),
+        ),
+        FittedBox(
+          child: Padding(
+            padding: EdgeInsets.all(size * .22),
+            child: Text(
+              v >= 1000 ? '${v ~/ 1000}K' : '$v',
+              style: AppTheme.display.copyWith(color: _chipColors[v], shadows: const [Shadow(color: Colors.white, blurRadius: 3)]),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _resultPanel() {
+    final c = starClubs[_winner!];
+    final mine = _lastBets[_winner!] > 0 && _lastPay > 0;
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        key: const ValueKey('star-result'),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xF0186B2E), Color(0xF00B3A18)]),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 20)],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Transform.translate(
+              offset: const Offset(0, -16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [Color(0xFFB0306A), Color(0xFF7A1A48)]),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFFFC93C), width: 2),
                 ),
+                child: Text(ltr('NO. ${_synced ? _round : _history.length}'), style: const TextStyle(fontWeight: FontWeight.w900)),
+              ),
+            ),
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                const SizedBox(width: 160, height: 120, child: CustomPaint(painter: _RaysPainter())),
+                ClubCrest(club: c, size: 100).animate().scale(duration: 500.ms, curve: Curves.elasticOut),
+              ],
+            ),
+            Text(ltr('X${c.mult}'), style: AppTheme.display.copyWith(fontSize: 44, color: const Color(0xFFFFE04D))),
+            Text('فاز ${c.name}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            const SizedBox(height: 4),
+            if (mine)
+              Text('ربحت +${fmtCoins(_lastPay)} 🎉', style: AppTheme.display.copyWith(fontSize: 26, color: const Color(0xFFFFE07A)))
+                  .animate()
+                  .scale(duration: 400.ms, curve: Curves.elasticOut)
+            else
+              Text(
+                _lastBets.any((b) => b > 0) && _lastPay == 0 && _history.isNotEmpty ? 'حظ أوفر الجولة الجاية' : 'ما راهنت في هذه الجولة',
+                style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
               ),
           ],
         ),
-      ),
-    ).animate(target: won ? 1 : 0).scaleXY(end: 1.08, duration: 300.ms);
+      ).animate().slideY(begin: 1, duration: 350.ms, curve: Curves.easeOutCubic),
+    );
   }
 }
 
-class _PitchLines extends CustomPainter {
+/// إطار الدائرة: حلقة برتقالية ذهبية بلمبات تومض، وحلقة خضراء للشعارات.
+class _RimPainter extends CustomPainter {
+  _RimPainter(this.phase);
+  final int phase;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.width / 2;
+    canvas.drawCircle(c, r, Paint()..shader = const RadialGradient(colors: [Color(0xFFFFD36B), Color(0xFFE07A10), Color(0xFF9A3A05)], stops: [.85, .95, 1]).createShader(Rect.fromCircle(center: c, radius: r)));
+    canvas.drawCircle(c, r * .955, Paint()..color = const Color(0xFFB8460A));
+    canvas.drawCircle(c, r * .935, Paint()..shader = const RadialGradient(colors: [Color(0xFF2F8A3A), Color(0xFF1C5E26)], stops: [.75, 1]).createShader(Rect.fromCircle(center: c, radius: r)));
+    canvas.drawCircle(
+      c,
+      r * .935,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = const Color(0xFFFFE07A),
+    );
+    // لمبات تومض بالتناوب
+    const n = 40;
+    for (var i = 0; i < n; i++) {
+      final a = -pi / 2 + i * 2 * pi / n;
+      final p = c + Offset(cos(a), sin(a)) * r * .975;
+      final on = (i + phase) % 2 == 0;
+      if (on) canvas.drawCircle(p, r * .03, Paint()..color = const Color(0x88FFF3A0)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+      canvas.drawCircle(p, r * .016, Paint()..color = on ? const Color(0xFFFFFBE0) : const Color(0xFFE0A030));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RimPainter o) => o.phase != phase;
+}
+
+/// خطوط الملعب داخل الدائرة: خط بالنص وخطوط بين الصفوف.
+class _GridPainter extends CustomPainter {
+  _GridPainter(this.rows, this.rowH, this.top0);
+  final int rows;
+  final double rowH, top0;
+
   @override
   void paint(Canvas canvas, Size size) {
     final p = Paint()
-      ..color = Colors.white.withValues(alpha: .35)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+      ..color = const Color(0x553A6B3A)
+      ..strokeWidth = 2;
+    // خطوط عشب فاتحة وغامقة
+    for (var i = 0; i < rows; i++) {
+      if (i.isOdd) {
+        canvas.drawRect(Rect.fromLTWH(0, top0 + rowH * i, size.width, rowH), Paint()..color = const Color(0x14000000));
+      }
+    }
     canvas.drawLine(Offset(size.width / 2, 0), Offset(size.width / 2, size.height), p);
-    canvas.drawCircle(size.center(Offset.zero), size.height * .22, p);
-    final bh = size.height * .5;
-    canvas.drawRect(Rect.fromLTWH(0, (size.height - bh) / 2, size.width * .1, bh), p);
-    canvas.drawRect(Rect.fromLTWH(size.width * .9, (size.height - bh) / 2, size.width * .1, bh), p);
+    for (var i = 0; i <= rows; i++) {
+      final y = top0 + rowH * i;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GridPainter o) => false;
+}
+
+class _RaysPainter extends CustomPainter {
+  const _RaysPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final paint = Paint()..color = const Color(0x22FFFFFF);
+    for (var i = 0; i < 16; i += 2) {
+      final a1 = i * pi / 8, a2 = (i + 1) * pi / 8;
+      final path = Path()
+        ..moveTo(c.dx, c.dy)
+        ..lineTo(c.dx + cos(a1) * 200, c.dy + sin(a1) * 200)
+        ..lineTo(c.dx + cos(a2) * 200, c.dy + sin(a2) * 200)
+        ..close();
+      canvas.drawPath(path, paint);
+    }
   }
 
   @override
   bool shouldRepaint(_) => false;
 }
 
-/// شعار النادي: درع بلونين وحيوان النادي ونجمة.
+/// شعار النادي: صورة الشعار، وبديل مرسوم لو ما انحملت.
 class ClubCrest extends StatelessWidget {
   const ClubCrest({super.key, required this.club, this.size = 40});
   final StarClub club;
@@ -525,75 +855,33 @@ class ClubCrest extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
     width: size,
-    height: size * 1.12,
-    child: CustomPaint(
-      painter: _CrestPainter(club.c1, club.c2),
-      child: Padding(
-        padding: EdgeInsets.only(top: size * .2, bottom: size * .22),
-        child: Center(child: Text(club.emoji, style: TextStyle(fontSize: size * .46, height: 1))),
+    height: size,
+    child: Image.asset(
+      'assets/images/fc_${club.art}.webp',
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(colors: [club.c1, club.c2]),
+          border: Border.all(color: const Color(0xFFFFD36B), width: 2),
+        ),
+        child: Text(club.emoji, style: TextStyle(fontSize: size * .5)),
       ),
     ),
   );
 }
 
-class _CrestPainter extends CustomPainter {
-  _CrestPainter(this.c1, this.c2);
-  final Color c1, c2;
+/// شاشة بدون شريط علوي مع منع الخروج أثناء رهان.
+class LeaveGuardScaffold extends StatelessWidget {
+  const LeaveGuardScaffold({super.key, required this.inPlay, required this.child});
+  final bool inPlay;
+  final Widget child;
 
   @override
-  void paint(Canvas canvas, Size s) {
-    final w = s.width, h = s.height;
-    final shield = Path()
-      ..moveTo(w * .5, h * .02)
-      ..cubicTo(w * .7, h * .1, w * .85, h * .1, w * .96, h * .08)
-      ..lineTo(w * .94, h * .55)
-      ..cubicTo(w * .9, h * .8, w * .7, h * .9, w * .5, h * .98)
-      ..cubicTo(w * .3, h * .9, w * .1, h * .8, w * .06, h * .55)
-      ..lineTo(w * .04, h * .08)
-      ..cubicTo(w * .15, h * .1, w * .3, h * .1, w * .5, h * .02)
-      ..close();
-    canvas.drawShadow(shield, Colors.black, 2, false);
-    canvas.save();
-    canvas.clipPath(shield);
-    canvas.drawRect(Offset.zero & s, Paint()..color = c2);
-    // شريطين قطريين بلون النادي
-    final band = Path()
-      ..moveTo(0, h * .2)
-      ..lineTo(w * .5, 0)
-      ..lineTo(w, 0)
-      ..lineTo(w, h * .35)
-      ..lineTo(0, h)
-      ..close();
-    canvas.drawPath(band, Paint()..color = c1);
-    canvas.drawRect(
-      Offset.zero & s,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0x55FFFFFF), Color(0x00FFFFFF), Color(0x33000000)],
-        ).createShader(Offset.zero & s),
-    );
-    canvas.restore();
-    canvas.drawPath(
-      shield,
-      Paint()
-        ..color = const Color(0xFFFFD36B)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = max(1.2, w * .06),
-    );
-    // نجمة صغيرة فوق
-    final star = Path();
-    final cx = w * .5, cy = h * .14, r = w * .07;
-    for (var i = 0; i < 10; i++) {
-      final a = -pi / 2 + i * pi / 5;
-      final rr = i.isEven ? r : r * .45;
-      final pt = Offset(cx + rr * cos(a), cy + rr * sin(a));
-      i == 0 ? star.moveTo(pt.dx, pt.dy) : star.lineTo(pt.dx, pt.dy);
-    }
-    canvas.drawPath(star..close(), Paint()..color = const Color(0xFFFFE07A));
-  }
-
-  @override
-  bool shouldRepaint(_CrestPainter o) => o.c1 != c1 || o.c2 != c2;
+  Widget build(BuildContext context) => LeaveGuard(
+    enabled: inPlay,
+    message: 'عندك رهان في هذه الجولة، وإذا خرجت يضيع عليك.',
+    child: Scaffold(backgroundColor: const Color(0xFF0E4A24), body: child),
+  );
 }
