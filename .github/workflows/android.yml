@@ -1,0 +1,51 @@
+# يبني تطبيق أندرويد (APK) وينشره في صفحة Releases باسم mojan.apk
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['android-twa/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.14.3
+      - name: Signing key (from secrets, or a temporary one)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p android-twa/keystore
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > android-twa/keystore/mojan.p12
+            echo "ANDROID_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No signing secrets; using a temporary key (updates will need a reinstall)"
+            TMP=$(openssl rand -hex 16)
+            echo "::add-mask::$TMP"
+            keytool -genkeypair -keystore android-twa/keystore/mojan.p12 -storetype PKCS12 -alias mojan \
+              -keyalg RSA -keysize 2048 -validity 10000 -storepass "$TMP" -keypass "$TMP" -dname "CN=MOJAN, O=MOJAN, C=SA"
+            echo "ANDROID_KEYSTORE_PASSWORD=$TMP" >> "$GITHUB_ENV"
+          fi
+      - name: Build APK
+        working-directory: android-twa
+        run: gradle assembleRelease --no-daemon
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp android-twa/app/build/outputs/apk/release/app-release.apk mojan.apk
+          gh release delete android --yes --cleanup-tag || true
+          gh release create android mojan.apk --title "MOJAN Android" --notes "حمّل mojan.apk وثبّته على جوال أندرويد."

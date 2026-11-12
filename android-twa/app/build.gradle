@@ -1,0 +1,43 @@
+// تطبيق أندرويد خفيف يفتح موقع MOJAN بملء الشاشة عبر Chrome (Trusted Web Activity).
+// كل التحديثات تنزل من الموقع مباشرة، فما يحتاج اللاعب يثبت نسخة جديدة مع كل تعديل.
+plugins { id 'com.android.application' }
+
+// مفتاح التوقيع يجي من أسرار GitHub (ANDROID_KEYSTORE_B64 و ANDROID_KEYSTORE_PASSWORD)
+// وإذا ما توفر نوقّع بمفتاح مؤقت يُنشأ وقت البناء.
+def ksFile = file('../keystore/mojan.p12')
+def ksPass = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+
+android {
+    namespace 'com.mojan.app'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.mojan.app'
+        minSdk 21
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+    }
+    signingConfigs {
+        release {
+            storeFile ksFile
+            storeType 'pkcs12'
+            storePassword ksPass
+            keyAlias 'mojan'
+            keyPassword ksPass
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}
