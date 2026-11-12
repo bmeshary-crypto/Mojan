@@ -11,6 +11,7 @@ import '../../widgets/game_ui.dart';
 import 'seeko_engine.dart';
 import '../../core/haptics.dart';
 import '../../core/account/account.dart';
+import '../../core/online/online_games.dart';
 
 const seekoTeamColors = [Color(0xFF2EBD59), Color(0xFF2F8BF5), Color(0xFFF2453D)];
 
@@ -133,6 +134,30 @@ class _RulesCard extends StatelessWidget {
   }
 }
 
+/// مباراة سيكو أونلاين بعد امتلاء الغرفة.
+class SeekoOnlineScreen extends StatelessWidget {
+  const SeekoOnlineScreen({super.key, required this.match});
+  final OnlineMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    final me = match.seatOf(OnlineGames.instance.uid);
+    return Scaffold(
+      body: AnimatedBackground(
+        child: SafeArea(
+          child: _SeekoTable(
+            playerCount: match.size,
+            humans: {me < 0 ? 0 : me},
+            online: match,
+            onRestart: () => Navigator.maybePop(context),
+            onSetup: () => Navigator.maybePop(context),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SeekoTable extends StatefulWidget {
   const _SeekoTable({
     super.key,
@@ -140,9 +165,11 @@ class _SeekoTable extends StatefulWidget {
     required this.humans,
     required this.onRestart,
     required this.onSetup,
+    this.online,
   });
   final int playerCount;
   final Set<int> humans;
+  final OnlineMatch? online;
   final VoidCallback onRestart;
   final VoidCallback onSetup;
 
@@ -151,7 +178,76 @@ class _SeekoTable extends StatefulWidget {
 }
 
 class _SeekoTableState extends State<_SeekoTable> {
-  late final SeekoGame game = SeekoGame(playerCount: widget.playerCount);
+  late final SeekoGame game = SeekoGame(
+    playerCount: widget.playerCount,
+    random: widget.online != null ? Random(widget.online!.seed) : null,
+  );
+
+  // ---------- أونلاين ----------
+  bool get _online => widget.online != null;
+  late OnlineMatch _match = widget.online!;
+  int _applied = 0;
+  bool _animating = false;
+  final Map<int, Map<String, dynamic>> _pending = {};
+  final List<StreamSubscription<Object?>> _subs = [];
+  Timer? _beat;
+
+  bool _iControl(int p) => !_online || _match.controlledBy(p, OnlineGames.instance.uid);
+
+  void _send(Map<String, Object?> a) {
+    if (!_online) return;
+    OnlineGames.instance.post(_match.id, _applied, a);
+    _applied++;
+  }
+
+  void _startOnline() {
+    final svc = OnlineGames.instance;
+    _subs.add(svc.actions(_match.id).listen((list) {
+      for (final a in list) {
+        final seq = (a['seq'] as num).toInt();
+        if (seq >= _applied) _pending[seq] = a;
+      }
+      _drain();
+    }));
+    _subs.add(svc.watch(_match.id).listen((m) {
+      if (m == null || _disposed) return;
+      final had = _iControl(game.current);
+      setState(() => _match = m);
+      if (!had && _iControl(game.current) && !_animating && game.phase == SeekoPhase.playing && !_humanTurn) {
+        _afterTurnChange();
+      }
+    }));
+    svc.heartbeat(_match.id);
+    _beat = Timer.periodic(const Duration(seconds: 8), (_) {
+      svc.heartbeat(_match.id);
+      for (final i in _match.staleSeats(svc.uid)) {
+        svc.seatToAi(_match, i);
+      }
+    });
+  }
+
+  /// تطبيق حركات اللاعبين الآخرين بالترتيب.
+  void _drain() {
+    if (!_online || _animating || _disposed || game.phase != SeekoPhase.playing) return;
+    final a = _pending.remove(_applied);
+    if (a == null) return;
+    _applied++;
+    final i = (a['i'] as num).toInt();
+    if (a['t'] == 'ex') {
+      if (game.canExchange(i)) game.exchangeDead(i);
+      setState(() {});
+      _drain();
+    } else if (a['t'] == 'play') {
+      final card = i < game.hands[game.current].length ? game.hands[game.current][i] : null;
+      if (card == null) return;
+      final p = SeekoPlay(
+        handIndex: i,
+        cell: ((a['r'] as num).toInt(), (a['c'] as num).toInt()),
+        type: card.isOneEyedJack ? SeekoActionType.remove : SeekoActionType.place,
+      );
+      if (game.isLegal(p)) _apply(p, remote: true);
+    }
+  }
   int? _selected;
   bool _busy = false;
   bool _disposed = false;
@@ -165,6 +261,7 @@ class _SeekoTableState extends State<_SeekoTable> {
   bool get _humanTurn => widget.humans.contains(game.current) && game.phase == SeekoPhase.playing;
 
   String nameOf(int p) {
+    if (_online) return widget.humans.contains(p) ? 'أنت' : (_match.seats[p]?.name ?? 'لاعب ${p + 1}');
     if (widget.humans.length == 1) {
       if (p == 0) return 'أنت';
       return p == 2 && widget.playerCount == 4 ? 'شريكك' : 'كمبيوتر $p';
@@ -184,12 +281,19 @@ class _SeekoTableState extends State<_SeekoTable> {
   void initState() {
     super.initState();
     _status = _turnText();
+    if (_online) _startOnline();
     _afterTurnChange(first: true);
   }
 
   @override
   void dispose() {
     _disposed = true;
+    for (final x in _subs) {
+      x.cancel();
+    }
+    _beat?.cancel();
+    // الانسحاب أثناء اللعب: يكمل الذكاء الاصطناعي مكاننا
+    if (_online && game.phase == SeekoPhase.playing) OnlineGames.instance.leave(_match);
     super.dispose();
   }
 
@@ -202,17 +306,27 @@ class _SeekoTableState extends State<_SeekoTable> {
       if (widget.humans.length > 1 && !first) _covered = true;
       _busy = false;
       setState(() => _status = _turnText());
+    } else if (!_iControl(game.current)) {
+      // ننتظر حركة اللاعب الآخر
+      _busy = true;
+      setState(() => _status = _turnText());
+      _drain();
     } else {
       _busy = true;
       setState(() => _status = _turnText());
-      Future.delayed(const Duration(milliseconds: 900), _aiTurn);
+      final turn = game.current;
+      Future.delayed(const Duration(milliseconds: 900), () {
+        if (game.current == turn && _iControl(turn) && !_animating) _aiTurn();
+      });
     }
   }
 
   Future<void> _aiTurn() async {
     if (_disposed || game.phase != SeekoPhase.playing) return;
+    if (_online && _pending.containsKey(_applied)) return _drain();
     var a = game.chooseAi();
     if (a.exchange != null) {
+      _send({'t': 'ex', 'i': a.exchange});
       game.exchangeDead(a.exchange!);
       a = game.chooseAi();
       if (a.exchange != null) a = (play: game.legalPlays().first, exchange: null);
@@ -220,8 +334,10 @@ class _SeekoTableState extends State<_SeekoTable> {
     await _apply(a.play!);
   }
 
-  Future<void> _apply(SeekoPlay p) async {
+  Future<void> _apply(SeekoPlay p, {bool remote = false}) async {
     _busy = true;
+    _animating = true;
+    if (!remote) _send({'t': 'play', 'i': p.handIndex, 'r': p.cell.$1, 'c': p.cell.$2});
     final player = game.current;
     final card = game.hands[player][p.handIndex];
     final res = game.play(p);
@@ -244,7 +360,9 @@ class _SeekoTableState extends State<_SeekoTable> {
       setState(() => _flash = {});
     }
 
+    _animating = false;
     if (game.phase == SeekoPhase.gameOver) {
+      if (_online) OnlineGames.instance.finish(_match.id);
       _showResults();
       return;
     }
@@ -268,6 +386,7 @@ class _SeekoTableState extends State<_SeekoTable> {
   void _exchange() {
     if (_selected == null || !game.canExchange(_selected!)) return;
     final old = game.hands[game.current][_selected!];
+    _send({'t': 'ex', 'i': _selected});
     final drawn = game.exchangeDead(_selected!);
     setState(() {
       _selected = null;
@@ -286,7 +405,11 @@ class _SeekoTableState extends State<_SeekoTable> {
       builder: (ctx) => GameResultDialog(
         reward: reward,
         emoji: w == null ? '🤝' : (humanWon || widget.humans.length > 1 ? '🏆' : '🃏'),
-        title: w == null ? 'تعادل!' : '${teamName(w)} ${w == 0 && widget.humans.length == 1 && widget.playerCount != 4 ? 'فزت' : 'فاز'}!',
+        title: w == null
+            ? 'تعادل!'
+            : _online
+                ? (humanWon ? 'فزت! 🎉' : '${teamName(w)} فاز!')
+                : '${teamName(w)} ${w == 0 && widget.humans.length == 1 && widget.playerCount != 4 ? 'فزت' : 'فاز'}!',
         rows: [
           for (var t = 0; t < game.teamCount; t++)
             Container(

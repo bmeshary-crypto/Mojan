@@ -7,7 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/account/account.dart';
 import '../../core/game_module.dart';
 import '../../core/haptics.dart';
-import '../../core/online/online_ludo.dart';
+import '../../core/online/online_games.dart';
 import '../../core/shop.dart';
 import '../../core/theme.dart';
 import '../../widgets/game_ui.dart';
@@ -583,7 +583,7 @@ class LudoOnlineScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final setup = LudoSetup(players: match.size);
-    final mine = match.seatOf(OnlineLudo.instance.uid);
+    final mine = match.seatOf(OnlineGames.instance.uid);
     return Scaffold(
       body: AnimatedBackground(
         child: SafeArea(
@@ -655,16 +655,10 @@ class _LudoTableState extends State<_LudoTable> {
   OnlineSeat? _seat(LudoColor c) => _online ? _match.seats[_seatOfColor(c)] : null;
 
   /// هل هذا الجهاز هو من يحرك هذا اللون؟ (لاعبه، أو لاعب AI ونحن المتحكم)
-  bool _iControl(LudoColor c) {
-    if (!_online) return true;
-    final seat = _seat(c);
-    if (seat == null) return false;
-    if (!seat.isAi) return seat.uid == OnlineLudo.instance.uid;
-    return _match.controllerSeat == _match.seatOf(OnlineLudo.instance.uid);
-  }
+  bool _iControl(LudoColor c) => !_online || _match.controlledBy(_seatOfColor(c), OnlineGames.instance.uid);
 
   void _startOnline() {
-    final svc = OnlineLudo.instance;
+    final svc = OnlineGames.instance;
     _subs.add(svc.actions(_match.id).listen((list) {
       for (final a in list) {
         final seq = (a['seq'] as num).toInt();
@@ -682,14 +676,8 @@ class _LudoTableState extends State<_LudoTable> {
     _beat = Timer.periodic(const Duration(seconds: 8), (_) {
       svc.heartbeat(_match.id);
       // المتحكم يحوّل اللاعب المنقطع إلى AI حتى لا تتوقف المباراة
-      final me = _match.seatOf(svc.uid);
-      if (me < 0 || _match.controllerSeat != me) return;
-      final newest = _match.seats.map((x) => x?.seen).whereType<DateTime>().fold<DateTime?>(
-          null, (a, b) => a == null || b.isAfter(a) ? b : a);
-      for (var i = 0; i < _match.size; i++) {
-        final st = _match.seats[i];
-        if (st == null || st.isAi || i == me || st.seen == null || newest == null) continue;
-        if (newest.difference(st.seen!).inSeconds > OnlineMatch.staleSeconds) svc.seatToAi(_match, i);
+      for (final i in _match.staleSeats(svc.uid)) {
+        svc.seatToAi(_match, i);
       }
     });
   }
@@ -725,7 +713,7 @@ class _LudoTableState extends State<_LudoTable> {
 
   void _send(Map<String, Object?> action) {
     if (!_online) return;
-    OnlineLudo.instance.post(_match.id, _applied, action);
+    OnlineGames.instance.post(_match.id, _applied, action);
     _applied++;
   }
   bool get _humanTurn => widget.humans.contains(game.current);
@@ -939,7 +927,7 @@ class _LudoTableState extends State<_LudoTable> {
     setState(() {});
 
     if (game.phase == LudoPhase.gameOver) {
-      if (_online) OnlineLudo.instance.finish(_match.id);
+      if (_online) OnlineGames.instance.finish(_match.id);
       await _wait(400);
       if (!_disposed) _showResults();
       return;
@@ -1038,7 +1026,7 @@ class _LudoTableState extends State<_LudoTable> {
       _leaving = false;
       if (!ok || !mounted) return;
       if (_solo) Account.instance.recordGame('ludo', won: false);
-      if (_online) OnlineLudo.instance.leave(_match);
+      if (_online) OnlineGames.instance.leave(_match);
       // نسمح بالخروج بعد التأكيد (حتى لا يظهر السؤال مرة ثانية)
       setState(() => _over = true);
       await WidgetsBinding.instance.endOfFrame;

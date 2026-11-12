@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mojan/core/online/online_ludo.dart';
+import 'package:mojan/core/online/online_games.dart';
 
 Timestamp _t(int s) => Timestamp.fromMillisecondsSinceEpoch(1700000000000 + s * 1000);
 

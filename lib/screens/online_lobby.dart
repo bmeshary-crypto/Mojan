@@ -2,34 +2,54 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../core/firebase/cloud.dart';
-import '../../core/game_module.dart';
-import '../../core/online/online_ludo.dart';
-import '../../core/theme.dart';
-import '../../widgets/account_widgets.dart';
-import '../../widgets/animated_background.dart';
-import 'ludo_screen.dart';
+import '../core/firebase/cloud.dart';
+import '../core/online/online_games.dart';
+import '../core/theme.dart';
+import '../widgets/account_widgets.dart';
+import '../widgets/animated_background.dart';
 
-/// لودو أونلاين: الغرف المفتوحة، لعب سريع، وغرفة انتظار. إذا ما دخل أحد يكمل لاعب ذكاء اصطناعي.
-class LudoOnlineLobby extends StatefulWidget {
-  const LudoOnlineLobby({super.key});
+/// لعب أونلاين: الغرف المفتوحة، لعب سريع، وغرفة انتظار. إذا ما دخل أحد يكمل لاعب ذكاء اصطناعي.
+class OnlineLobby extends StatefulWidget {
+  const OnlineLobby({
+    super.key,
+    required this.game,
+    required this.title,
+    required this.colors,
+    required this.screen,
+    required this.vsComputer,
+    this.sizes = const [2, 4],
+    this.sizeLabels = const {2: 'لاعبين', 4: '4 لاعبين'},
+  });
+
+  /// معرف اللعبة (ludo, seeko).
+  final String game;
+  final String title;
+  final List<Color> colors;
+  final List<int> sizes;
+  final Map<int, String> sizeLabels;
+
+  /// شاشة المباراة بعد امتلاء الغرفة.
+  final Widget Function(OnlineMatch match) screen;
+
+  /// بديل اللعب ضد الكمبيوتر عند عدم توفر الأونلاين.
+  final Widget Function() vsComputer;
 
   /// كم ثانية ننتظر لاعبين حقيقيين قبل ما يدخل الذكاء الاصطناعي.
   static const waitSeconds = 20;
 
   @override
-  State<LudoOnlineLobby> createState() => _LudoOnlineLobbyState();
+  State<OnlineLobby> createState() => _OnlineLobbyState();
 }
 
-class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
-  final svc = OnlineLudo.instance;
+class _OnlineLobbyState extends State<OnlineLobby> {
+  final svc = OnlineGames.instance;
   bool _ready = false;
   bool _working = false;
   String? _matchId;
   OnlineMatch? _match;
   StreamSubscription<OnlineMatch?>? _sub;
   Timer? _tick;
-  int _left = LudoOnlineLobby.waitSeconds;
+  int _left = OnlineLobby.waitSeconds;
   bool _launched = false;
 
   @override
@@ -66,7 +86,7 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
   void _enter(String id) {
     _sub?.cancel();
     _matchId = id;
-    _left = LudoOnlineLobby.waitSeconds;
+    _left = OnlineLobby.waitSeconds;
     _launched = false;
     _sub = svc.watch(id).listen(_onMatch);
     _tick?.cancel();
@@ -92,7 +112,7 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
       _launched = true;
       _tick?.cancel();
       Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => LudoOnlineScreen(match: m)))
+          .push(MaterialPageRoute(builder: (_) => widget.screen(m)))
           .then((_) => _reset());
     }
   }
@@ -133,7 +153,7 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
                       onPressed: () => _matchId != null ? _leaveWaiting() : Navigator.maybePop(context),
                       icon: const Icon(Icons.arrow_back_rounded, size: 28),
                     ),
-                    Text('لودو أونلاين', style: AppTheme.display.copyWith(fontSize: 24)),
+                    Text('${widget.title} أونلاين', style: AppTheme.display.copyWith(fontSize: 24)),
                   ]),
                   Expanded(
                     child: !_ready
@@ -167,7 +187,7 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
           FilledButton.icon(
             key: const ValueKey('online-vs-ai'),
             onPressed: () => Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const LudoScreen(mode: PlayMode.vsComputer)),
+              MaterialPageRoute(builder: (_) => widget.vsComputer()),
             ),
             icon: const Icon(Icons.smart_toy_rounded),
             label: const Text('العب ضد الكمبيوتر'),
@@ -178,29 +198,22 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
   Widget _lobby() {
     return ListView(padding: const EdgeInsets.all(14), children: [
       Row(children: [
-        Expanded(
-          child: _bigButton(
-            key: const ValueKey('online-quick-2'),
-            icon: '⚡',
-            title: 'لعب سريع',
-            sub: 'لاعبين',
-            onTap: () => _run(() => svc.quick('ludo', 2)),
+        for (final (i, n) in widget.sizes.indexed) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(
+            child: _bigButton(
+              key: ValueKey('online-quick-$n'),
+              icon: n == 2 ? '⚡' : '👥',
+              title: 'لعب سريع',
+              sub: widget.sizeLabels[n] ?? '$n لاعبين',
+              onTap: () => _run(() => svc.quick(widget.game, n)),
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _bigButton(
-            key: const ValueKey('online-quick-4'),
-            icon: '👥',
-            title: 'لعب سريع',
-            sub: '4 لاعبين',
-            onTap: () => _run(() => svc.quick('ludo', 4)),
-          ),
-        ),
+        ],
       ]),
       const SizedBox(height: 8),
       const Text(
-        'إذا ما لقينا أحد خلال ${LudoOnlineLobby.waitSeconds} ثانية يدخل معك لاعب ذكاء اصطناعي 🤖',
+        'إذا ما لقينا أحد خلال ${OnlineLobby.waitSeconds} ثانية يدخل معك لاعب ذكاء اصطناعي 🤖',
         textAlign: TextAlign.center,
         style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 12.5),
       ),
@@ -208,7 +221,7 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
       const Text('غرف مفتوحة الحين', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
       const SizedBox(height: 8),
       StreamBuilder<List<OnlineMatch>>(
-        stream: svc.openMatches('ludo'),
+        stream: svc.openMatches(widget.game),
         builder: (context, snap) {
           final list = snap.data ?? const [];
           if (list.isEmpty) {
@@ -235,7 +248,7 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('غرفة ${m.hostName}', style: const TextStyle(fontWeight: FontWeight.w900)),
-                        Text('${m.filled}/${m.size} لاعبين · كلاسيك',
+                        Text('${m.filled}/${m.size} لاعبين',
                             style: const TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
                       ]),
                     ),
@@ -253,21 +266,16 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
       ),
       const SizedBox(height: 8),
       Row(children: [
-        Expanded(
-          child: OutlinedButton(
-            key: const ValueKey('online-create-2'),
-            onPressed: () => _run(() => svc.create('ludo', 2)),
-            child: const Text('افتح غرفة (2)'),
+        for (final (i, n) in widget.sizes.indexed) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton(
+              key: ValueKey('online-create-$n'),
+              onPressed: () => _run(() => svc.create(widget.game, n)),
+              child: Text('افتح غرفة ($n)'),
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OutlinedButton(
-            key: const ValueKey('online-create-4'),
-            onPressed: () => _run(() => svc.create('ludo', 4)),
-            child: const Text('افتح غرفة (4)'),
-          ),
-        ),
+        ],
       ]),
     ]);
   }
@@ -282,7 +290,7 @@ class _LudoOnlineLobbyState extends State<LudoOnlineLobby> {
           child: Ink(
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFFFF6B85), AppColors.ludo]),
+              gradient: LinearGradient(colors: [widget.colors.first, widget.colors[1]]),
               borderRadius: BorderRadius.circular(22),
             ),
             child: Column(children: [

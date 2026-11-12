@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/game_module.dart';
 import '../core/theme.dart';
 import '../screens/coming_soon_screen.dart';
+import '../screens/online_lobby.dart';
 import '../widgets/game_icons.dart';
-import 'ludo/ludo_online_lobby.dart';
 import 'ludo/ludo_screen.dart';
 import 'quiz/quiz_screen.dart';
 import 'seeko/seeko_screen.dart';
@@ -23,7 +23,15 @@ class GameRegistry {
       modes: const [PlayMode.vsComputer, PlayMode.local, PlayMode.online],
       iconBuilder: (_) => const GameArt('assets/images/ludo.webp', fallback: LudoIcon()),
       screenBuilder: (_, mode) =>
-          mode == PlayMode.online ? const LudoOnlineLobby() : LudoScreen(mode: mode),
+          mode == PlayMode.online
+              ? OnlineLobby(
+                  game: 'ludo',
+                  title: 'لودو',
+                  colors: const [Color(0xFFFF6B85), AppColors.ludo],
+                  screen: (m) => LudoOnlineScreen(match: m),
+                  vsComputer: () => const LudoScreen(mode: PlayMode.vsComputer),
+                )
+              : LudoScreen(mode: mode),
     ),
     GameModule(
       id: 'seeko',
@@ -34,7 +42,17 @@ class GameRegistry {
       modes: const [PlayMode.vsComputer, PlayMode.local, PlayMode.online],
       iconBuilder: (_) => const GameArt('assets/images/seeko.webp', fallback: SeekoIcon()),
       screenBuilder: (_, mode) =>
-          mode == PlayMode.online ? ComingSoonScreen(gameId: 'seeko', mode: mode) : SeekoScreen(mode: mode),
+          mode == PlayMode.online
+              ? OnlineLobby(
+                  game: 'seeko',
+                  title: 'سيكو',
+                  colors: const [Color(0xFF3FE0A5), AppColors.seeko],
+                  sizes: const [2, 4],
+                  sizeLabels: const {2: 'لاعبين', 4: '4 (فريقان)'},
+                  screen: (m) => SeekoOnlineScreen(match: m),
+                  vsComputer: () => const SeekoScreen(mode: PlayMode.vsComputer),
+                )
+              : SeekoScreen(mode: mode),
     ),
     GameModule(
       id: 'quiz',

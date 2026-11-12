@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -36,6 +37,7 @@ class OnlineMatch {
         status = d['status'] as String? ?? 'waiting',
         size = (d['size'] as num?)?.toInt() ?? 2,
         host = d['host'] as String? ?? '',
+        seed = (d['seed'] as num?)?.toInt() ?? 7,
         lastActive = (d['lastActive'] as Timestamp?)?.toDate(),
         seats = List.generate((d['size'] as num?)?.toInt() ?? 2, (i) {
           final s = (d['seats'] as Map?)?['$i'];
@@ -48,6 +50,9 @@ class OnlineMatch {
   final String status;
   final int size;
   final String host;
+
+  /// بذرة عشوائية مشتركة (مثل خلط أوراق سيكو بنفس الترتيب عند الكل).
+  final int seed;
   final DateTime? lastActive;
   final List<OnlineSeat?> seats;
 
@@ -70,12 +75,34 @@ class OnlineMatch {
     return humans.first;
   }
 
+  /// هل هذا المستخدم هو من يحرّك هذا المقعد؟ (مقعده، أو مقعد AI وهو المتحكم)
+  bool controlledBy(int seat, String? uid) {
+    final s = seat >= 0 && seat < size ? seats[seat] : null;
+    if (s == null) return false;
+    if (!s.isAi) return s.uid == uid;
+    return controllerSeat == seatOf(uid);
+  }
+
+  /// المقاعد المنقطعة التي يجب أن يكملها الذكاء الاصطناعي (يحسبها المتحكم فقط).
+  List<int> staleSeats(String? uid) {
+    final me = seatOf(uid);
+    if (me < 0 || controllerSeat != me) return const [];
+    final newest = seats.map((x) => x?.seen).whereType<DateTime>().fold<DateTime?>(
+        null, (a, b) => a == null || b.isAfter(a) ? b : a);
+    return [
+      for (var i = 0; i < size; i++)
+        if (i != me && seats[i] != null && !seats[i]!.isAi && seats[i]!.seen != null && newest != null &&
+            newest.difference(seats[i]!.seen!).inSeconds > staleSeconds)
+          i,
+    ];
+  }
+
   static const staleSeconds = 30;
 }
 
-class OnlineLudo {
-  OnlineLudo._();
-  static final instance = OnlineLudo._();
+class OnlineGames {
+  OnlineGames._();
+  static final instance = OnlineGames._();
 
   FirebaseFirestore get _db => FirebaseFirestore.instance;
   bool get available => Cloud.instance.enabled && Cloud.instance.uid != null;
@@ -112,6 +139,7 @@ class OnlineLudo {
       'status': 'waiting',
       'size': size,
       'host': uid,
+      'seed': Random().nextInt(1 << 30),
       'seats': {'0': _meSeat()},
       'seen': {uid!: FieldValue.serverTimestamp()},
       'createdAt': FieldValue.serverTimestamp(),
