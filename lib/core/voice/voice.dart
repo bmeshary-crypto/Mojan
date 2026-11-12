@@ -302,7 +302,7 @@ class VoiceRoom {
   int get online {
     final p = presentIds;
     if (p == null) return listeners + onSeats + 1;
-    return p.length + seats.where((s) => s.user?.isAi == true).length;
+    return p.length + (host.isAi && !hostSeated ? 1 : 0) + seats.where((s) => s.user?.isAi == true).length;
   }
   bool get flagged => reports >= 2;
 }

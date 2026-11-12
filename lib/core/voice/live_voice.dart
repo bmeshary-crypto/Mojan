@@ -89,7 +89,7 @@ class LiveVoice {
             for (final e in here.entries)
               if (e.value is Timestamp) '${e.key}': (e.value as Timestamp).toDate(),
         };
-        r.presentIds = r.hereKnown ? r.freshHere() : null;
+        r.presentIds = r.freshHere();
         _svc.notify();
       }, onError: (e) => debugPrint('sys room: $e')));
     }
