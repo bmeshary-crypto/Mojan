@@ -35,6 +35,12 @@ class LiveVoice {
   Timer? _beat, _levels;
   Map<String, Map<String, dynamic>> _people = {};
   final _offeredAt = <String, DateTime>{};
+  // متى بدأ اتصال الصوت مع شخص يتعثر، ومتى غاب شخص جالس على المايك
+  final _badSince = <String, DateTime>{};
+  final _absentSince = <String, DateTime>{};
+  Set<String> _docIds = {};
+  Timer? _conn;
+  bool _turnLoaded = false, _hideHooked = false;
   final _answeredFor = <String, String>{};
   final Set<String> _seenMsgs = {};
   bool _firstMessages = true;
@@ -178,6 +184,7 @@ class LiveVoice {
       s.user!.mic = m['mic'] == true;
     }
     r.chair = data['chair'] as String?;
+    r.private = data['private'] == true;
     final media = data['media'] as Map?;
     r.mediaTitle = media?['title'] as String?;
     r.mediaBy = media?['by'] as String?;
@@ -220,11 +227,21 @@ class LiveVoice {
     });
   }
 
-  Future<void> enter(VoiceRoom r) async {
+  Future<void> enter(VoiceRoom r, {bool hidden = false}) async {
     if (!enabled || !r.live) return;
     if (_room != null && _room != r) await exit(_room!);
     _room = r;
+    r.presentIds = {if (!hidden) _me};
     _firstMessages = true;
+    _loadTurn();
+    if (!_hideHooked) {
+      _hideHooked = true;
+      // إغلاق الصفحة أو التطبيق: نشيل نفسنا من الغرفة ومن المايك فوراً
+      RtcMesh.instance.onPageHide(() {
+        final room = _room;
+        if (room != null) _leaveDoc(room);
+      });
+    }
     _seenMsgs.clear();
     final ref = _db.collection('rooms').doc(r.id);
     final peopleRef = ref.collection('people').doc(_me);
@@ -254,7 +271,7 @@ class LiveVoice {
     }
     Future<void> beat() async {
       try {
-        await peopleRef.set({..._meMap(), 'session': _session, 'at': FieldValue.serverTimestamp()});
+        await peopleRef.set({..._meMap(), 'session': _session, 'at': FieldValue.serverTimestamp(), if (hidden) 'hidden': true});
         // أي شخص داخل الغرفة يبقيها نشطة ويحدّث آخر ظهور لها
         if (r.system == null) {
           r.lastActive = DateTime.now();
@@ -267,7 +284,7 @@ class LiveVoice {
 
     await beat();
     _beat = Timer.periodic(const Duration(seconds: 20), (_) => beat());
-    if (!_svc.isHost(r)) {
+    if (!_svc.isHost(r) && !hidden) {
       unawaited(_post(r, {'kind': 'join', 'text': 'دخل الغرفة'}));
     }
     _subs.add(ref.snapshots().listen((d) {
@@ -283,18 +300,18 @@ class LiveVoice {
     }));
     _subs.add(ref.collection('people').snapshots().listen((snap) {
       final now = DateTime.now();
+      _docIds = {for (final d in snap.docs) d.id};
+      // الموجود فعلاً: آخر نبضة خلال 75 ثانية (اللي طلع أو انقطع ما يظهر)
       _people = {
         for (final d in snap.docs)
-          if (d.id != _me && now.difference((d.data()['at'] as Timestamp?)?.toDate() ?? now).inSeconds < 70) d.id: d.data(),
+          if (d.id != _me && now.difference((d.data()['at'] as Timestamp?)?.toDate() ?? now).inSeconds < 75) d.id: d.data(),
       };
-      final seated = r.onMics.map((u) => u.id).toSet();
-      r.audience
-        ..clear()
-        ..addAll([for (final e in _people.entries) if (!seated.contains(e.key)) _userFrom({...e.value, 'uid': e.key})]);
-      r.listeners = r.audience.length;
-      _connectPeers(r);
-      _svc.notify();
+      _refreshPeople(r);
     }));
+    _conn = Timer.periodic(const Duration(seconds: 5), (_) {
+      _connectPeers(r);
+      _sweepSeats(r);
+    });
     _levels = Timer.periodic(const Duration(milliseconds: 350), (_) => _updateLevels(r));
   }
 
@@ -314,15 +331,75 @@ class LiveVoice {
     _offeredAt.clear();
     _answeredFor.clear();
     RtcMesh.instance.closeAll();
+    _conn?.cancel();
+    _badSince.clear();
+    _absentSince.clear();
+    r.presentIds = null;
+    await _leaveDoc(r);
+  }
+
+  /// يحذف حضوري ومقعدي من الغرفة.
+  Future<void> _leaveDoc(VoiceRoom r) async {
     final ref = _db.collection('rooms').doc(r.id);
     try {
-      await ref.collection('people').doc(_me).delete();
-      final mine = r.seats.where((s) => s.user?.isMe == true).map((s) => s.index);
-      for (final i in mine) {
-        await ref.update({'seats.$i': FieldValue.delete()});
-      }
+      final mine = r.seats.where((s) => s.user?.isMe == true).map((s) => s.index).toList();
+      await Future.wait([
+        ref.collection('people').doc(_me).delete(),
+        if (mine.isNotEmpty) ref.update({for (final i in mine) 'seats.$i': FieldValue.delete()}),
+      ]);
     } catch (e) {
       debugPrint('exit: $e');
+    }
+  }
+
+  /// يحدّث قائمة الموجودين والحضور ويتصل بالجدد.
+  void _refreshPeople(VoiceRoom r) {
+    // المراقب المخفي (الأدمن) يسمع الغرفة لكنه لا يظهر في الحضور ولا في العدد
+    final visible = {for (final e in _people.entries) if (e.value['hidden'] != true) e.key: e.value};
+    r.presentIds = {if (!_svc.hiddenIn(r)) _me, ...visible.keys};
+    final seated = r.onMics.map((u) => u.id).toSet();
+    r.audience
+      ..clear()
+      ..addAll([for (final e in visible.entries) if (!seated.contains(e.key)) _userFrom({...e.value, 'uid': e.key})]);
+    r.listeners = r.audience.length;
+    _connectPeers(r);
+    _sweepSeats(r);
+    _svc.notify();
+  }
+
+  /// من جلس على المايك ثم أغلق التطبيق أو انقطع: ينزل من المقعد بعد 40 ثانية من غيابه.
+  /// ينفذها جهاز واحد فقط: المضيف إن كان موجوداً، وإلا أصغر معرّف بين الموجودين.
+  void _sweepSeats(VoiceRoom r) {
+    final present = r.presentIds ?? {};
+    final now = DateTime.now();
+    final gone = <int>[];
+    for (final s in r.seats) {
+      final u = s.user;
+      if (u == null || u.isAi || u.isMe) continue;
+      if (present.contains(u.id)) {
+        _absentSince.remove(u.id);
+        continue;
+      }
+      final since = _absentSince.putIfAbsent(u.id, () => now);
+      if (now.difference(since).inSeconds >= 40) gone.add(s.index);
+    }
+    if (gone.isEmpty) return;
+    if (present.isEmpty) return;
+    final janitor = present.contains(r.host.id) ? r.host.id : (present.toList()..sort()).first;
+    if (janitor != _me) return;
+    _ref(r).update({for (final i in gone) 'seats.$i': FieldValue.delete()}).catchError((Object e) => debugPrint('sweep: $e'));
+  }
+
+  /// خوادم TURN الخاصة (إن أضافها الأدمن في config/turn) لتحسين الصوت على الواي فاي المقيد.
+  Future<void> _loadTurn() async {
+    if (_turnLoaded) return;
+    _turnLoaded = true;
+    try {
+      final d = (await _db.collection('config').doc('turn').get()).data();
+      final list = d?['servers'];
+      if (list is List) RtcMesh.instance.setTurn([for (final e in list) if (e is Map) Map<String, dynamic>.from(e)]);
+    } catch (e) {
+      debugPrint('turn: $e');
     }
   }
 
@@ -502,6 +579,59 @@ class LiveVoice {
 
   Future<void> close(VoiceRoom r, String reason) => _ref(r).update({'open': false, 'closeReason': reason});
 
+  // ---------- الغرف الخاصة بكلمة سر ----------
+
+  /// المضيف أو الأدمن يضع كلمة سر (أو يشيلها بـ null).
+  Future<String?> setPassword(VoiceRoom r, String? pw) async {
+    try {
+      final secret = _ref(r).collection('secret').doc('pw');
+      if (pw == null || pw.isEmpty) {
+        await _ref(r).update({'private': false});
+        await secret.delete();
+      } else {
+        await secret.set({'pw': pw});
+        await _ref(r).update({'private': true});
+        // المضيف نفسه يبقى عضواً بالكلمة الجديدة
+        await _ref(r).collection('pass').doc(_me).set({'pw': pw, 'at': FieldValue.serverTimestamp()});
+      }
+      r.private = pw != null && pw.isNotEmpty;
+      return null;
+    } catch (e) {
+      debugPrint('password: $e');
+      return 'تعذر حفظ كلمة السر';
+    }
+  }
+
+  /// كلمة السر الحالية (للمضيف والأدمن فقط).
+  Future<String?> password(VoiceRoom r) async {
+    try {
+      return (await _ref(r).collection('secret').doc('pw').get()).data()?['pw'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// هل أقدر أدخل الغرفة الخاصة بدون كلمة سر (دخلتها قبل والكلمة ما تغيرت).
+  Future<bool> canEnter(VoiceRoom r) async {
+    if (!r.private) return true;
+    try {
+      await _ref(r).collection('messages').limit(1).get();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// يجرب كلمة السر. السيرفر يرفضها إذا كانت غلط.
+  Future<bool> submitPassword(VoiceRoom r, String pw) async {
+    try {
+      await _ref(r).collection('pass').doc(_me).set({'pw': pw.trim(), 'at': FieldValue.serverTimestamp()});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// المضيف يحذف غرفته المحفوظة نهائياً.
   Future<void> deleteRoom(VoiceRoom r) async {
     try {
@@ -545,24 +675,39 @@ class LiveVoice {
   void speakerChanged(bool on) => RtcMesh.instance.setSpeaker(on);
 
   /// نتصل بكل شخص موجود إذا كان أحدنا متحدثاً (المستمعون لا يتصلون ببعض).
+  /// الاتصال المتعثر يُعاد تلقائياً، ولو الطرف المسؤول عن البدء ما بدأ خلال 20 ثانية نبدأ نحن.
   void _connectPeers(VoiceRoom r) {
+    if (_room != r) return;
     final speakers = {r.host.id, for (final u in r.onMics) u.id};
     final iSpeak = speakers.contains(_me);
     final wanted = {for (final id in _people.keys) if (iSpeak || speakers.contains(id)) id};
+    final rtc = RtcMesh.instance;
     for (final id in [..._sigSubs.keys]) {
-      if (!wanted.contains(id)) {
-        _sigSubs.remove(id)?.cancel();
-        RtcMesh.instance.close(id);
-      }
+      if (wanted.contains(id)) continue;
+      // اتصال شغال ما نقطعه لمجرد تأخر نبضة، إلا إذا طلع الشخص فعلاً من الغرفة
+      if (rtc.state(id) == 'connected' && _docIds.contains(id) && (iSpeak || speakers.contains(id))) continue;
+      _sigSubs.remove(id)?.cancel();
+      rtc.close(id);
+      _badSince.remove(id);
     }
+    final now = DateTime.now();
     for (final id in wanted) {
       _sigSubs[id] ??= _watchSignal(r, id);
-      final st = RtcMesh.instance.state(id);
-      final last = _offeredAt[id];
-      final stale = last == null || DateTime.now().difference(last).inSeconds > 12;
-      if (_me.compareTo(id) < 0 && (st == 'none' || st == 'new' || st == 'failed' || st == 'closed' || st == 'disconnected') && stale) {
-        _offer(r, id);
+      final st = rtc.state(id);
+      if (st == 'connected') {
+        _badSince.remove(id);
+        continue;
       }
+      final bad = _badSince.putIfAbsent(id, () => now);
+      final badFor = now.difference(bad).inSeconds;
+      final last = _offeredAt[id];
+      final sinceOffer = last == null ? 999 : now.difference(last).inSeconds;
+      final dead = st == 'none' || st == 'failed' || st == 'closed';
+      final starter = _me.compareTo(id) < 0;
+      final due = starter
+          ? (dead && sinceOffer > 4) || (badFor > 10 && sinceOffer > 15)
+          : badFor > 20 && sinceOffer > 25;
+      if (due) _offer(r, id);
     }
   }
 

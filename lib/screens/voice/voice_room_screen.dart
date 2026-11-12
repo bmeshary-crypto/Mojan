@@ -11,6 +11,9 @@ import '../../core/haptics.dart';
 import '../../core/shop.dart';
 import '../../core/theme.dart';
 import '../../core/vip.dart';
+import '../../core/firebase/cloud.dart';
+import '../../core/voice/live_voice.dart';
+import '../../core/voice/rtc/rtc.dart';
 import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
 import '../../games/sky_wheel/sky_wheel_screen.dart';
@@ -513,7 +516,10 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       onPopInvokedWithResult: (did, _) {
         if (!did) _exit();
       },
-      child: Scaffold(
+      // أي لمسة في الغرفة تعيد تشغيل الأصوات لو منعها المتصفح
+      child: Listener(
+        onPointerDown: (_) => RtcMesh.instance.resume(),
+        child: Scaffold(
         resizeToAvoidBottomInset: true,
         body: ListenableBuilder(
           listenable: svc,
@@ -532,6 +538,11 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                         children: [
                           _topBar(),
                           _announcement(),
+                          if (svc.hiddenIn(room)) _hiddenBanner(),
+                          ValueListenableBuilder<bool>(
+                            valueListenable: RtcMesh.instance.audioBlocked,
+                            builder: (_, blocked, _) => blocked ? _soundBanner() : const SizedBox.shrink(),
+                          ),
                           if (room.mediaTitle != null) _mediaBanner(),
                           if (room.closed)
                             Expanded(
@@ -599,6 +610,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
             );
           },
         ),
+      ),
       ),
     );
   }
@@ -682,9 +694,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                           icon: const Icon(
                             Icons.groups_rounded,
                             size: 15,
-                            color: Colors.white70,
+                            color: Color(0xFF3DDC84),
                           ),
-                          text: '${room.online}',
+                          text: '${room.online} بالغرفة',
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -825,6 +837,39 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       ),
     );
   }
+
+  Widget _hiddenBanner() => Container(
+        key: const ValueKey('hidden-banner'),
+        margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+        child: const Row(children: [
+          Icon(Icons.visibility_off_rounded, size: 16, color: AppColors.gold),
+          SizedBox(width: 6),
+          Expanded(
+            child: Text('مراقبة مخفية: تسمع وتشوف الغرفة وما أحد يشوفك',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+          ),
+        ]),
+      );
+
+  Widget _soundBanner() => GestureDetector(
+        key: const ValueKey('sound-banner'),
+        onTap: () => RtcMesh.instance.resume(),
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(color: const Color(0xFFFF5A5F), borderRadius: BorderRadius.circular(12)),
+          child: const Row(children: [
+            Icon(Icons.volume_up_rounded, size: 18),
+            SizedBox(width: 6),
+            Expanded(
+              child: Text('اضغط هنا لتشغيل صوت الغرفة 🔊',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
+            ),
+          ]),
+        ),
+      );
 
   Widget _mediaBanner() => GestureDetector(
     onTap: svc.canPlayMedia(room) ? () => showMediaSheet(context, room) : null,
@@ -1682,7 +1727,7 @@ extension on _VoiceRoomScreenState {
 }
 
 /// يدخل غرفة صوتية مع التحقق من السماح بالدخول.
-Future<void> openVoiceRoom(BuildContext context, VoiceRoom room) async {
+Future<void> openVoiceRoom(BuildContext context, VoiceRoom room, {bool? hidden}) async {
   final svc = VoiceService.instance;
   final mini = svc.minimized;
   if (mini == room) {
@@ -1690,9 +1735,39 @@ Future<void> openVoiceRoom(BuildContext context, VoiceRoom room) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => VoiceRoomScreen(room: room)));
     return;
   }
+  final admin = Cloud.instance.isAdmin && room.live && !svc.isHost(room);
+  // الأدمن يقدر يدخل أي غرفة خاصة مراقباً مخفياً
+  if (admin && hidden == null && room.private) {
+    hidden = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('غرفة خاصة 🔒'),
+        content: const Text('كيف تبي تدخل؟'),
+        actions: [
+          TextButton(key: const ValueKey('enter-normal'), onPressed: () => Navigator.pop(d, false), child: const Text('دخول عادي')),
+          FilledButton.icon(
+            key: const ValueKey('enter-hidden'),
+            onPressed: () => Navigator.pop(d, true),
+            icon: const Icon(Icons.visibility_off_rounded),
+            label: const Text('مراقبة مخفية'),
+          ),
+        ],
+      ),
+    );
+    if (hidden == null) return;
+  }
+  hidden = admin && (hidden ?? false);
+  if (!context.mounted) return;
+  // غرفة خاصة: كلمة السر (إلا للمضيف والأدمن ومن دخلها قبل بنفس الكلمة)
+  if (room.live && room.private && !svc.isHost(room) && !admin && !await LiveVoice.instance.canEnter(room)) {
+    if (!context.mounted) return;
+    final ok = await askRoomPassword(context, room);
+    if (!ok || !context.mounted) return;
+  }
   // غرفة واحدة فقط في نفس الوقت: دخول غرفة أخرى يخرجك من المصغّرة
   if (mini != null) svc.leave(mini);
-  final err = svc.join(room);
+  if (!context.mounted) return;
+  final err = svc.join(room, hidden: hidden);
   if (err != null) {
     voiceToast(context, err);
     return;
@@ -1711,4 +1786,98 @@ Future<void> openVoiceRoom(BuildContext context, VoiceRoom room) async {
       ),
     ),
   );
+}
+
+/// يطلب كلمة سر الغرفة الخاصة ويتحقق منها على السيرفر.
+Future<bool> askRoomPassword(BuildContext context, VoiceRoom room) async {
+  final c = TextEditingController();
+  String? error;
+  var busy = false;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (d) => StatefulBuilder(
+      builder: (d, set) {
+        Future<void> submit() async {
+          if (busy || c.text.trim().isEmpty) return;
+          set(() => busy = true);
+          final good = await LiveVoice.instance.submitPassword(room, c.text);
+          if (!d.mounted) return;
+          if (good) {
+            Navigator.pop(d, true);
+          } else {
+            set(() {
+              busy = false;
+              error = 'كلمة السر غلط';
+            });
+          }
+        }
+
+        return AlertDialog(
+          title: Text('🔒 ${room.title}'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('غرفة خاصة، اكتب كلمة السر للدخول'),
+            const SizedBox(height: 8),
+            TextField(
+              key: const ValueKey('room-password'),
+              controller: c,
+              autofocus: true,
+              obscureText: true,
+              maxLength: 20,
+              onSubmitted: (_) => submit(),
+              decoration: InputDecoration(labelText: 'كلمة السر', errorText: error),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('إلغاء')),
+            FilledButton(
+              key: const ValueKey('room-password-ok'),
+              onPressed: busy ? null : submit,
+              child: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('دخول'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  return ok == true;
+}
+
+/// المضيف أو الأدمن يضع كلمة سر للغرفة أو يشيلها.
+Future<void> editRoomPassword(BuildContext context, VoiceRoom room) async {
+  final current = await LiveVoice.instance.password(room);
+  if (!context.mounted) return;
+  final c = TextEditingController(text: current ?? '');
+  final res = await showDialog<String>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: const Text('🔑 كلمة سر الغرفة'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('مع كلمة السر تصير الغرفة خاصة، وما يدخلها إلا اللي يعرفها.'),
+        TextField(
+          key: const ValueKey('set-room-password'),
+          controller: c,
+          maxLength: 20,
+          decoration: const InputDecoration(labelText: 'كلمة السر (4 أحرف على الأقل)'),
+        ),
+      ]),
+      actions: [
+        if (room.private)
+          TextButton(
+            key: const ValueKey('remove-room-password'),
+            onPressed: () => Navigator.pop(d, ''),
+            child: const Text('إلغاء الخصوصية', style: TextStyle(color: Color(0xFFFF7A7A))),
+          ),
+        TextButton(onPressed: () => Navigator.pop(d), child: const Text('رجوع')),
+        FilledButton(onPressed: () => Navigator.pop(d, c.text.trim()), child: const Text('حفظ')),
+      ],
+    ),
+  );
+  if (res == null || !context.mounted) return;
+  if (res.isNotEmpty && res.length < 4) {
+    voiceToast(context, 'كلمة السر لازم 4 أحرف على الأقل');
+    return;
+  }
+  final err = await LiveVoice.instance.setPassword(room, res.isEmpty ? null : res);
+  VoiceService.instance.notify();
+  if (context.mounted) voiceToast(context, err ?? (res.isEmpty ? 'الغرفة صارت عامة' : 'تم، الغرفة صارت خاصة 🔒'));
 }

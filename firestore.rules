@@ -17,20 +17,48 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ---- الغرف الصوتية ----
+    function room(id) { return get(/databases/$(database)/documents/rooms/$(id)).data; }
+    function isHostOf(id) { return signedIn() && room(id).host == request.auth.uid; }
+    function kickedFrom(id) { return request.auth.uid in room(id).get('kicked', []); }
+    // غرفة خاصة: لازم كلمة السر الحالية محفوظة في pass/{uid} (أو المضيف أو الأدمن)
+    function memberOf(id) {
+      return !room(id).get('private', false) || isHostOf(id) || isAdmin()
+        || (exists(/databases/$(database)/documents/rooms/$(id)/pass/$(request.auth.uid))
+            && get(/databases/$(database)/documents/rooms/$(id)/pass/$(request.auth.uid)).data.pw
+               == get(/databases/$(database)/documents/rooms/$(id)/secret/pw).data.pw);
+    }
+
     match /rooms/{roomId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.host == request.auth.uid;
-      allow update: if signedIn();
+      // المضيف والأدمن يعدلون كل شيء. الباقون فقط: المقاعد، الشعبية (زيادة فقط)، آخر ظهور، الدعوات، الموسيقى، البودكاست
+      allow update: if isAdmin() || (signedIn() && resource.data.host == request.auth.uid
+          && request.resource.data.host == resource.data.host)
+        || (signedIn() && !kickedFrom(roomId) && memberOf(roomId)
+          && changed().hasOnly(['seats', 'heat', 'lastActive', 'invites', 'media', 'pod', 'podGen'])
+          && (!changed().hasAny(['heat']) || request.resource.data.heat >= resource.data.get('heat', 0)));
       allow delete: if isAdmin() || (signedIn() && resource.data.host == request.auth.uid);
 
+      match /secret/{doc} {
+        allow read, write: if isHostOf(roomId) || isAdmin();
+      }
+      match /pass/{uid} {
+        allow read, delete: if isOwner(uid) || isAdmin();
+        allow create, update: if isOwner(uid) && request.resource.data.pw is string
+          && request.resource.data.pw == get(/databases/$(database)/documents/rooms/$(roomId)/secret/pw).data.pw;
+      }
       match /messages/{id} {
-        allow read: if signedIn();
-        allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
-        allow delete: if isAdmin();
+        allow read: if signedIn() && memberOf(roomId);
+        allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+          && !kickedFrom(roomId) && memberOf(roomId)
+          && request.resource.data.get('text', '') is string && request.resource.data.get('text', '').size() <= 600;
+        allow delete: if isAdmin() || isHostOf(roomId);
       }
       match /people/{uid} {
         allow read: if signedIn();
-        allow write: if isOwner(uid) || isAdmin();
+        allow create, update: if isAdmin() || (isOwner(uid) && !kickedFrom(roomId) && memberOf(roomId));
+        allow delete: if isOwner(uid) || isAdmin() || isHostOf(roomId);
       }
       match /signals/{id} {
         allow read, write: if signedIn() && id.matches('.*' + request.auth.uid + '.*');

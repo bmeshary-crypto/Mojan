@@ -11,6 +11,7 @@ import '../../core/voice/voice.dart';
 import '../../games/game_registry.dart';
 import '../../widgets/account_widgets.dart';
 import '../shop_screen.dart';
+import 'voice_room_screen.dart' show editRoomPassword;
 import 'voice_widgets.dart';
 
 Future<T?> _sheet<T>(
@@ -706,8 +707,8 @@ Future<void> showAudienceSheet(
                     color: AppColors.gold,
                   ),
                 ),
-                for (final (i, u) in room.onMics.indexed)
-                  row(u, tag: i == 0 ? '👑 المضيف' : null),
+                for (final u in room.onMics.where(room.isPresent))
+                  row(u, tag: u.id == room.host.id ? '👑 المضيف' : null),
                 const SizedBox(height: 8),
                 const Text(
                   '👥 الحضور',
@@ -716,9 +717,9 @@ Future<void> showAudienceSheet(
                     color: AppColors.gold,
                   ),
                 ),
-                if (meListening) row(svc.me()),
+                if (meListening && !svc.hiddenIn(room)) row(svc.me()),
                 for (final u in room.audience) row(u),
-                if (room.listeners > room.audience.length + 1)
+                if (room.presentIds == null && room.listeners > room.audience.length + 1)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     child: Text(
@@ -1283,6 +1284,17 @@ Future<void> showRoomSettings(
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
+            if (room.live)
+              ListTile(
+                key: const ValueKey('room-password-tile'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(room.private ? Icons.lock_rounded : Icons.lock_open_rounded, color: AppColors.gold),
+                title: Text(
+                  room.private ? 'غرفة خاصة 🔒 (تغيير كلمة السر)' : 'اجعلها غرفة خاصة بكلمة سر',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                onTap: () => editRoomPassword(ctx, room),
+              ),
             ListTile(
               key: const ValueKey('room-game'),
               contentPadding: EdgeInsets.zero,

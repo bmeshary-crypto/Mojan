@@ -52,4 +52,15 @@ void main() {
     svc.deleteSaved(r);
     expect(svc.rooms, isNot(contains(r)));
   });
+
+  test('room count uses only people really present', () {
+    final r = svc.create(title: 'غرفتي', category: VoiceCategory.chat, seats: 8);
+    final ghost = VoiceUser(id: 'ghost', name: 'طلع', avatar: 1, isBot: false);
+    r.seats[2].user = ghost;
+    r.presentIds = {svc.me().id, 'a', 'b'};
+    expect(r.online, 3);
+    expect(r.isPresent(ghost), isFalse);
+    r.presentIds = null;
+    expect(r.online, greaterThan(0));
+  });
 }

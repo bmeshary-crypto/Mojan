@@ -493,10 +493,17 @@ class _RoomRow extends StatelessWidget {
             children: [
               OutlinedButton.icon(
                 key: ValueKey('monitor-${r.id}'),
-                onPressed: () => openVoiceRoom(context, r),
-                icon: const Icon(Icons.headphones_rounded, size: 18),
-                label: const Text('دخول للمراقبة'),
+                onPressed: () => openVoiceRoom(context, r, hidden: r.live && Cloud.instance.isAdmin),
+                icon: const Icon(Icons.visibility_off_rounded, size: 18),
+                label: Text(r.live && Cloud.instance.isAdmin ? 'مراقبة مخفية' : 'دخول للمراقبة'),
               ),
+              if (r.live && Cloud.instance.isAdmin && r.system == null)
+                OutlinedButton.icon(
+                  key: ValueKey('pw-${r.id}'),
+                  onPressed: () => editRoomPassword(context, r),
+                  icon: Icon(r.private ? Icons.lock_rounded : Icons.key_rounded, size: 18),
+                  label: Text(r.private ? 'خاصة 🔒' : 'كلمة سر'),
+                ),
               OutlinedButton.icon(
                 key: ValueKey('warn-${r.id}'),
                 style: OutlinedButton.styleFrom(

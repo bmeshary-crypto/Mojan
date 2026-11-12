@@ -31,17 +31,53 @@ class RtcMesh {
 
   web.AudioContext get _audio => _ctx ??= web.AudioContext();
 
-  static final _config = web.RTCConfiguration(
-    iceServers: [
-      web.RTCIceServer(urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'].map((e) => e.toJS).toList().toJS),
-      // خادم TURN عام مجاني كاحتياط للشبكات التي تمنع الاتصال المباشر (شبكات الجوال غالباً)
-      web.RTCIceServer(
-        urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'].map((e) => e.toJS).toList().toJS,
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-      ),
-    ].toJS,
-  );
+  /// خوادم TURN إضافية (من config/turn في Firestore) لشبكات الواي فاي التي تمنع الاتصال المباشر.
+  List<Map<String, dynamic>> _turn = const [];
+  void setTurn(List<Map<String, dynamic>> servers) => _turn = servers;
+
+  web.RTCConfiguration get _config => web.RTCConfiguration(
+        iceServers: [
+          web.RTCIceServer(
+            urls: [
+              'stun:stun.l.google.com:19302',
+              'stun:stun1.l.google.com:19302',
+              'stun:stun2.l.google.com:19302',
+              'stun:stun.cloudflare.com:3478',
+            ].map((e) => e.toJS).toList().toJS,
+          ),
+          for (final t in _turn)
+            web.RTCIceServer(
+              urls: [for (final u in (t['urls'] as List? ?? [])) '$u'.toJS].toJS,
+              username: '${t['username'] ?? ''}',
+              credential: '${t['credential'] ?? ''}',
+            ),
+          // خادم TURN عام مجاني كاحتياط أخير (غير مضمون)
+          web.RTCIceServer(
+            urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp']
+                .map((e) => e.toJS)
+                .toList()
+                .toJS,
+            username: 'openrelayproject',
+            credential: 'openrelayproject',
+          ),
+        ].toJS,
+      );
+
+  /// المتصفح منع تشغيل الصوت تلقائياً: نحتاج لمسة من المستخدم.
+  final audioBlocked = ValueNotifier<bool>(false);
+
+  void _play(web.HTMLAudioElement el) {
+    el.play().toDart.then((_) {
+      audioBlocked.value = false;
+    }, onError: (Object _) {
+      audioBlocked.value = true;
+    });
+  }
+
+  /// عند إغلاق الصفحة أو التطبيق (أفضل محاولة لإزالة اللاعب من الغرفة).
+  void onPageHide(void Function() f) {
+    web.window.addEventListener('pagehide', ((web.Event _) => f()).toJS);
+  }
 
   /// طلب إذن المايك. يرجع false إذا رفض المستخدم.
   Future<bool> startMic() async {
@@ -261,7 +297,7 @@ class RtcMesh {
       el.style.display = 'none';
       // بعض المتصفحات لا تشغل الصوت إلا إذا كان العنصر داخل الصفحة
       web.document.body?.append(el);
-      el.play().toDart.catchError((_) => null);
+      _play(el);
       p.audio = el;
       p.analyser = _analyse(stream);
     }).toJS;
@@ -281,8 +317,10 @@ class RtcMesh {
       if (_ctx?.state == 'suspended') _ctx!.resume();
     } catch (_) {}
     for (final p in _peers.values) {
-      p.audio?.play().toDart.catchError((_) => null);
+      final a = p.audio;
+      if (a != null && a.paused) _play(a);
     }
+    if (_peers.values.every((p) => p.audio == null || !p.audio!.paused)) audioBlocked.value = false;
   }
 
   /// ننتظر جمع عناوين الشبكة (بدون trickle) ثم نرسل الوصف كاملاً مرة واحدة.
@@ -292,7 +330,7 @@ class RtcMesh {
       pc.onicegatheringstatechange = ((web.Event _) {
         if (pc.iceGatheringState == 'complete' && !done.isCompleted) done.complete();
       }).toJS;
-      await done.future.timeout(const Duration(seconds: 4), onTimeout: () {});
+      await done.future.timeout(const Duration(seconds: 5), onTimeout: () {});
     }
     return pc.localDescription?.sdp;
   }

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// بديل بدون صوت (الاختبارات والتطبيقات قبل دعم WebRTC فيها).
 class RtcMesh {
   RtcMesh._();
@@ -15,6 +17,9 @@ class RtcMesh {
   void close(String peer) {}
   void closeAll() {}
   void resume() {}
+  final audioBlocked = ValueNotifier<bool>(false);
+  void setTurn(List<Map<String, dynamic>> servers) {}
+  void onPageHide(void Function() f) {}
   bool get mediaOn => false;
   bool get mediaPaused => true;
   double get mediaPosition => 0;

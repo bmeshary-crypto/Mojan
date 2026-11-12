@@ -395,7 +395,7 @@ class _RoomCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (room.locked) ...[
+                      if (room.locked || room.private) ...[
                         const SizedBox(width: 4),
                         const Icon(
                           Icons.lock_rounded,
@@ -566,6 +566,10 @@ class _SavedCard extends StatelessWidget {
                           style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
                         ),
                       ),
+                      if (room.private) ...[
+                        const SizedBox(width: 4),
+                        const Icon(Icons.lock_rounded, size: 14, color: AppColors.gold),
+                      ],
                       if (mine) ...[
                         const SizedBox(width: 6),
                         Container(

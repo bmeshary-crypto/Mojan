@@ -273,7 +273,20 @@ class VoiceRoom {
   final Set<String> kicked = {};
 
   int get onSeats => seats.where((s) => !s.empty).length;
-  int get online => listeners + onSeats + 1;
+  /// غرفة خاصة: الدخول بكلمة سر.
+  bool private = false;
+
+  /// الموجودون فعلاً الآن (للغرف الحقيقية وأنا داخلها). null = غير معروف.
+  Set<String>? presentIds;
+
+  /// هل هذا الشخص موجود في الغرفة الآن (من طلع أو انقطع ما يُحسب).
+  bool isPresent(VoiceUser u) => u.isAi || u.isMe || presentIds == null || presentIds!.contains(u.id);
+
+  int get online {
+    final p = presentIds;
+    if (p == null) return listeners + onSeats + 1;
+    return p.length + seats.where((s) => s.user?.isAi == true).length;
+  }
   bool get flagged => reports >= 2;
 }
 
@@ -773,8 +786,14 @@ class VoiceService extends ChangeNotifier {
   int? mySeat(VoiceRoom r) => r.seats.where((s) => s.user?.isMe == true).firstOrNull?.index;
   bool onMic(VoiceRoom r) => isHost(r) || mySeat(r) != null;
 
+  /// الغرفة التي دخلها الأدمن مراقباً مخفياً.
+  String? _hiddenRoom;
+  bool hiddenIn(VoiceRoom r) => _hiddenRoom == r.id;
+  static const hiddenMsg = 'أنت في وضع المراقبة المخفي 👁 ما تقدر تتكلم أو تكتب';
+
   /// الدخول للغرفة. يرجع رسالة خطأ إن لم يُسمح.
-  String? join(VoiceRoom r) {
+  /// [hidden]: للأدمن، يسمع ويشوف الغرفة بدون ما يظهر لأحد.
+  String? join(VoiceRoom r, {bool hidden = false}) {
     if (r.closed) {
       // المضيف يرجع لغرفته المحفوظة ويفتحها من جديد
       if (!(r.live && isHost(r))) return 'الغرفة مغلقة الآن، تنفتح لما يرجع صاحبها';
@@ -786,11 +805,12 @@ class VoiceService extends ChangeNotifier {
     if (bannedUsers.contains(me().name)) return 'حسابك موقوف من الغرف الصوتية';
     final limited = Restrictions.instance.check('rooms');
     if (limited != null) return limited;
-    if (r.kicked.contains(id)) return 'تم طردك من هذه الغرفة';
-    if (r.locked && !isHost(r)) return 'الغرفة مقفلة من المضيف';
+    if (r.kicked.contains(id) && !hidden) return 'تم طردك من هذه الغرفة';
+    if (r.locked && !isHost(r) && !hidden) return 'الغرفة مقفلة من المضيف';
     if (r.system != null) r.live = LiveVoice.instance.enabled;
     if (r.live) {
-      LiveVoice.instance.enter(r);
+      _hiddenRoom = hidden ? r.id : null;
+      LiveVoice.instance.enter(r, hidden: hidden);
     } else if (!isHost(r)) {
       r.listeners++;
       r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: me()));
@@ -806,6 +826,7 @@ class VoiceService extends ChangeNotifier {
     if (r.mediaUid == me().id) stopMedia(r);
     if (pendingInvite?.room == r) pendingInvite = null;
     if (r.live) LiveVoice.instance.exit(r);
+    if (hiddenIn(r)) _hiddenRoom = null;
     Cloud.instance.setWhere(null);
     if (r.system != null) SystemRooms.instance.left(r);
     final s = mySeat(r);
@@ -820,6 +841,7 @@ class VoiceService extends ChangeNotifier {
   /// الجلوس على مقعد. المضيف يجلس مباشرة، الآخرون يجلسون على المقاعد الفارغة غير المقفلة.
   String? takeSeat(VoiceRoom r, int i) {
     if (r.isPodcast) return 'المايكات في البودكاست للمذيعين فقط 🎙️ اكتب لهم في الدردشة';
+    if (hiddenIn(r)) return hiddenMsg;
     final seat = r.seats[i];
     if (!seat.empty) return 'المقعد مشغول';
     if (seat.locked && !isHost(r)) return 'المقعد مقفل';
@@ -1031,6 +1053,7 @@ class VoiceService extends ChangeNotifier {
   String? sendMessage(VoiceRoom r, String text) {
     final t = text.trim();
     if (t.isEmpty) return null;
+    if (hiddenIn(r)) return hiddenMsg;
     if (r.chatMuted && !isHost(r)) return 'الدردشة مقفلة من المضيف';
     final noChat = Restrictions.instance.check('chat');
     if (noChat != null) return noChat;
@@ -1065,6 +1088,7 @@ class VoiceService extends ChangeNotifier {
   /// إرسال هدية لعدة أشخاص (مثل كل من على المايكات). السعر × العدد × عدد المستلمين.
   String? sendGiftTo(VoiceRoom r, VoiceGift g, List<VoiceUser> to, {int count = 1}) {
     if (to.isEmpty) return 'اختر من ترسل له';
+    if (hiddenIn(r)) return hiddenMsg;
     final noCoins = Restrictions.instance.check('coins');
     if (noCoins != null) return noCoins;
     final cost = g.price * count * to.length;
