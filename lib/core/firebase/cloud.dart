@@ -6,6 +6,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account.dart';
@@ -47,11 +48,71 @@ class Cloud {
   StreamSubscription? _meSub;
   String? _watching;
 
+  // ---- التواجد: من داخل التطبيق الآن ومن بالخلفية ومن خارجه ----
+
+  Timer? _presenceTimer;
+  AppLifecycleListener? _life;
+  String _state = 'on';
+  String? _where;
+
+  /// أين اللاعب الآن (مثلاً اسم الغرفة الصوتية) ليظهر للأدمن.
+  void setWhere(String? where) {
+    if (_where == where) return;
+    _where = where;
+    _beatPresence();
+  }
+
+  void _startPresence() {
+    _presenceTimer?.cancel();
+    _presenceTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (_state == 'on') _beatPresence();
+    });
+    _life ??= AppLifecycleListener(onStateChange: (s) {
+      final next = switch (s) {
+        AppLifecycleState.resumed || AppLifecycleState.inactive => 'on',
+        AppLifecycleState.detached => 'off',
+        _ => 'away',
+      };
+      if (next == _state) return;
+      _state = next;
+      _beatPresence();
+    });
+    _beatPresence();
+  }
+
+  Future<void> _beatPresence() async {
+    final id = _watching;
+    if (!enabled || id == null) return;
+    try {
+      await _db.collection('users').doc(id).set({
+        'seen': FieldValue.serverTimestamp(),
+        'state': _state,
+        'where': _where ?? FieldValue.delete(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('presence: $e');
+    }
+  }
+
+  /// للأدمن: آخر من ظهر في التطبيق خلال أسبوع، الأحدث أولاً (يتحدث مباشرة).
+  Stream<List<Map<String, dynamic>>> presence() {
+    if (!isAdmin) return Stream.value(const []);
+    final since = Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 7)));
+    return _db
+        .collection('users')
+        .where('seen', isGreaterThan: since)
+        .orderBy('seen', descending: true)
+        .limit(150)
+        .snapshots()
+        .map((s) => [for (final d in s.docs) {...d.data(), 'uid': d.id}]);
+  }
+
   /// متابعة مستند اللاعب: هدايا العملات من الأدمن والإيقاف.
   void watchMe(String id) {
     if (!enabled || _watching == id) return;
     _meSub?.cancel();
     _watching = id;
+    _startPresence();
     _meSub = _db.collection('users').doc(id).snapshots().listen((doc) async {
       final data = doc.data();
       if (data == null) return;

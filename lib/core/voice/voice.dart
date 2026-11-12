@@ -9,6 +9,7 @@ import 'rtc/rtc.dart';
 import 'system_rooms.dart';
 
 import '../account/account.dart';
+import '../firebase/cloud.dart';
 import '../admin/admin.dart';
 import '../ban.dart';
 import '../vip.dart';
@@ -795,6 +796,7 @@ class VoiceService extends ChangeNotifier {
       r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: me()));
     }
     if (r.system != null) SystemRooms.instance.entered(r);
+    Cloud.instance.setWhere('🎙️ ${r.title}');
     notifyListeners();
     return null;
   }
@@ -804,6 +806,7 @@ class VoiceService extends ChangeNotifier {
     if (r.mediaUid == me().id) stopMedia(r);
     if (pendingInvite?.room == r) pendingInvite = null;
     if (r.live) LiveVoice.instance.exit(r);
+    Cloud.instance.setWhere(null);
     if (r.system != null) SystemRooms.instance.left(r);
     final s = mySeat(r);
     if (s != null) r.seats[s].user = null;

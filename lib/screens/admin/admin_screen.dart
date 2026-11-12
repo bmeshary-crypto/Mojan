@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -166,7 +167,10 @@ Widget _list(List<Widget> children) => Center(
 
 String _ago(DateTime t) {
   final m = DateTime.now().difference(t).inMinutes;
-  return m < 1 ? 'الآن' : (m < 60 ? 'قبل $m د' : 'قبل ${m ~/ 60} س');
+  if (m < 1) return 'الآن';
+  if (m < 60) return 'قبل $m د';
+  if (m < 60 * 24) return 'قبل ${m ~/ 60} س';
+  return 'قبل ${m ~/ (60 * 24)} يوم';
 }
 
 class _Overview extends StatelessWidget {
@@ -216,6 +220,7 @@ class _Overview extends StatelessWidget {
     ];
     final flagged = svc.live.where((r) => r.flagged).toList();
     return _list([
+      if (Cloud.instance.isAdmin) const PresenceCard(),
       GridView.count(
         crossAxisCount: MediaQuery.sizeOf(context).width > 700 ? 3 : 2,
         shrinkWrap: true,
@@ -704,6 +709,7 @@ class _UsersState extends State<_Users> {
     final users = admin.users.where((u) => u.contains(_q)).toList();
     final me = Account.instance.profile;
     return _list([
+      if (Cloud.instance.isAdmin) const PresenceCard(),
       if (Cloud.instance.isAdmin) const _CloudUsers(),
       if (me != null)
         _card(
@@ -1472,6 +1478,129 @@ class _BanDialogState extends State<_BanDialog> {
           child: Text(_full ? 'حظر${_ids.length > 1 ? ' (${_ids.length})' : ''}' : 'تطبيق القيود${_ids.length > 1 ? ' (${_ids.length})' : ''}'),
         ),
       ],
+    );
+  }
+}
+
+/// حالة تواجد لاعب: داخل التطبيق الآن، أو مصغّر بالخلفية، أو خارج التطبيق.
+enum PresenceState { online, away, offline }
+
+PresenceState presenceOf(Map<String, dynamic> u, {DateTime? now}) {
+  final seen = _ts(u['seen']);
+  if (seen == null) return PresenceState.offline;
+  final age = (now ?? DateTime.now()).difference(seen);
+  final state = u['state'];
+  if (state == 'on' && age.inSeconds < 150) return PresenceState.online;
+  if (state == 'away' && age.inMinutes < 30) return PresenceState.away;
+  return PresenceState.offline;
+}
+
+/// لوحة الأدمن: من داخل التطبيق الآن ومن خارجه، تتحدث مباشرة.
+class PresenceCard extends StatefulWidget {
+  const PresenceCard({super.key});
+
+  @override
+  State<PresenceCard> createState() => _PresenceCardState();
+}
+
+class _PresenceCardState extends State<PresenceCard> {
+  late final Stream<List<Map<String, dynamic>>> _stream = Cloud.instance.presence();
+  PresenceState _show = PresenceState.online;
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  static const _labels = {
+    PresenceState.online: ('داخل التطبيق', Color(0xFF3DDC84)),
+    PresenceState.away: ('بالخلفية', Color(0xFFFFC542)),
+    PresenceState.offline: ('خارج التطبيق', Color(0xFF9AA0C3)),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _stream,
+      builder: (context, snap) {
+        final all = snap.data ?? const [];
+        final groups = {for (final s in PresenceState.values) s: <Map<String, dynamic>>[]};
+        for (final u in all) {
+          groups[presenceOf(u)]!.add(u);
+        }
+        final list = groups[_show]!;
+        return _card(
+          key: const ValueKey('presence-card'),
+          border: const Color(0xFF3DDC84),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(children: [
+                Icon(Icons.wifi_tethering_rounded, color: Color(0xFF3DDC84)),
+                SizedBox(width: 8),
+                Text('التواجد الآن', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+              ]),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 6, children: [
+                for (final s in PresenceState.values)
+                  ChoiceChip(
+                    key: ValueKey('presence-${s.name}'),
+                    selected: _show == s,
+                    onSelected: (_) => setState(() => _show = s),
+                    avatar: CircleAvatar(radius: 5, backgroundColor: _labels[s]!.$2),
+                    label: Text('${_labels[s]!.$1} (${groups[s]!.length})',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+              ]),
+              if (snap.hasError) Text('تعذر التحميل: ${snap.error}', style: const TextStyle(color: Color(0xFFFF7A7A))),
+              if (snap.connectionState == ConnectionState.waiting) const LinearProgressIndicator(),
+              if (list.isEmpty && snap.hasData)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Text('لا أحد هنا الآن', style: TextStyle(color: AppColors.textMuted)),
+                ),
+              for (final u in list.take(60))
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    Stack(clipBehavior: Clip.none, children: [
+                      PlayerAvatar(index: ((u['avatar'] as num?)?.toInt() ?? 0) % avatars.length, size: 34, ring: false),
+                      PositionedDirectional(
+                        end: -1,
+                        bottom: -1,
+                        child: CircleAvatar(radius: 6, backgroundColor: _labels[_show]!.$2),
+                      ),
+                    ]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('${u['name'] ?? 'لاعب'}${adminUidsLabel(u['uid'] as String)}',
+                            overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        Text(
+                          _show == PresenceState.online
+                              ? (u['where'] as String? ?? 'في الرئيسية أو الألعاب')
+                              : 'آخر ظهور ${_ago(_ts(u['seen'])!)}',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                        ),
+                      ]),
+                    ),
+                  ]),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
