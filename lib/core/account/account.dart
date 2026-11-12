@@ -228,6 +228,7 @@ class PlayerProfile {
     this.avatar = 0,
     this.contact,
     this.coins = 500,
+    this.diamonds = 0,
     this.xp = 0,
     Map<String, GameStats>? stats,
     Set<String>? unlocked,
@@ -299,6 +300,9 @@ class PlayerProfile {
   /// البريد أو رقم الهاتف حسب طريقة الدخول.
   String? contact;
   int coins;
+
+  /// الماسات: 30% من قيمة الهدايا اللي توصلك من الناس (غير الكوينز المشحونة).
+  int diamonds;
   int xp;
   final Map<String, GameStats> stats;
   final Set<String> unlocked;
@@ -338,6 +342,7 @@ class PlayerProfile {
     'avatar': avatar,
     'contact': contact,
     'coins': coins,
+    'diamonds': diamonds,
     'xp': xp,
     'stats': stats.map((k, v) => MapEntry(k, v.toJson())),
     'unlocked': unlocked.toList(),
@@ -367,6 +372,7 @@ class PlayerProfile {
     avatar: j['avatar'] ?? 0,
     contact: j['contact'],
     coins: j['coins'] ?? 0,
+    diamonds: (j['diamonds'] as num?)?.toInt() ?? 0,
     xp: j['xp'] ?? 0,
     stats: (j['stats'] as Map<String, dynamic>? ?? {}).map(
       (k, v) => MapEntry(k, GameStats.fromJson(v as Map<String, dynamic>)),
@@ -726,6 +732,13 @@ class Account extends ChangeNotifier {
   void earn(int coins) {
     if (profile == null || coins <= 0) return;
     profile!.coins += coins;
+    _save();
+  }
+
+  /// ماسات من هدايا الناس.
+  void addDiamonds(int n) {
+    if (profile == null || n <= 0) return;
+    profile!.diamonds += n;
     _save();
   }
 

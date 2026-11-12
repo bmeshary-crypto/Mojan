@@ -1035,7 +1035,7 @@ class _CloudUsersState extends State<_CloudUsers> {
                           ),
                         ),
                         Text(
-                          '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}'
+                          '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  💎 ${(u['profile'] as Map?)?['diamonds'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}'
                           '  •  ID ${(u['profile'] as Map?)?['sid'] ?? defaultPlayerId(u['uid'] as String)}'
                           '${vipLevelFor(((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0) > 0 ? '  •  👑 VIP${vipLevelFor(((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0)}' : ''}'
                           '${_pendingGrants(u) > 0 ? '  •  ⏳ ${_pendingGrants(u)} شحن بانتظار دخول اللاعب' : ''}'

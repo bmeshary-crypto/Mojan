@@ -7,10 +7,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/account/account.dart';
 import '../../core/game_module.dart';
 import '../../core/haptics.dart';
+import '../../core/sfx.dart';
 import '../../core/online/online_games.dart';
 import '../../core/shop.dart';
 import '../../core/theme.dart';
 import '../../widgets/game_ui.dart';
+import '../../widgets/game_social.dart';
+import '../../core/voice/match_voice.dart';
 import '../../screens/shop_screen.dart';
 import '../../widgets/account_widgets.dart';
 import '../../widgets/animated_background.dart';
@@ -630,6 +633,52 @@ class _LudoTableState extends State<_LudoTable> {
   /// الأدوات المجانية المتبقية للاعب صاحب الحساب (بعدها يُخصم من الحقيبة).
   final Map<LudoItem, int> _free = {for (final i in LudoItem.values) i: 1};
 
+  /// إيموجي/هدية ظاهرة فوق صورة كل لاعب.
+  final Map<LudoColor, ({String emoji, String? from, int key})> _fx = {};
+  int _fxKey = 0;
+  GameFxChannel? _fxChannel;
+
+  void _showFx(LudoColor c, String emoji, {String? from}) {
+    final k = ++_fxKey;
+    setState(() => _fx[c] = (emoji: emoji, from: from, key: k));
+    Sfx.instance.pickup();
+    Future.delayed(const Duration(milliseconds: 2600), () {
+      if (!_disposed && _fx[c]?.key == k) setState(() => _fx.remove(c));
+    });
+  }
+
+  Future<void> _sendFx(LudoColor c) async {
+    if (c == _me && _solo) return;
+    final g = await pickGameGift(context, _nameOf(c) == 'أنت' ? 'نفسك' : _nameOf(c));
+    if (g == null || _disposed) return;
+    _showFx(c, g.emoji);
+    if (_online) {
+      final seat = _seat(c);
+      _fxChannel?.send(to: c.name, toUid: seat != null && !seat.isAi ? seat.uid : null, g: g);
+    }
+  }
+
+  void _voiceChanged() {
+    if (!_disposed) setState(() {});
+  }
+
+  Future<void> _toggleMic() async {
+    final v = MatchVoice.instance;
+    if (!v.active) {
+      final err = v.start(_match.id);
+      if (err != null) {
+        setState(() => _status = err);
+        return;
+      }
+    }
+    final ok = await v.toggleMic();
+    if (!ok && !_disposed) setState(() => _status = 'ما قدرنا نشغل المايك، اسمح للمتصفح باستخدامه');
+  }
+
+  /// مرات الشراء من داخل الجيم: مرتين بالكثير لكل أداة.
+  final Map<LudoItem, int> _bought = {for (final i in LudoItem.values) i: 0};
+  static const maxBuys = 2;
+
   /// مواقع مؤقتة للقطع أثناء الأنميشن (القطعة تمشي خانة خانة).
   final Map<LudoToken, int> _shown = {};
   bool _busy = false;
@@ -701,6 +750,19 @@ class _LudoTableState extends State<_LudoTable> {
       case 'roll' when game.phase == LudoPhase.waitingRoll:
         _applied++;
         _roll((a['v'] as num).toInt());
+      case 'item' when game.phase == LudoPhase.waitingRoll:
+        _applied++;
+        final it = LudoItem.values.firstWhere((i) => i.name == a['i'], orElse: () => LudoItem.shield);
+        game.useItem(it, value: (a['v'] as num?)?.toInt());
+        setState(() => _status = '${_nameOf(game.current)} استخدم ${itemInfo[it]!.$1}');
+        _drain();
+      case 'buy':
+        _applied++;
+        final it = LudoItem.values.firstWhere((i) => i.name == a['i'], orElse: () => LudoItem.shield);
+        final c = LudoColor.values.firstWhere((c) => c.name == a['c'], orElse: () => game.current);
+        game.items[c]![it] = game.itemCount(c, it) + 1;
+        setState(() => _status = '🛒 ${_nameOf(c)} اشترى ${itemInfo[it]!.$1}');
+        _drain();
       case 'move' when game.phase == LudoPhase.waitingMove:
         final m = game.legalMoves.where((m) => m.token.id == (a['token'] as num).toInt()).firstOrNull;
         _applied++;
@@ -735,7 +797,17 @@ class _LudoTableState extends State<_LudoTable> {
     }
     game = LudoGame(players: s.colors, rules: s.rules, teams: s.teams, power: s.power, items: items);
     _status = _turnText();
-    if (_online) _startOnline();
+    if (_online) {
+      _startOnline();
+      _fxChannel = GameFxChannel(_match.id);
+      _subs.add(_fxChannel!.stream().listen((f) {
+        final c = LudoColor.values.where((c) => c.name == f.to).firstOrNull;
+        if (c != null && !_disposed) _showFx(c, f.emoji, from: f.from);
+      }));
+      // الكل يسمع من البداية، والمايك مقفول لين يفتحه اللاعب
+      MatchVoice.instance.start(_match.id);
+      MatchVoice.instance.addListener(_voiceChanged);
+    }
     _scheduleAi();
   }
 
@@ -744,6 +816,10 @@ class _LudoTableState extends State<_LudoTable> {
     _disposed = true;
     for (final x in _subs) {
       x.cancel();
+    }
+    if (_online) {
+      MatchVoice.instance.removeListener(_voiceChanged);
+      MatchVoice.instance.stop();
     }
     _beat?.cancel();
     super.dispose();
@@ -796,6 +872,8 @@ class _LudoTableState extends State<_LudoTable> {
       if (value == null || _disposed) return;
     }
     if (!game.useItem(item, value: value)) return;
+    _send({'t': 'item', 'i': item.name, 'v': ?value});
+    Sfx.instance.pickup();
     // المجاني أولاً ثم الحقيبة (فقط لصاحب الحساب)
     if (_solo && game.current == _me) {
       if (_free[item]! > 0) {
@@ -810,6 +888,38 @@ class _LudoTableState extends State<_LudoTable> {
           LudoItem.diceControl => 'النرد سيعطيك $value',
           LudoItem.shield => 'الدرع مفعّل: قطعك محمية حتى يرجع دورك',
         });
+  }
+
+  /// شراء أداة أثناء اللعب (مرتين بالكثير لكل أداة في الجيم).
+  Future<void> _buyItem(LudoItem item, LudoColor owner) async {
+    final left = maxBuys - _bought[item]!;
+    if (left <= 0) {
+      setState(() => _status = 'اشتريت ${itemInfo[item]!.$1} مرتين، هذا الحد في الجيم');
+      return;
+    }
+    final price = shopCatalog.where((x) => x.id == 'item.${item.name}').firstOrNull?.price ?? 400;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('شراء ${itemInfo[item]!.$1}'),
+        content: Text('${itemInfo[item]!.$2}\nالسعر: $price 🪙  •  باقي لك $left من 2 في هذا الجيم'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('إلغاء')),
+          FilledButton(key: const ValueKey('buy-item-ok'), onPressed: () => Navigator.pop(d, true), child: const Text('اشترِ')),
+        ],
+      ),
+    );
+    if (ok != true || _disposed) return;
+    if (!Account.instance.spend(price)) {
+      setState(() => _status = 'عملاتك ما تكفي');
+      return;
+    }
+    _bought[item] = _bought[item]! + 1;
+    game.items[owner]![item] = game.itemCount(owner, item) + 1;
+    _send({'t': 'buy', 'i': item.name, 'c': owner.name});
+    Sfx.instance.pickup();
+    setState(() => _status = '🛒 اشتريت ${itemInfo[item]!.$1}، استخدمها الحين');
   }
 
   Future<int?> _pickDiceValue() => showModalBottomSheet<int>(
@@ -842,6 +952,7 @@ class _LudoTableState extends State<_LudoTable> {
     if (forced == null) _send({'t': 'roll', 'v': value});
     _busy = true;
     Haptics.mediumImpact();
+    Sfx.instance.diceShake();
     setState(() => _rolling = true);
     for (var i = 0; i < 8; i++) {
       await _wait(70);
@@ -856,6 +967,7 @@ class _LudoTableState extends State<_LudoTable> {
       _rolling = false;
       _diceFace = game.dice!;
     });
+    Sfx.instance.diceLand();
 
     if (!hasMoves) {
       final threeSixes = game.dice == 6 && !doubled;
@@ -906,9 +1018,12 @@ class _LudoTableState extends State<_LudoTable> {
       ..addAll(before);
     _hopping = m.token;
     setState(() {});
-    for (final p in m.path) {
+    final fromBase = before[m.token] != null && m.path.length == 1 && (before[m.token]! < 0);
+    if (fromBase) Sfx.instance.release();
+    for (final (i, p) in m.path.indexed) {
       _shown[m.token] = p;
       Haptics.selectionClick();
+      if (!fromBase) Sfx.instance.hop(i);
       setState(() {});
       await _wait(m.path.length > 8 ? 110 : 170);
       if (_disposed) return;
@@ -919,6 +1034,7 @@ class _LudoTableState extends State<_LudoTable> {
     }
     if (result.captured.isNotEmpty) {
       Haptics.heavyImpact();
+      Sfx.instance.capture();
       setState(() => _status = '${_nameOf(m.token.color)} أكل قطعة ${_nameOf(result.captured.first.color)}!');
       await _wait(700);
       if (_disposed) return;
@@ -933,10 +1049,12 @@ class _LudoTableState extends State<_LudoTable> {
       return;
     }
     if (result.playerFinished) {
+      Sfx.instance.home();
       setState(() => _status = '${_nameOf(m.token.color)} أنهى كل القطع!');
       await _wait(900);
     } else if (result.picked != null) {
       Haptics.mediumImpact();
+      Sfx.instance.pickup();
       setState(() => _status = '🎁 ${_nameOf(m.token.color)} أخذ ${itemInfo[result.picked]!.$1}');
       await _wait(900);
       if (result.bonusRoll) {
@@ -1057,6 +1175,23 @@ class _LudoTableState extends State<_LudoTable> {
             ].join(' · ').ifEmpty('كلاسيك'),
             onBack: _leave,
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (_online) ...[
+                IconButton(
+                  key: const ValueKey('ludo-mic'),
+                  tooltip: MatchVoice.instance.micOn ? 'اقفل المايك' : 'افتح المايك',
+                  onPressed: _toggleMic,
+                  icon: Icon(
+                    MatchVoice.instance.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+                    color: MatchVoice.instance.micOn ? const Color(0xFF3DDC84) : Colors.white70,
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('ludo-speaker'),
+                  tooltip: MatchVoice.instance.speakerOn ? 'كتم أصوات اللاعبين' : 'تشغيل أصوات اللاعبين',
+                  onPressed: MatchVoice.instance.toggleSpeaker,
+                  icon: Icon(MatchVoice.instance.speakerOn ? Icons.volume_up_rounded : Icons.volume_off_rounded),
+                ),
+              ],
               if (s.entry > 0) _PotPill(prize: s.prize),
               IconButton(
                 tooltip: 'طريقة اللعب',
@@ -1141,14 +1276,16 @@ class _LudoTableState extends State<_LudoTable> {
             for (final i in LudoItem.values)
               GestureDetector(
                 key: ValueKey('use-${i.name}'),
-                onTap: canUse && game.itemCount(owner, i) > 0 && !active(i) ? () => _useItem(i) : null,
+                onTap: canUse && !active(i)
+                    ? () => game.itemCount(owner, i) > 0 ? _useItem(i) : _buyItem(i, owner)
+                    : null,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   _ItemBadge(
                     item: i,
                     count: game.itemCount(owner, i),
                     size: 40,
                     active: active(i),
-                    enabled: canUse && game.itemCount(owner, i) > 0,
+                    enabled: canUse && (game.itemCount(owner, i) > 0 || _bought[i]! < maxBuys),
                   ),
                   Text(itemInfo[i]!.$1, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
                 ]),
@@ -1177,7 +1314,13 @@ class _LudoTableState extends State<_LudoTable> {
     final isHuman = widget.humans.contains(c);
     final shielded = game.shielded.contains(c);
 
-    final avatar = SizedBox(
+    final fx = _fx[c];
+    final seatUid = _seat(c)?.uid;
+    final talking = _online && seatUid != null && MatchVoice.instance.micsOpen.contains(seatUid);
+    final avatar = GestureDetector(
+      key: ValueKey('ludo-avatar-${c.name}'),
+      onTap: () => _sendFx(c),
+      child: SizedBox(
       width: 50,
       height: 50,
       child: Stack(clipBehavior: Clip.none, children: [
@@ -1220,7 +1363,21 @@ class _LudoTableState extends State<_LudoTable> {
                   style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
             ),
           ),
+        if (talking)
+          const Positioned(
+            left: -4,
+            bottom: -2,
+            child: CircleAvatar(radius: 9, backgroundColor: Color(0xFF3DDC84), child: Icon(Icons.mic_rounded, size: 12, color: Colors.black)),
+          ),
+        if (fx != null)
+          Positioned(
+            left: -20,
+            right: -20,
+            top: -46,
+            child: Center(child: GameFxBubble(key: ValueKey(fx.key), emoji: fx.emoji, from: fx.from)),
+          ),
       ]),
+    ),
     );
 
     final info = Directionality(

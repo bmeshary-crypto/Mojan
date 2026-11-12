@@ -9,6 +9,7 @@ import '../ai/speech.dart';
 import '../firebase/cloud.dart';
 import 'rtc/rtc.dart';
 import 'system_rooms.dart';
+import '../gifts/diamonds.dart';
 import 'voice.dart';
 
 /// الغرف الصوتية الحقيقية: حالة الغرفة والدردشة في Firestore، والصوت مباشرة بين المتصفحات (WebRTC).
@@ -48,6 +49,8 @@ class LiveVoice {
 
   /// هدايا وصلت من الآخرين لعرض تأثيرها.
   final List<VoiceMessage> incomingFx = [];
+
+  bool get inRoom => _room != null;
 
   String newId() => _db.collection('rooms').doc().id;
 
@@ -518,6 +521,12 @@ class LiveVoice {
       'count': count,
       'to': [for (final u in to) {'uid': u.id, 'name': u.name, 'avatar': u.avatar, 'ai': ?u.aiId}],
     });
+    // كل مستلم حقيقي ياخذ 30% من قيمة هديته ماسات
+    for (final u in to) {
+      if (!u.isAi && !u.isMe) {
+        unawaited(Diamonds.instance.send(to: u.id, coins: g.price * count, gift: g.id, where: 'room:${r.title}'));
+      }
+    }
     try {
       await _db.collection('rooms').doc(r.id).update({'heat': FieldValue.increment(g.price * count * to.length)});
     } catch (e) {

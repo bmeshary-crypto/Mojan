@@ -75,6 +75,25 @@ service cloud.firestore {
         allow create, update: if signedIn() && request.resource.data.by == request.auth.uid;
         allow delete: if isAdmin();
       }
+      // إيموجي وهدايا داخل المباراة
+      match /fx/{f} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.by == request.auth.uid
+          && request.resource.data.e is string && request.resource.data.e.size() <= 8;
+      }
+      // إشارات الصوت بين اللاعبين
+      match /signals/{sid} {
+        allow read, write: if signedIn() && sid.matches('.*' + request.auth.uid + '.*');
+      }
+    }
+
+    // الهدايا بين الناس: المستلم ياخذ 30% منها ماسات ثم يحذف السجل
+    match /gifts/{id} {
+      allow create: if signedIn() && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string && request.resource.data.to != request.auth.uid
+        && request.resource.data.coins is int && request.resource.data.coins > 0 && request.resource.data.coins <= 2000000;
+      allow read: if isAdmin() || (signedIn() && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid));
+      allow delete: if isAdmin() || (signedIn() && resource.data.to == request.auth.uid);
     }
 
     match /support/{uid} {

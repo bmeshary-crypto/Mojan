@@ -317,6 +317,28 @@ class ProfileTab extends StatelessWidget {
                 ),
               ],
             ).animate().fadeIn(delay: 100.ms),
+            const SizedBox(height: 10),
+            GlassCard(
+              key: const ValueKey('profile-diamonds'),
+              child: Row(
+                children: [
+                  const Text('💎', style: TextStyle(fontSize: 30)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${p.diamonds} ماسة', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                        const Text(
+                          'الكوينز للشحن والشراء، والماسات تجيك من دعم الناس: كل هدية توصلك تاخذ 30% من قيمتها ماسات.',
+                          style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 14),
             const DailyRewardCard(),
             const SizedBox(height: 10),

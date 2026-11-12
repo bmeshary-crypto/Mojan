@@ -1,4 +1,6 @@
+import 'dart:js_interop';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 
@@ -34,6 +36,75 @@ class Sfx {
       osc.start(t);
       osc.stop(t + dur + .02);
     } catch (_) {}
+  }
+
+  /// دفقة ضجيج مفلترة (خشخشة النرد، طرقة القطعة).
+  void noise(double dur, {double vol = .25, double freq = 2500, double q = 1, double delay = 0, String filter = 'bandpass'}) {
+    if (!Account.instance.sounds) return;
+    try {
+      final ctx = _ctx ??= web.AudioContext();
+      if (ctx.state == 'suspended') ctx.resume();
+      final n = max(1, (ctx.sampleRate * dur).round());
+      final buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      final data = Float32List(n);
+      for (var i = 0; i < n; i++) {
+        data[i] = (_rng.nextDouble() * 2 - 1) * pow(1 - i / n, 2).toDouble();
+      }
+      buf.copyToChannel(data.toJS, 0);
+      final src = ctx.createBufferSource()..buffer = buf;
+      final f = ctx.createBiquadFilter()
+        ..type = filter
+        ..frequency.value = freq
+        ..Q.value = q;
+      final g = ctx.createGain()..gain.value = vol;
+      src.connect(f);
+      f.connect(g);
+      g.connect(ctx.destination);
+      src.start(ctx.currentTime + delay);
+    } catch (_) {}
+  }
+
+  /// خشخشة النرد في الكوب ثم ارتطامه.
+  void diceShake() {
+    for (var i = 0; i < 5; i++) {
+      noise(.05, vol: .35, freq: 2600 + _rng.nextInt(1800).toDouble(), q: 3, delay: i * .07 + _rng.nextDouble() * .02);
+    }
+  }
+
+  void diceLand() {
+    noise(.09, vol: .5, freq: 900, q: 1.2);
+    tone(220, 140, .08, type: 'triangle', vol: .12);
+    noise(.05, vol: .25, freq: 1800, q: 2, delay: .09);
+  }
+
+  /// طرقة خشبية لكل خطوة للقطعة، تعلو قليلاً مع كل خطوة.
+  void hop([int step = 0]) {
+    final f = 600 + (step % 8) * 40.0;
+    tone(f, f * .55, .07, type: 'triangle', vol: .16);
+    noise(.03, vol: .18, freq: 3000, q: 4);
+  }
+
+  /// أكل قطعة.
+  void capture() {
+    tone(700, 120, .35, type: 'square', vol: .1);
+    noise(.25, vol: .3, freq: 600, q: .8, delay: .02);
+  }
+
+  /// قطعة خرجت من البيت أو وصلت.
+  void release() {
+    tone(392, 784, .18, type: 'triangle', vol: .14);
+  }
+
+  void home() {
+    for (final (i, f) in [659.0, 784.0, 988.0].indexed) {
+      tone(f, f, .12, type: 'triangle', vol: .14, delay: i * .08);
+    }
+  }
+
+  /// استلام أداة أو هدية.
+  void pickup() {
+    tone(880, 1760, .12, type: 'sine', vol: .14);
+    tone(1320, 2200, .1, type: 'sine', vol: .1, delay: .08);
   }
 
   /// تكة قصيرة (مرور المؤشر، اصطدام الكرة).

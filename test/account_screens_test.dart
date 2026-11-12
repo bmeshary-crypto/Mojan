@@ -101,6 +101,8 @@ void main() {
       scrollable: find.descendant(of: find.byType(ProfileTab), matching: find.byType(Scrollable)).first,
     );
     await wait(tester, 300);
+    await tester.drag(find.descendant(of: find.byType(ProfileTab), matching: find.byType(Scrollable)).first, const Offset(0, 400));
+    await wait(tester, 300);
     await tester.tap(find.byKey(const ValueKey('edit-name')));
     await wait(tester, 500);
     await tester.enterText(find.byKey(const ValueKey('rename-field')), 'نورة الأولى');

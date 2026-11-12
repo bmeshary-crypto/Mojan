@@ -13,6 +13,7 @@ import '../account/account.dart';
 import '../account/auth_backend.dart';
 import '../account/leaderboard.dart';
 import '../ban.dart';
+import '../gifts/diamonds.dart';
 import 'firebase_config.dart';
 
 /// الاتصال بـ Firebase (المشروع mojan-11d86): الحسابات وحفظ الملف الشخصي ولوحة المتصدرين.
@@ -113,6 +114,7 @@ class Cloud {
     _meSub?.cancel();
     _watching = id;
     _startPresence();
+    Diamonds.instance.watch(id);
     _meSub = _db.collection('users').doc(id).snapshots().listen((doc) async {
       final data = doc.data();
       if (data == null) return;
