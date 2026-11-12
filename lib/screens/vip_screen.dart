@@ -94,7 +94,7 @@ class VipScreen extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(lvl == 0 ? '🎖️' : (lvl >= 8 ? '👑' : '💎'), style: const TextStyle(fontSize: 54))
+          VipArt(lvl == 0 ? vipPerkAsset(VipPerkIcon.badge) : vipCrestAsset(lvl), size: 120, fallback: lvl >= 8 ? '👑' : '💎')
               .animate(onPlay: (c) => c.repeat(reverse: true))
               .scaleXY(begin: 1, end: 1.08, duration: 1200.ms),
           Text(
@@ -134,7 +134,7 @@ class VipScreen extends StatelessWidget {
         border: Border.all(color: AppColors.gold.withValues(alpha: .4)),
       ),
       child: Row(children: [
-        const Text('🎁', style: TextStyle(fontSize: 34)),
+        VipArt(vipPerkAsset(VipPerkIcon.daily), size: 54, fallback: '🎁'),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -181,7 +181,7 @@ class VipScreen extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Text('🆔', style: TextStyle(fontSize: 30)),
+          VipArt(vipPerkAsset(VipPerkIcon.id), size: 54, fallback: '🆔'),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -305,7 +305,7 @@ class VipScreen extends StatelessWidget {
     Widget row(String e, String t, String s) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(children: [
-            Text(e, style: const TextStyle(fontSize: 22)),
+            VipArt('assets/images/$e.webp', size: 36, fallback: '✨'),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -321,9 +321,9 @@ class VipScreen extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('كيف تجمع النقاط؟', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
         const SizedBox(height: 6),
-        row('💳', 'شحن العملات', 'كل عملة تشحنها = نقطة VIP'),
-        row('🎁', 'إرسال الهدايا في الغرف', 'كل عملة تصرفها على هدية = نقطة'),
-        row('🛍️', 'الشراء من المتجر', 'كل عملة تصرفها في المتجر = نقطة'),
+        row('coins_3', 'شحن العملات', 'كل عملة تشحنها = نقطة VIP'),
+        row('gift_box', 'إرسال الهدايا في الغرف', 'كل عملة تصرفها على هدية = نقطة'),
+        row('vperk_discount', 'الشراء من المتجر', 'كل عملة تصرفها في المتجر = نقطة'),
         const Text('الرهانات في الألعاب ما تحتسب، والمستوى ما ينزل أبداً.',
             style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
@@ -344,11 +344,12 @@ class VipScreen extends StatelessWidget {
   Widget _tierCard(VipTier t, int lvl, int pts) {
     final got = lvl >= t.level;
     final current = lvl == t.level;
-    final all = [
-      '🎁 مكافأة يومية ${_n(t.daily)} عملة',
-      if (t.discount > 0) '🏷️ خصم ${t.discount}% على المتجر',
-      if (specialIdDigits(t.level) != null) '🆔 ID مميز من ${specialIdDigits(t.level)} أرقام',
-      ...t.perks.map((x) => '✨ $x'),
+    final all = <(VipPerkIcon, String)>[
+      (VipPerkIcon.daily, 'مكافأة يومية ${_n(t.daily)} عملة'),
+      if (t.discount > 0) (VipPerkIcon.discount, 'خصم ${t.discount}% على المتجر'),
+      if (specialIdDigits(t.level) != null) (VipPerkIcon.id, 'ID مميز من ${specialIdDigits(t.level)} أرقام'),
+      for (final x in t.perks)
+        if (!x.startsWith('خصم')) (vipPerkIconFor(x), x),
     ];
     return Container(
       key: ValueKey('vip-tier-${t.level}'),
@@ -364,6 +365,8 @@ class VipScreen extends StatelessWidget {
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
+          Opacity(opacity: got ? 1 : .55, child: VipArt(vipCrestAsset(t.level), size: 52)),
+          const SizedBox(width: 6),
           VipBadge(t.level, size: 15),
           const SizedBox(width: 8),
           Expanded(child: Text(t.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17))),
@@ -375,10 +378,16 @@ class VipScreen extends StatelessWidget {
           if (!got) const Padding(padding: EdgeInsetsDirectional.only(start: 4), child: Icon(Icons.lock_rounded, size: 16, color: AppColors.textMuted)),
         ]),
         const SizedBox(height: 6),
-        for (final x in all)
+        for (final (icon, x) in all)
           Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(x, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: got ? Colors.white : Colors.white70)),
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(children: [
+              VipArt(vipPerkAsset(icon), size: 26, fallback: '✨'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(x, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: got ? Colors.white : Colors.white70)),
+              ),
+            ]),
           ),
       ]),
     );
@@ -411,7 +420,9 @@ class VipUpOverlay extends StatelessWidget {
                 child: Directionality(
                   textDirection: TextDirection.rtl,
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text(t.level >= 8 ? '👑' : '💎', style: const TextStyle(fontSize: 64)),
+                    VipArt(vipCrestAsset(t.level), size: 130, fallback: t.level >= 8 ? '👑' : '💎')
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .scaleXY(begin: 1, end: 1.08, duration: 900.ms),
                     Text('مبروك! صرت VIP${t.level}', style: AppTheme.display.copyWith(fontSize: 28)),
                     Text(t.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
                     const SizedBox(height: 10),

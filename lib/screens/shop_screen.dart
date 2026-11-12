@@ -203,7 +203,7 @@ class _ShopScreenState extends State<ShopScreen> {
   Widget _unequip(PlayerProfile p, String kind, String current) => current == 'none'
       ? const SizedBox.shrink()
       : Padding(
-          padding: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Center(
             child: TextButton.icon(
               key: ValueKey('unequip-$kind'),
@@ -223,6 +223,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final frames = styleCatalog.where((i) => i.kind == ShopKind.frame);
     return _list([
       _intro('إطار حول صورتك في الغرف الصوتية والملف الشخصي.'),
+      _unequip(p, 'frame', p.frame),
       _grid(ratio: .74, [
         for (final f in frames)
           _styleCard(
@@ -238,7 +239,6 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
           ),
       ]),
-      _unequip(p, 'frame', p.frame),
     ]);
   }
 
@@ -246,6 +246,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final list = styleCatalog.where((i) => i.kind == ShopKind.entrance);
     return _list([
       _intro('تظهر دخوليتك لكل الموجودين لما تدخل أي غرفة صوتية.'),
+      _unequip(p, 'entrance', p.entrance),
       _grid(ratio: .78, [
         for (final e in list)
           _styleCard(
@@ -256,7 +257,6 @@ class _ShopScreenState extends State<ShopScreen> {
                 .moveX(begin: -4, end: 4, duration: 1100.ms, curve: Curves.easeInOut),
           ),
       ]),
-      _unequip(p, 'entrance', p.entrance),
     ]);
   }
 
@@ -264,6 +264,7 @@ class _ShopScreenState extends State<ShopScreen> {
     final list = styleCatalog.where((i) => i.kind == ShopKind.bubble);
     return _list([
       _intro('لون رسائلك في دردشة الغرف الصوتية.'),
+      _unequip(p, 'bubble', p.bubble),
       _grid(ratio: .9, [
         for (final b in list)
           _styleCard(
@@ -279,7 +280,6 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
           ),
       ]),
-      _unequip(p, 'bubble', p.bubble),
     ]);
   }
 

@@ -253,8 +253,8 @@ const _botNames = [
   'مها', 'راكان', 'غلا', 'عمر', 'هيا', 'ماجد', 'شهد', 'بندر', 'لين', 'سعود', 'رهف', 'ناصر',
 ];
 
-const _botFrames = ['angel', 'hearts', 'ice', 'fire', 'jungle', 'royal', 'rainbow', 'demon', 'ramadan'];
-const _botEntrances = ['car', 'scooter', 'horse', 'carpet', 'dragon', 'yacht', 'rocket', 'lion', 'jet'];
+const _botFrames = ['angel', 'hearts', 'ice', 'fire', 'jungle', 'royal', 'rainbow', 'demon', 'ramadan', 'galaxy', 'ocean', 'sakura', 'neon', 'emerald', 'phoenix'];
+const _botEntrances = ['car', 'scooter', 'horse', 'carpet', 'dragon', 'yacht', 'rocket', 'lion', 'jet', 'falcon', 'supercar', 'unicorn', 'ufo', 'lamp', 'carriage'];
 const _botBubbles = ['pink', 'ocean', 'gold', 'neon'];
 
 const _botBios = [

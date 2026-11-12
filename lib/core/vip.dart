@@ -125,6 +125,49 @@ int vipLevelFor(int points) {
 
 VipTier? vipTier(int level) => level <= 0 ? null : vipTiers[(level - 1).clamp(0, vipTiers.length - 1)];
 
+/// صورة شعار مستوى VIP (vip_1..vip_8).
+String vipCrestAsset(int level) => 'assets/images/vip_${level.clamp(1, 8)}.webp';
+
+/// أيقونات مزايا VIP (vperk_*.webp).
+enum VipPerkIcon { daily, discount, id, shield, mic, crown, bubble, entrance, badge }
+
+String vipPerkAsset(VipPerkIcon i) => 'assets/images/vperk_${i.name}.webp';
+
+/// يختار أيقونة مناسبة لنص ميزة.
+VipPerkIcon vipPerkIconFor(String perk) {
+  if (perk.contains('فقاعة')) return VipPerkIcon.bubble;
+  if (perk.contains('دخول')) return VipPerkIcon.entrance;
+  if (perk.contains('الطرد')) return VipPerkIcon.shield;
+  if (perk.contains('المايك')) return VipPerkIcon.mic;
+  if (perk.contains('خصم')) return VipPerkIcon.discount;
+  if (perk.contains('ID')) return VipPerkIcon.id;
+  if (perk.contains('تاج')) return VipPerkIcon.crown;
+  if (perk.contains('شارة') || perk.contains('اسمك')) return VipPerkIcon.badge;
+  return VipPerkIcon.crown;
+}
+
+/// صورة جاهزة من الأصول مع بديل إيموجي لو ما تحمّلت.
+class VipArt extends StatelessWidget {
+  const VipArt(this.asset, {super.key, required this.size, this.fallback = '💎'});
+  final String asset;
+  final double size;
+  final String fallback;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+        asset,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, _, _) => SizedBox(
+          width: size,
+          height: size,
+          child: Center(child: Text(fallback, style: TextStyle(fontSize: size * .7))),
+        ),
+      );
+}
+
 /// شارة VIP صغيرة بلون المستوى.
 class VipBadge extends StatelessWidget {
   const VipBadge(this.level, {super.key, this.size = 12});
@@ -136,17 +179,21 @@ class VipBadge extends StatelessWidget {
     final t = vipTier(level);
     if (t == null) return const SizedBox.shrink();
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: size * .45, vertical: size * .08),
+      padding: EdgeInsets.fromLTRB(size * .15, size * .02, size * .5, size * .02),
       decoration: BoxDecoration(
         gradient: LinearGradient(colors: t.colors),
         borderRadius: BorderRadius.circular(size * .7),
         border: Border.all(color: Colors.white.withValues(alpha: .7), width: 1),
       ),
-      child: Text(
-        '${level >= 8 ? '👑 ' : ''}${t.badge}',
-        textDirection: TextDirection.ltr,
-        style: TextStyle(fontWeight: FontWeight.w900, fontSize: size, color: const Color(0xFF2A1400), height: 1.2),
-      ),
+      child: Row(mainAxisSize: MainAxisSize.min, textDirection: TextDirection.ltr, children: [
+        VipArt(vipCrestAsset(level), size: size * 1.35, fallback: level >= 8 ? '👑' : '💎'),
+        SizedBox(width: size * .2),
+        Text(
+          t.badge,
+          textDirection: TextDirection.ltr,
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: size, color: const Color(0xFF2A1400), height: 1.2),
+        ),
+      ]),
     );
   }
 }
@@ -205,15 +252,21 @@ class PlayerIdTag extends StatelessWidget {
           border: special ? Border.all(color: Colors.white, width: 1) : null,
           boxShadow: special ? [BoxShadow(color: const Color(0xFFFFB800).withValues(alpha: .5), blurRadius: 8)] : null,
         ),
-        child: Text(
-          special ? '💎 ID $id' : 'ID $id',
-          textDirection: TextDirection.ltr,
-          style: TextStyle(
-            fontSize: size,
-            fontWeight: FontWeight.w900,
-            letterSpacing: special ? 1.2 : .3,
-            color: special ? const Color(0xFF4A2600) : Colors.white70,
+        child: Row(mainAxisSize: MainAxisSize.min, textDirection: TextDirection.ltr, children: [
+          if (special) ...[
+            VipArt(vipPerkAsset(VipPerkIcon.id), size: size * 1.5),
+            SizedBox(width: size * .3),
+          ],
+          Text(
+            'ID $id',
+            textDirection: TextDirection.ltr,
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w900,
+              letterSpacing: special ? 1.2 : .3,
+              color: special ? const Color(0xFF4A2600) : Colors.white70,
+            ),
           ),
-        ),
+        ]),
       );
 }
