@@ -581,19 +581,30 @@ class _Rooms extends StatelessWidget {
   Widget build(BuildContext context) {
     final rooms = VoiceService.instance.live
       ..sort((a, b) => b.reports.compareTo(a.reports));
-    final closed = VoiceService.instance.rooms.where((r) => r.closed).toList();
+    final saved = VoiceService.instance.saved;
     return _list([
       for (final r in rooms) _RoomRow(room: r),
-      if (closed.isNotEmpty) ...[
+      if (saved.isNotEmpty) ...[
         const SizedBox(height: 8),
-        Text('غرف مغلقة', style: AppTheme.display.copyWith(fontSize: 18)),
+        Text('غرف محفوظة (ما فيها أحد الآن)', style: AppTheme.display.copyWith(fontSize: 18)),
         const SizedBox(height: 6),
-        for (final r in closed)
+        for (final r in saved)
           _card(
-            child: Text(
-              '${r.title} · ${r.messages.last.text}',
-              style: const TextStyle(color: Colors.white70),
-            ),
+            child: Row(children: [
+              Expanded(
+                child: Text(
+                  '${r.private ? '🔒 ' : ''}${r.title} · ${r.host.name} · ${r.closed ? 'مغلقة' : 'مفتوحة'}'
+                  '${r.lastActive == null ? '' : ' · آخر ظهور ${_ago(r.lastActive!)}'}',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ),
+              if (r.live && Cloud.instance.isAdmin)
+                IconButton(
+                  tooltip: 'كلمة السر',
+                  onPressed: () => editRoomPassword(context, r),
+                  icon: Icon(r.private ? Icons.lock_rounded : Icons.key_rounded, color: AppColors.gold),
+                ),
+            ]),
           ),
       ],
     ]);

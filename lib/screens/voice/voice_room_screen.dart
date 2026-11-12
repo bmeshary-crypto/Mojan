@@ -556,7 +556,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      room.messages.last.text,
+                                      room.messages.isEmpty ? 'الغرفة مغلقة' : room.messages.last.text,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w900,
                                         fontSize: 18,
