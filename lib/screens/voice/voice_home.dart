@@ -145,8 +145,10 @@ class _VoiceHomeState extends State<VoiceHome> {
                 children: [
                   const Icon(Icons.history_rounded, color: AppColors.gold, size: 20),
                   const SizedBox(width: 6),
-                  Text('آخر الغرف اللي زرتها', style: AppTheme.display.copyWith(fontSize: 20)),
-                  const Spacer(),
+                  Expanded(
+                    child: Text('آخر الغرف اللي زرتها',
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTheme.display.copyWith(fontSize: 20)),
+                  ),
                   Text(
                     '${recent.length} غرفة',
                     style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
