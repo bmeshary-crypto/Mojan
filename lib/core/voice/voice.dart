@@ -2,6 +2,9 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../ai/ai_brain.dart';
+import '../ai/speech.dart';
+
 import '../account/account.dart';
 
 /// أقسام الغرف الصوتية.
@@ -59,8 +62,13 @@ class VoiceUser {
     this.entrance,
     this.bubble,
     this.bio = '',
+    this.aiId,
   });
   final String id;
+
+  /// شخصية ذكاء اصطناعي (تتكلم وتفهم عبر Gemini).
+  final String? aiId;
+  bool get isAi => aiId != null;
 
   /// النبذة التعريفية التي تظهر في بطاقة الشخص.
   String bio;
@@ -321,6 +329,75 @@ class VoiceService extends ChangeNotifier {
     return u;
   }
 
+  VoiceUser aiUser(AiPersona p) => VoiceUser(
+        id: p.id,
+        name: '${p.name} 🤖',
+        avatar: p.avatar,
+        level: 50,
+        bio: p.bio,
+        aiId: p.id,
+        frameArt: 'rainbow',
+      );
+
+  final Set<String> _aiBusy = {};
+
+  /// أشخاص الذكاء الاصطناعي الجالسون على المايكات.
+  List<VoiceUser> aiOnMics(VoiceRoom r) => [for (final u in r.onMics) if (u.isAi) u];
+
+  /// رد شخصية AI على ما قاله المستخدم (كتابة أو كلام)، وتنطقه بصوت مسموع.
+  Future<void> aiRespond(VoiceRoom r, String said) async {
+    final ais = aiOnMics(r);
+    if (ais.isEmpty || r.closed || _aiBusy.contains(r.id)) return;
+    final addressed = ais.where((u) => said.contains(u.name.replaceAll(' 🤖', ''))).toList();
+    final u = addressed.isNotEmpty ? addressed.first : ais[_rng.nextInt(ais.length)];
+    final p = personaById(u.aiId!);
+    if (p == null) return;
+    _aiBusy.add(r.id);
+    try {
+      await Future.delayed(Duration(milliseconds: 700 + _rng.nextInt(900)));
+      final history = [
+        for (final m in r.messages.where((m) => m.kind == VoiceMsgKind.chat && m.user != null).toList().reversed.take(10).toList().reversed)
+          AiLine(m.user!.isMe ? '${m.user!.name} (المستخدم)' : m.user!.name, m.text),
+      ];
+      final text = await AiBrain.instance.reply(
+        p,
+        about: 'غرفة صوتية اسمها "${r.title}" فيها ناس يسولفون، وأنت جالس على المايك',
+        history: history,
+      );
+      if (r.closed || !aiOnMics(r).contains(u)) return;
+      r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: text, user: u));
+      u.speaking = true;
+      notifyListeners();
+      if (speakerOn) Speech.instance.speak(text, female: p.female);
+      // الحلقة تبقى مضيئة بقدر طول الكلام تقريباً
+      await Future.delayed(Duration(milliseconds: 600 + text.length * 70));
+      u.speaking = false;
+      notifyListeners();
+    } finally {
+      _aiBusy.remove(r.id);
+    }
+  }
+
+  VoiceRoom? _listeningRoom;
+
+  /// عندما يفتح المستخدم المايك وبجانبه AI: نسمع كلامه ونحوله لنص يفهمه الـ AI.
+  void _syncListening(VoiceRoom r) {
+    final want = micOn && onMic(r) && aiOnMics(r).isNotEmpty && Speech.instance.canListen && !r.closed;
+    if (want && _listeningRoom != r) {
+      Speech.instance.stopListening();
+      _listeningRoom = r;
+      Speech.instance.listen((t) {
+        if (_listeningRoom != r) return;
+        r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: '🎤 $t', user: me()));
+        notifyListeners();
+        aiRespond(r, t);
+      });
+    } else if (!want && _listeningRoom != null) {
+      Speech.instance.stopListening();
+      _listeningRoom = null;
+    }
+  }
+
   /// إحصائيات هدايا تجريبية للغرف الجاهزة حتى لا تبدأ فارغة.
   void _seedGifts(VoiceRoom r, int heat) {
     for (var i = 0; i < 10; i++) {
@@ -376,6 +453,8 @@ class VoiceService extends ChangeNotifier {
       for (var s = 0; s < filled && s < seats; s++) {
         if (_rng.nextDouble() < .8) room.seats[s].user = _bot(s + i)..frame = theme == VoiceTheme.party ? SeatFrame.party : SeatFrame.none;
       }
+      // شخصية ذكاء اصطناعي تسولف مع الناس في كل غرفة
+      room.seats[1].user = aiUser(aiPersonas[i % aiPersonas.length]);
       if (seats > 8) room.seats.last.locked = true;
       if (cat == VoiceCategory.games) room.game = 'ludo';
       if (i == 5) {
@@ -427,7 +506,10 @@ class VoiceService extends ChangeNotifier {
       theme: theme,
       announcement: announcement?.trim().isNotEmpty == true ? announcement!.trim() : 'أهلاً بالجميع، احترموا بعض واستمتعوا 🌹',
     );
+    room.seats[0].user = aiUser(aiPersonas.first);
     room.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: room.announcement));
+    room.messages.add(VoiceMessage(
+        kind: VoiceMsgKind.system, text: '🤖 ${aiPersonas.first.name} (ذكاء اصطناعي) على المايك، كلّمها بالكتابة أو بصوتك'));
     rooms.insert(0, room);
     notifyListeners();
     return room;
@@ -457,6 +539,8 @@ class VoiceService extends ChangeNotifier {
     final s = mySeat(r);
     if (s != null) r.seats[s].user = null;
     micOn = false;
+    _syncListening(r);
+    Speech.instance.stopSpeaking();
     if (!isHost(r) && r.listeners > 0) r.listeners--;
     notifyListeners();
   }
@@ -472,6 +556,7 @@ class VoiceService extends ChangeNotifier {
     seat.user = me();
     if (r.listeners > 0 && old == null) r.listeners--;
     micOn = true;
+    _syncListening(r);
     notifyListeners();
     return null;
   }
@@ -482,6 +567,7 @@ class VoiceService extends ChangeNotifier {
     r.seats[s].user = null;
     r.listeners++;
     micOn = false;
+    _syncListening(r);
     notifyListeners();
   }
 
@@ -490,6 +576,7 @@ class VoiceService extends ChangeNotifier {
     final s = mySeat(r);
     if (s != null && r.seats[s].muted) return;
     micOn = !micOn;
+    _syncListening(r);
     notifyListeners();
   }
 
@@ -610,6 +697,7 @@ class VoiceService extends ChangeNotifier {
       s.user = null;
     }
     micOn = false;
+    _syncListening(r);
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.system, text: reason));
     notifyListeners();
   }
@@ -622,6 +710,7 @@ class VoiceService extends ChangeNotifier {
     if (r.chatMuted && !isHost(r)) return 'الدردشة مقفلة من المضيف';
     r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: t, user: me()));
     notifyListeners();
+    aiRespond(r, t);
     return null;
   }
 
@@ -671,7 +760,7 @@ class VoiceService extends ChangeNotifier {
     VoiceMessage? gift;
     for (final s in r.seats) {
       final u = s.user;
-      if (u == null || u.isMe) continue;
+      if (u == null || u.isMe || u.isAi) continue;
       u.speaking = !s.muted && _rng.nextDouble() < .35;
       if (u.reaction != null && _rng.nextDouble() < .5) u.reaction = null;
     }
@@ -683,7 +772,7 @@ class VoiceService extends ChangeNotifier {
     }
     if (r.host.isMe && r.host.reaction != null && _rng.nextDouble() < .5) r.host.reaction = null;
     final roll = _rng.nextDouble();
-    final bots = r.seats.where((s) => s.user != null && !s.user!.isMe).map((s) => s.user!).toList();
+    final bots = r.seats.where((s) => s.user != null && !s.user!.isMe && !s.user!.isAi).map((s) => s.user!).toList();
     if (roll < .22 && !r.chatMuted) {
       r.messages.add(VoiceMessage(kind: VoiceMsgKind.chat, text: _botChat[_rng.nextInt(_botChat.length)], user: bots.isEmpty ? _bot() : bots[_rng.nextInt(bots.length)]));
     } else if (roll < .30) {

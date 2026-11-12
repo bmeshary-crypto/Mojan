@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:math';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account.dart';
 import '../account/auth_backend.dart';
@@ -50,6 +53,18 @@ class Cloud {
       final data = doc.data();
       if (data == null) return;
       banned.value = data['banned'] == true;
+      final edit = data['edit'];
+      if (edit is Map) {
+        try {
+          await doc.reference.update({'edit': FieldValue.delete()});
+          final acc = Account.instance;
+          if (edit['name'] is String) await acc.rename(edit['name'] as String);
+          if (edit['bio'] is String) acc.setBio(edit['bio'] as String);
+          if (edit['avatar'] is num) await acc.setAvatar((edit['avatar'] as num).toInt());
+        } catch (e) {
+          debugPrint('edit failed: $e');
+        }
+      }
       final grant = data['grant'];
       if (grant is Map && grant['coins'] is num) {
         final coins = (grant['coins'] as num).toInt();
@@ -73,6 +88,21 @@ class Cloud {
 
   Future<void> adminGrant(String id, int coins) =>
       _db.collection('users').doc(id).set({'grant': {'coins': coins, 'at': FieldValue.serverTimestamp()}}, SetOptions(merge: true));
+
+  /// تعديل ملف لاعب: يُطبق على جهازه عند فتح التطبيق.
+  Future<void> adminEdit(String id, {String? name, String? bio, int? avatar}) => _db.collection('users').doc(id).set({
+        'edit': {'name': ?name, 'bio': ?bio, 'avatar': ?avatar},
+        'name': ?name,
+        'avatar': ?avatar,
+      }, SetOptions(merge: true));
+
+  /// إيقاف أو رفع إيقاف كل الحسابات على نفس الجهاز.
+  Future<void> adminBanDevice(String device, bool ban) async {
+    final snap = await _db.collection('users').where('device', isEqualTo: device).get();
+    for (final d in snap.docs) {
+      await d.reference.set({'banned': ban}, SetOptions(merge: true));
+    }
+  }
 
   Future<void> adminBan(String id, bool ban) => _db.collection('users').doc(id).set({'banned': ban}, SetOptions(merge: true));
 
@@ -198,6 +228,9 @@ class Cloud {
             key: Leaderboard.winsOf(p, key == 'all' ? null : key),
         },
         'wk': week,
+        'device': await deviceId(),
+        'tz': _timeZone(),
+        'lang': PlatformDispatcher.instance.locale.toLanguageTag(),
         'wb': _weekBase,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -244,6 +277,28 @@ class Cloud {
       return null;
     }
   }
+}
+
+String? _device;
+
+/// معرّف ثابت لهذا الجهاز/المتصدفح، مشترك بين كل الحسابات عليه (لكشف تعدد الحسابات).
+Future<String> deviceId() async {
+  if (_device != null) return _device!;
+  final prefs = await SharedPreferences.getInstance();
+  var id = prefs.getString('mojan.device');
+  if (id == null) {
+    final r = Random.secure();
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    id = List.generate(10, (_) => chars[r.nextInt(chars.length)]).join();
+    await prefs.setString('mojan.device', id);
+  }
+  return _device = id;
+}
+
+String _timeZone() {
+  final o = DateTime.now().timeZoneOffset;
+  final h = o.inHours, m = o.inMinutes.remainder(60).abs();
+  return 'UTC${o.isNegative ? '-' : '+'}${h.abs()}${m == 0 ? '' : ':$m'} ${DateTime.now().timeZoneName}';
 }
 
 /// مفاتيح لوحات المتصدرين: العامة وكل لعبة.

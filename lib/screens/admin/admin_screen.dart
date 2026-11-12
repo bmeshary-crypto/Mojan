@@ -836,6 +836,69 @@ class _CloudUsersState extends State<_CloudUsers> {
     }
   }
 
+  Future<void> _edit(Map<String, dynamic> u, int sameDevice) async {
+    final name = TextEditingController(text: '${u['name'] ?? ''}');
+    final bio = TextEditingController(text: '${(u['profile'] as Map?)?['bio'] ?? ''}');
+    var resetAvatar = false;
+    final device = u['device'] as String?;
+    final ok = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('تعديل الملف الشخصي', style: TextStyle(fontWeight: FontWeight.w900)),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              TextField(key: const ValueKey('edit-name'), controller: name, maxLength: 18, decoration: const InputDecoration(labelText: 'الاسم')),
+              TextField(key: const ValueKey('edit-bio'), controller: bio, maxLength: 80, decoration: const InputDecoration(labelText: 'النبذة')),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: resetAvatar,
+                onChanged: (v) => set(() => resetAvatar = v ?? false),
+                title: const Text('إرجاع الصورة للافتراضية'),
+              ),
+              const Divider(),
+              Text('الجهاز: ${device ?? 'غير معروف'}', style: const TextStyle(fontWeight: FontWeight.w800)),
+              Text('المنطقة الزمنية: ${u['tz'] ?? '-'}  •  اللغة: ${u['lang'] ?? '-'}',
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+              Text('حسابات على نفس الجهاز: $sameDevice',
+                  style: TextStyle(color: sameDevice > 1 ? const Color(0xFFFF7A7A) : AppColors.textMuted, fontWeight: FontWeight.w800)),
+              if (device != null && sameDevice > 1)
+                TextButton.icon(
+                  onPressed: () => Navigator.pop(ctx, 'ban-device'),
+                  icon: const Icon(Icons.phonelink_lock_rounded, color: Color(0xFFFF7A7A)),
+                  label: const Text('إيقاف كل حسابات هذا الجهاز', style: TextStyle(color: Color(0xFFFF7A7A))),
+                ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: const Text('حفظ')),
+          ],
+        ),
+      ),
+    );
+    try {
+      if (ok == 'save') {
+        await Cloud.instance.adminEdit(
+          u['uid'] as String,
+          name: name.text.trim().isEmpty ? null : name.text.trim(),
+          bio: bio.text.trim(),
+          avatar: resetAvatar ? 0 : null,
+        );
+        _snack('تم الحفظ، يتحدث ملف اللاعب عند فتحه التطبيق ✅');
+      } else if (ok == 'ban-device' && device != null) {
+        await Cloud.instance.adminBanDevice(device, true);
+        _snack('تم إيقاف $sameDevice حسابات على نفس الجهاز');
+      } else {
+        return;
+      }
+      _reload();
+    } catch (e) {
+      _snack('تعذر التنفيذ: $e');
+    }
+  }
+
   Future<void> _ban(Map<String, dynamic> u) async {
     final ban = u['banned'] != true;
     try {
@@ -853,6 +916,12 @@ class _CloudUsersState extends State<_CloudUsers> {
       future: _users,
       builder: (context, snap) {
         final users = snap.data ?? const [];
+        final perDevice = <String, int>{};
+        for (final u in users) {
+          final d = u['device'] as String?;
+          if (d != null) perDevice[d] = (perDevice[d] ?? 0) + 1;
+        }
+        int same(Map<String, dynamic> u) => perDevice[u['device']] ?? 1;
         return _card(
           key: const ValueKey('cloud-users'),
           border: AppColors.quiz,
@@ -887,10 +956,16 @@ class _CloudUsersState extends State<_CloudUsers> {
                           ),
                         ),
                         Text(
-                          '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}${u['banned'] == true ? '  •  موقوف' : ''}',
+                          '🪙 ${(u['profile'] as Map?)?['coins'] ?? 0}  •  ⭐ ${(u['s'] as Map?)?['all'] ?? 0}'
+                          '${same(u) > 1 ? '  •  ⚠️ ${same(u)} حسابات بنفس الجهاز' : ''}${u['banned'] == true ? '  •  موقوف' : ''}',
                           style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                         ),
                       ]),
+                    ),
+                    IconButton(
+                      tooltip: 'تعديل الملف',
+                      onPressed: () => _edit(u, same(u)),
+                      icon: const Icon(Icons.edit_rounded, color: Colors.white70),
                     ),
                     IconButton(
                       tooltip: 'شحن عملات',

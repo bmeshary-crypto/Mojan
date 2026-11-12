@@ -55,6 +55,8 @@ void main() {
     svc.ensureDemo();
     expect(svc.live, isNotEmpty);
     final r = svc.create(title: 'غرفتي', category: VoiceCategory.music, seats: 8);
+    expect(r.seats[0].user?.isAi, isTrue, reason: 'new rooms start with an AI persona');
+    r.seats[0].user = null;
     expect(svc.isHost(r), isTrue);
     expect(svc.takeSeat(r, 0), isNotNull, reason: 'host has own seat');
     svc.toggleLock(r, 7);
@@ -112,6 +114,7 @@ void main() {
 
   test('simulation ticks keep chat bounded and requests come to the host', () {
     final r = svc.create(title: 'x', category: VoiceCategory.chat, seats: 12);
+    r.seats[0].user = null;
     for (var i = 0; i < 400; i++) {
       svc.tick(r);
     }
@@ -141,6 +144,9 @@ void main() {
     final room = svc.rooms.first;
     expect(room.theme, VoiceTheme.party);
     expect(room.seats.length, 8);
+    room.seats[0].user = null; // نخلي مقعد الـ AI لاختبار أدوات المضيف
+    svc.notify();
+    await tester.pump();
 
     // المضيف يقفل مقعد ويدعو مستمع
     await tapKey(tester, 'seat-3');

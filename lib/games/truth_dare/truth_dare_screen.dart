@@ -9,6 +9,8 @@ import '../../widgets/animated_background.dart';
 import '../../widgets/bouncy_button.dart';
 import '../../widgets/game_ui.dart';
 import 'truth_dare_content.dart';
+import '../../core/ai/ai_brain.dart';
+import '../../core/ai/speech.dart';
 import 'truth_dare_engine.dart';
 import '../../core/haptics.dart';
 import '../../core/account/account.dart';
@@ -44,6 +46,49 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
   bool _spinning = false;
   bool _recorded = false;
   String? _penalty;
+
+  /// رد لاعب الذكاء الاصطناعي على السؤال الحالي.
+  String? _aiAnswer;
+  bool _aiThinking = false;
+
+  static String _aiName(AiPersona p) => '${p.name} 🤖';
+  AiPersona? _aiOf(String name) => aiPersonas.where((p) => _aiName(p) == name).firstOrNull;
+  AiPersona? get _currentAi {
+    final g = _game;
+    if (g == null || g.currentPlayer == null) return null;
+    return _aiOf(g.players[g.currentPlayer!].name);
+  }
+
+  void _addAi(AiPersona p) {
+    if (_names.length >= 12 || _names.contains(_aiName(p))) return;
+    setState(() => _names.add(_aiName(p)));
+  }
+
+  Future<void> _askAi() async {
+    final p = _currentAi;
+    final g = _game!;
+    if (p == null || g.currentPrompt == null) return;
+    final prompt = g.currentPrompt!;
+    final truth = g.currentChoice == TdChoice.truth;
+    setState(() {
+      _aiThinking = true;
+      _aiAnswer = null;
+    });
+    final answer = await AiBrain.instance.say(
+      p,
+      about: 'لعبة صراحة أو جرأة مع مجموعة أصحاب، وأنت لاعب معهم',
+      ask: truth
+          ? 'سؤال صراحة لك: "$prompt". جاوب بصراحة وبشكل ممتع ومختصر كأنك لاعب حقيقي معهم.'
+          : 'تحدي جرأة لك: "$prompt". أنت ذكاء اصطناعي فما تقدر تسوي شي جسدي، نفّذه بالكلام لو ممكن أو قل بشكل مضحك كيف بتنفذه.',
+      maxWords: 35,
+    );
+    if (!mounted || g.currentPrompt != prompt) return;
+    setState(() {
+      _aiThinking = false;
+      _aiAnswer = answer;
+    });
+    Speech.instance.speak(answer, female: p.female);
+  }
 
   @override
   void dispose() {
@@ -102,6 +147,11 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
       _spinning = false;
       _stage = _Stage.choose;
     });
+    // لاعب الذكاء الاصطناعي يختار بنفسه
+    if (_currentAi != null) {
+      await Future.delayed(const Duration(milliseconds: 900));
+      if (mounted && _stage == _Stage.choose) _choose(_rng.nextBool() ? TdChoice.truth : TdChoice.dare);
+    }
   }
 
   void _choose(TdChoice c) {
@@ -109,8 +159,10 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
     setState(() {
       _game!.draw(c);
       _penalty = null;
+      _aiAnswer = null;
       _stage = _Stage.prompt;
     });
+    if (_currentAi != null) _askAi();
   }
 
   void _resolve(bool completed) {
@@ -118,9 +170,12 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
       setState(() => _penalty = tdPenalties[_rng.nextInt(tdPenalties.length)]);
       return;
     }
+    Speech.instance.stopSpeaking();
     setState(() {
       _game!.resolve(completed: completed);
       _penalty = null;
+      _aiAnswer = null;
+      _aiThinking = false;
       _stage = _Stage.spin;
     });
   }
@@ -256,6 +311,24 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
                           style: IconButton.styleFrom(backgroundColor: AppColors.gold, foregroundColor: AppColors.bgTop),
                           icon: const Icon(Icons.person_add_alt_1_rounded),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('أضف لاعبين بالذكاء الاصطناعي 🤖', style: TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        for (final p in aiPersonas)
+                          ActionChip(
+                            key: ValueKey('td-add-${p.id}'),
+                            avatar: const Text('🤖'),
+                            label: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                            backgroundColor: _names.contains(_aiName(p)) ? AppColors.gold.withValues(alpha: .4) : Colors.white.withValues(alpha: .1),
+                            side: BorderSide.none,
+                            onPressed: () => _addAi(p),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 22),
@@ -594,6 +667,28 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
                           ),
                         ),
                       ),
+                      if (_currentAi != null) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          key: const ValueKey('td-ai-answer'),
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.bgTop.withValues(alpha: .75),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: _aiThinking || _aiAnswer == null
+                              ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                                  const SizedBox(width: 10),
+                                  Text('${_currentAi!.name} تفكر… 🤖', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                ])
+                              : Text('🤖 ${_aiAnswer!}',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, height: 1.5)),
+                        ).animate().fadeIn(),
+                      ],
                       if (_penalty != null) ...[
                         const SizedBox(height: 16),
                         Container(
