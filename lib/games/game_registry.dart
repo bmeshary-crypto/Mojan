@@ -93,7 +93,7 @@ class GameRegistry {
     GameModule(
       id: 'fruits',
       title: 'سوق الفواكه',
-      tagline: 'راهن على الفاكهة واربح حتى ×45',
+      tagline: 'راهن على الفاكهة الرابحة',
       colors: const [Color(0xFF5CF2B5), Color(0xFF16A06B), Color(0xFF0B5E42)],
       players: 'الكل',
       modes: const [PlayMode.live],
@@ -103,7 +103,7 @@ class GameRegistry {
     GameModule(
       id: 'treasure',
       title: 'صناديق الكنز',
-      tagline: 'افتح الصناديق واسحب قبل الوحش',
+      tagline: 'افتح واسحب قبل الوحش',
       colors: const [Color(0xFFFFC46B), Color(0xFFB8641E), Color(0xFF5A2E0E)],
       players: '1',
       modes: const [PlayMode.solo],
@@ -113,7 +113,7 @@ class GameRegistry {
     GameModule(
       id: 'pegs',
       title: 'هرم المسامير',
-      tagline: 'أسقط الكرة واصطد حتى ×1000',
+      tagline: 'أسقط الكرة واصطد المضاعف',
       colors: const [Color(0xFF7CB8FF), Color(0xFF3A5BD9), Color(0xFF1A2A7A)],
       players: '1',
       modes: const [PlayMode.solo],
