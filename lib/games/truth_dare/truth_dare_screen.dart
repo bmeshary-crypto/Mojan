@@ -87,7 +87,7 @@ class _TruthDareScreenState extends State<TruthDareScreen> with SingleTickerProv
       _aiThinking = false;
       _aiAnswer = answer;
     });
-    Speech.instance.speak(answer, female: p.female);
+    Speech.instance.speak(answer, female: p.female, voice: p.voice);
   }
 
   @override

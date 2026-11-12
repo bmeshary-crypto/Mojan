@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/account/account.dart';
+import 'core/ai/ai_brain.dart';
+import 'core/ai/speech.dart';
 import 'core/firebase/cloud.dart';
 import 'core/screenshot.dart';
 import 'core/theme.dart';
@@ -14,6 +16,7 @@ import 'screens/voice/mini_room_bubble.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Account.instance.load();
+  Speech.natural = AiBrain.instance.tts;
   // تشغيل Firebase والربط بالسيرفر في الخلفية حتى لا يتأخر فتح التطبيق
   unawaited(Cloud.instance.init().then((_) => Account.instance.attachCloud()));
   SystemChrome.setSystemUIOverlayStyle(

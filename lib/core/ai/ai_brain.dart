@@ -16,6 +16,7 @@ class AiPersona {
     required this.style,
     required this.bio,
     required this.fallback,
+    this.voice = 'Aoede',
   });
   final String id;
   final String name;
@@ -28,6 +29,9 @@ class AiPersona {
 
   /// ردود جاهزة عند انقطاع الذكاء الاصطناعي.
   final List<String> fallback;
+
+  /// صوت Gemini الطبيعي (نفس أصوات NotebookLM).
+  final String voice;
 }
 
 const aiPersonas = [
@@ -38,6 +42,7 @@ const aiPersonas = [
     female: true,
     style: 'بنت سعودية مرحة واجتماعية، تحب السوالف والضحك وترحب بالناس، تستخدم إيموجي قليل',
     bio: 'مساعدة MOJAN الذكية 🤖 أسولف وأرحب فيكم',
+    voice: 'Aoede',
     fallback: ['هلا والله نورتونا 🌹', 'وش أخباركم الليلة؟', 'هههه والله إنكم فلة', 'كمل كمل أسمعك 👂', 'حلو هالموضوع!'],
   ),
   AiPersona(
@@ -47,6 +52,7 @@ const aiPersonas = [
     female: false,
     style: 'شاب سعودي هادئ وذكي، يحب الألعاب والتحديات والنكت الخفيفة، يعطي آراء قصيرة',
     bio: 'ذكاء اصطناعي 🤖 أحب اللودو والتحديات',
+    voice: 'Puck',
     fallback: ['يا هلا ومرحبا', 'من يتحداني لودو؟ 🎲', 'كلام جميل والله', 'صح كلامك', 'تراني معكم أسمع 😄'],
   ),
   AiPersona(
@@ -56,6 +62,7 @@ const aiPersonas = [
     female: true,
     style: 'بنت خليجية لطيفة تحب الأسئلة والمعلومات العامة والأغاني، تسأل الناس عن آرائهم',
     bio: 'ذكاء اصطناعي 🤖 أحب الأسئلة والمعلومات',
+    voice: 'Leda',
     fallback: ['سؤال: وش أكثر لعبة تحبونها؟', 'تدرون إن العسل ما يخرب أبداً؟ 🍯', 'منورين 🌸', 'أحب هالجو ✨'],
   ),
 ];
@@ -76,6 +83,9 @@ class AiBrain {
   static final instance = AiBrain._();
 
   static const model = 'gemini-3.5-flash-lite';
+  static const ttsModel = 'gemini-3.1-flash-tts-preview';
+  bool _ttsCooldown = false;
+  final _ttsCache = <String, Uint8List>{};
   final _rng = Random();
   DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
   bool _cooldown = false;
@@ -128,6 +138,42 @@ class AiBrain {
       Timer(const Duration(seconds: 60), () => _cooldown = false);
       return null;
     }
+  }
+
+  /// صوت طبيعي من Gemini TTS: PCM خام 24kHz أحادي 16bit. يرجع null عند الفشل (ونستخدم صوت المتصفح).
+  Future<Uint8List?> tts(String text, String voice) async {
+    if (override != null || !Cloud.instance.enabled || _ttsCooldown) return null;
+    final key = '$voice|$text';
+    final hit = _ttsCache[key];
+    if (hit != null) return hit;
+    try {
+      final m = FirebaseAI.googleAI().generativeModel(
+        model: ttsModel,
+        generationConfig: GenerationConfig(
+          responseModalities: [ResponseModalities.audio],
+          speechConfig: SpeechConfig(voiceName: voice),
+        ),
+      );
+      final prompt = '# Audio profile\nA friendly young Saudi host chatting in a relaxed podcast, natural Saudi Arabic dialect.\n'
+          '# Director\'s notes\nWarm, clear, expressive and natural, normal conversational pace. Read only the transcript.\n'
+          '# Transcript\n$text';
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final res = await m.generateContent([Content.text(prompt)]).timeout(const Duration(seconds: 20));
+        final parts = res.candidates.firstOrNull?.content.parts ?? const [];
+        for (final part in parts) {
+          if (part is InlineDataPart && part.mimeType.startsWith('audio/')) {
+            if (_ttsCache.length > 40) _ttsCache.remove(_ttsCache.keys.first);
+            return _ttsCache[key] = part.bytes;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('AiBrain tts failed: $e');
+      // عند تجاوز الحد المجاني نرجع لصوت المتصفح دقيقتين
+      _ttsCooldown = true;
+      Timer(const Duration(minutes: 2), () => _ttsCooldown = false);
+    }
+    return null;
   }
 
   String? _clean(String? t, AiPersona p) {
