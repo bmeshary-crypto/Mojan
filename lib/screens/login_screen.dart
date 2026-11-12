@@ -310,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       children: [
         const SizedBox(height: 10),
-        const MojanLogoMark(size: 110).animate().scale(
+        const MojanBrandLogo(width: 250).animate().scale(
           duration: 700.ms,
           curve: Curves.elasticOut,
           begin: const Offset(.5, .5),

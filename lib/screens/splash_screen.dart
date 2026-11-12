@@ -49,10 +49,8 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const MojanLogoMark(size: 120, animateIn: true),
-              const SizedBox(height: 28),
-              const MojanWordmark(fontSize: 64, animateIn: true),
-              const SizedBox(height: 6),
+              MojanBrandLogo(width: (MediaQuery.sizeOf(context).width * .85).clamp(220, 420), animateIn: true),
+              const SizedBox(height: 10),
               Text(
                     'العب مع الكل… في أي مكان',
                     style: TextStyle(
@@ -84,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-/// علامة الشعار: مربع من أربع قطع بألوان الألعاب.
+/// أيقونة MOJAN (حرف M مع السماعة والكروت).
 class MojanLogoMark extends StatelessWidget {
   const MojanLogoMark({super.key, required this.size, this.animateIn = false});
   final double size;
@@ -92,98 +90,36 @@ class MojanLogoMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const tiles = [
-      (AppColors.ludo, Offset(-1, -1)),
-      (AppColors.gold, Offset(1, -1)),
-      (AppColors.quiz, Offset(-1, 1)),
-      (AppColors.seeko, Offset(1, 1)),
-    ];
-    final tile = size * .46;
-    final gap = size * .08;
-    return SizedBox(
+    final img = Container(
       width: size,
       height: size,
-      child: Stack(
-        children: [
-          for (final (i, (color, dir)) in tiles.indexed)
-            Positioned(
-              left: dir.dx < 0 ? 0 : tile + gap,
-              top: dir.dy < 0 ? 0 : tile + gap,
-              child: _tile(color, tile, i, dir),
-            ),
-          Center(
-            child: Container(
-              width: size * .3,
-              height: size * .3,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.gold.withValues(alpha: .8),
-                    blurRadius: 18,
-                  ),
-                ],
-              ),
-              child: Icon(
-                Icons.play_arrow_rounded,
-                color: AppColors.bgBottom,
-                size: size * .22,
-              ),
-            ),
-          ).maybeAnimate(
-            animateIn,
-            (a) => a.scale(
-              delay: 1100.ms,
-              duration: 600.ms,
-              curve: Curves.elasticOut,
-              begin: Offset.zero,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tile(Color color, double s, int i, Offset dir) {
-    final w = Container(
-      width: s,
-      height: s,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(s * .3),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color.lerp(color, Colors.white, .25)!, color],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: .6),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(size * .24),
+        boxShadow: [BoxShadow(color: AppColors.quiz.withValues(alpha: .45), blurRadius: size * .25)],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * .24),
+        child: Image.asset('assets/images/brand_icon.webp', fit: BoxFit.cover),
       ),
     );
-    if (!animateIn) return w;
-    return w
-        .animate()
-        .fadeIn(delay: (i * 140).ms, duration: 300.ms)
-        .move(
-          begin: Offset(dir.dx * 260, dir.dy * 360),
-          end: Offset.zero,
-          delay: (i * 140).ms,
-          duration: 800.ms,
-          curve: Curves.easeOutBack,
-        )
-        .rotate(
-          begin: dir.dx * .6,
-          end: 0,
-          delay: (i * 140).ms,
-          duration: 800.ms,
-          curve: Curves.easeOutBack,
-        );
+    return img.maybeAnimate(
+      animateIn,
+      (a) => a.scale(duration: 700.ms, curve: Curves.elasticOut, begin: const Offset(.4, .4)).fadeIn(duration: 300.ms),
+    );
   }
+}
+
+/// شعار MOJAN الكامل (موجان) بخلفية شفافة.
+class MojanBrandLogo extends StatelessWidget {
+  const MojanBrandLogo({super.key, required this.width, this.animateIn = false});
+  final double width;
+  final bool animateIn;
+
+  @override
+  Widget build(BuildContext context) => Image.asset('assets/images/brand_logo.webp', width: width).maybeAnimate(
+        animateIn,
+        (a) => a.fadeIn(duration: 500.ms).scale(duration: 900.ms, curve: Curves.elasticOut, begin: const Offset(.6, .6)),
+      );
 }
 
 /// كلمة MOJAN بحروف تقفز واحداً تلو الآخر.
