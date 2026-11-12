@@ -59,6 +59,9 @@ const gameTitles = {
   'truth_dare': 'صراحة أو جرأة',
   'sky_wheel': 'عجلة السماء',
   'fruits': 'سوق الفواكه',
+  'star_league': 'دوري النجوم',
+  'lucky_slots': 'ماكينة الحظ',
+  'sultan': 'كنز السلطان',
   'treasure': 'صناديق الكنز',
   'pegs': 'هرم المسامير',
   'rocket': 'صاروخ المجرة',
@@ -66,7 +69,7 @@ const gameTitles = {
 
 /// ألعاب الرهان بالعملات لا تدخل في مجموع المباريات والنقاط العام
 /// (نقاطها = العملات المربوحة، فتطغى على باقي الألعاب).
-const coinGames = {'sky_wheel', 'fruits', 'treasure', 'pegs', 'rocket'};
+const coinGames = {'sky_wheel', 'fruits', 'treasure', 'pegs', 'rocket', 'star_league', 'lucky_slots', 'sultan'};
 
 final achievements = <Achievement>[
   Achievement(

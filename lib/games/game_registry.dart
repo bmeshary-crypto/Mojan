@@ -6,6 +6,9 @@ import '../screens/coming_soon_screen.dart';
 import '../screens/online_lobby.dart';
 import '../widgets/game_icons.dart';
 import 'coin_games/fruits.dart';
+import 'coin_games/lucky_slots.dart';
+import 'coin_games/star_league.dart';
+import 'coin_games/sultan.dart';
 import 'coin_games/pegs.dart';
 import 'coin_games/rocket.dart';
 import 'coin_games/treasure.dart';
@@ -130,6 +133,36 @@ class GameRegistry {
       modes: const [PlayMode.live],
       iconBuilder: (_) => const GameArt('assets/images/rocket.webp', fallback: EmojiArt('🚀', small: '✨💥')),
       screenBuilder: (_, _) => const RocketScreen(),
+    ),
+    GameModule(
+      id: 'star_league',
+      title: 'دوري النجوم',
+      tagline: 'راهن على النادي الفائز',
+      colors: const [Color(0xFF6BE38F), Color(0xFF1D8A45), Color(0xFF0A3D1E)],
+      players: 'الكل',
+      modes: const [PlayMode.live],
+      iconBuilder: (_) => const GameArt('assets/images/star_league.webp', fallback: EmojiArt('⚽', small: '🏆🦁')),
+      screenBuilder: (_, _) => const StarLeagueScreen(),
+    ),
+    GameModule(
+      id: 'lucky_slots',
+      title: 'ماكينة الحظ',
+      tagline: 'ثلاث بكرات و٧٧٧ أعلى ربح',
+      colors: const [Color(0xFFFF6B6B), Color(0xFFC3141F), Color(0xFF5A0710)],
+      players: '1',
+      modes: const [PlayMode.solo],
+      iconBuilder: (_) => const GameArt('assets/images/lucky_slots.webp', fallback: EmojiArt('🎰', small: '🍒7️⃣')),
+      screenBuilder: (_, _) => const LuckySlotsScreen(),
+    ),
+    GameModule(
+      id: 'sultan',
+      title: 'كنز السلطان',
+      tagline: '20 خط وجاكبوت ولفات مجانية',
+      colors: const [Color(0xFFD38CFF), Color(0xFF6A1DA8), Color(0xFF2A0845)],
+      players: '1',
+      modes: const [PlayMode.solo],
+      iconBuilder: (_) => const GameArt('assets/images/sultan.webp', fallback: EmojiArt('🪔', small: '🪙🗝️')),
+      screenBuilder: (_, _) => const SultanScreen(),
     ),
   ];
 
