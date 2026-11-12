@@ -103,6 +103,8 @@ class SystemRooms {
 
   /// كلام شخصية AI في الغرفة. [quiet] = كتابة فقط في التعليقات بدون صوت.
   Future<void> _say(VoiceRoom r, AiPersona p, String text, {bool quiet = false}) async {
+    // غرفة الترحيب: الترحيب كتابة فقط بدون صوت (طلب الإدارة)
+    if (r.isWelcome) quiet = true;
     if (r.live) {
       await LiveVoice.instance.postAi(r, p, text, quiet: quiet);
       return;

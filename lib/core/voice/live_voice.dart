@@ -552,7 +552,7 @@ class LiveVoice {
       final fresh = _seenMsgs.add(d.id) && !_firstMessages;
       if (!fresh) continue;
       // كل الأجهزة تنطق رد الـ AI بصوتها (إلا ردود التعليقات الصامتة)
-      if (m['ai'] != null && m['quiet'] != true) {
+      if (m['ai'] != null && m['quiet'] != true && !r.isWelcome) {
         final p = personaById(m['ai'] as String);
         if (p != null) {
           if (_svc.speakerOn) Speech.instance.speak(vm.text, female: p.female, voice: p.voice, egyptian: p.egyptian, naturalOnly: r.isWelcome);
