@@ -114,8 +114,8 @@ const podFallback = [
   ]),
 ];
 
-/// بث احتياطي حين تنتهي حصة الصوت الطبيعي: حلقات عربية من بودكاست «أخبار الأمم المتحدة»
-/// (محتوى الأمم المتحدة متاح لإعادة البث). المدة بالثواني من ملف البودكاست.
+/// بث احتياطي حين تنتهي حصة الصوت الطبيعي: بودكاست «أنا وبابايا» (خالد حبيب وبنته سلمى، باللهجة المصرية)
+/// يُشغّل من رابط البودكاست الرسمي كما هو (مثل تطبيقات البودكاست) مع ذكر اسمه. المدة بالثواني من ملف البودكاست.
 class RadioItem {
   const RadioItem(this.title, this.url, this.seconds);
   final String title;
@@ -123,17 +123,12 @@ class RadioItem {
   final int seconds;
 }
 
-const radioSource = 'بودكاست أخبار الأمم المتحدة';
+const radioSource = 'بودكاست «أنا وبابايا» مع خالد وسلمى حبيب';
 
 const radioItems = [
-  RadioItem('صهباء الشوا تروي رحلتها من الأردن إلى الفضاء',
-      'https://news.un.org/feed/listen/1145109/ar/sites/default/files/audio/2026/07/semi-final.mp3', 1000),
-  RadioItem('الفن يصنع الأمل والفضول يفتح الأبواب: طبيبة سعودية ضمن القادة الشباب',
-      'https://news.un.org/feed/listen/1145040/ar/sites/default/files/audio/2026/07/sahira-interview-sdg-leader.mp3', 525),
-  RadioItem('مريم سوليكا: لا تنتظروا مقعداً على الطاولة… اصنعوا طاولتكم',
-      'https://news.un.org/feed/listen/1144989/ar/sites/default/files/audio/2026/07/26y06m30-ar-abdelsalam-interview.mp3', 874),
-  RadioItem('المعمري: نبني «المؤتلف الإنساني» بين الشعوب والثقافات',
-      'https://news.un.org/feed/listen/1144875/ar/sites/default/files/audio/2026/06/alm-mry-jahz-alswt.mp3', 719),
-  RadioItem('من تونس إلى بانغي: رحلة ضابط اختار خدمة السلام',
-      'https://news.un.org/feed/listen/1144739/ar/sites/default/files/audio/2026/05/major-mouafek-elargui-final_0.mp3', 820),
+  RadioItem('الاعتذار', 'https://media.podeo.co/episodes/NjcwMjQ/audio.mp3', 1646),
+  RadioItem('البنات في عالم البزنس', 'https://media.podeo.co/episodes/NjYxMTg/audio.mp3', 2220),
+  RadioItem('تربية الولاد والبنات', 'https://media.podeo.co/episodes/NjUyMDU/audio.mp3', 1568),
+  RadioItem('العنصرية الطبقية', 'https://media.podeo.co/episodes/NTkwOTM/audio.mp3', 1242),
+  RadioItem('الوصول رغم التحديات', 'https://media.podeo.co/episodes/NTg1NTU/audio.mp3', 1728),
 ];

@@ -90,8 +90,8 @@ void main() {
   test('backup Arabic podcast is at the same spot for everyone', () {
     final base = SystemRooms.dayStart(SystemRooms.dayOf(DateTime.utc(2026, 11, 12).millisecondsSinceEpoch));
     expect(SystemRooms.radioAt(base), (index: 0, offset: 0));
-    expect(SystemRooms.radioAt(base + 1005 * 1000), (index: 1, offset: 5));
-    expect(radioItems.every((r) => r.url.startsWith('https://news.un.org/')), isTrue);
+    expect(SystemRooms.radioAt(base + 1651 * 1000), (index: 1, offset: 5));
+    expect(radioItems.every((r) => r.url.startsWith('https://media.podeo.co/')), isTrue);
   });
 
   test('generated episodes are parsed safely', () {
