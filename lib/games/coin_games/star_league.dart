@@ -56,22 +56,55 @@ int pickStarClub(Random r) {
   return c.length - 1;
 }
 
-/// جولات موحدة: 15 ثانية رهان ثم الدوران والنتيجة.
-const starRounds = FixedRounds(25000);
-const starBetMs = 15000;
-int starWinnerFor(int round) => pickStarClub(roundRng('star_league', round, 'win'));
+/// اختيار الفائز بنفس فكرة اللعبة المرجعية: الفرصة عكس المضاعف، لكن الجولة ما تخسّر الصندوق،
+/// فأي نادي لو فاز يدفع أكثر من 95% من مجموع الرهانات يطلع من السحب (لو كل النوادي كده يفوز الأقل دفعاً).
+/// [pool] = مجموع الرهانات على كل نادي.
+int pickStarSafe(Random r, List<int> pool) {
+  final total = pool.fold(0, (a, b) => a + b);
+  if (total == 0) return pickStarClub(r);
+  final ok = [for (var i = 0; i < starClubs.length; i++) if (pool[i] * starClubs[i].mult <= total * .95) i];
+  if (ok.isEmpty) {
+    var best = 0;
+    for (var i = 1; i < starClubs.length; i++) {
+      if (pool[i] * starClubs[i].mult < pool[best] * starClubs[best].mult) best = i;
+    }
+    return best;
+  }
+  final w = [for (final i in ok) 1 / starClubs[i].mult];
+  var x = r.nextDouble() * w.fold(0.0, (a, b) => a + b);
+  for (var k = 0; k < ok.length; k++) {
+    x -= w[k];
+    if (x < 0) return ok[k];
+  }
+  return ok.last;
+}
+
+/// جولات موحدة زي المرجع: 30 ثانية رهان، ثانيتين "توقف الرهان/استعد"، الدوران، ثم النتيجة. الجولة 45 ثانية.
+const starRounds = FixedRounds(45000);
+const starBetMs = 30000;
+const starReadyMs = 2200;
+List<int> starCrowdFull(int round) => [for (var i = 0; i < starClubs.length; i++) starCrowd(round, i, 1)];
+int starWinnerFor(int round) => pickStarSafe(roundRng('star_league', round, 'win'), starCrowdFull(round));
 
 /// الحلقة الخارجية: 20 شعار حول الدائرة (من فوق مع عقارب الساعة) وكل نادي له خانتين.
 const starRing = [6, 1, 9, 2, 5, 0, 3, 7, 4, 8, 1, 6, 0, 9, 3, 5, 8, 2, 7, 4];
 
 const starChips = [100, 200, 500, 1000, 5000];
 
+const _crowdNames = ['أبو فهد', 'نورة', 'ملك الحظ', 'سلطان', 'ريم', 'أبو خالد', 'جود', 'الذيب', 'لمى', 'فارس', 'دانة', 'أبو نايف', 'هيا', 'الصقر', 'مشاعل', 'تركي'];
+
 /// رهانات باقي اللاعبين على كل نادي في الجولة (نفس الأرقام على كل الأجهزة).
 /// النوادي ذات المضاعف الصغير يراهن عليها الناس أكثر. [f] = كم مضى من وقت الرهان (0..1).
 int starCrowd(int round, int club, double f) {
   final r = roundRng('star_league', round, 'crowd$club');
   final cap = max(2, (110 / sqrt(starClubs[club].mult)).round());
-  final full = 100 * (1 + r.nextInt(cap));
+  var full = 200 * (1 + r.nextInt(cap));
+  // أحياناً لاعب كبير يحط مبلغ ضخم على نادي واحد (زي اللي بيحصل في المرجع)
+  final wr = roundRng('star_league', round, 'whale');
+  final whale = wr.nextDouble() < .35;
+  final wc = wr.nextInt(starClubs.length);
+  final wa = 100 * (60 + wr.nextInt(340));
+  if (whale && wc == club) full += wa;
   // كل نادي يتعبى بسرعة مختلفة شوي
   final speed = .6 + r.nextDouble() * .8;
   final g = pow(f.clamp(0.0, 1.0), speed).toDouble();
@@ -81,7 +114,7 @@ int starCrowd(int round, int club, double f) {
 enum StarPhase { betting, spinning, result }
 
 class StarLeagueScreen extends StatefulWidget {
-  const StarLeagueScreen({super.key, this.betSeconds = 15, this.random, this.speed = 1.0});
+  const StarLeagueScreen({super.key, this.betSeconds = 30, this.random, this.speed = 1.0});
   final int betSeconds;
   final Random? random;
   final double speed;
@@ -106,6 +139,18 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
   int _lastPay = 0;
   final List<int> _history = [];
   bool _disposed = false;
+
+  /// شريط "ابدأ الرهان / توقف الرهان / استعد" فوق الدائرة.
+  String? _banner;
+  int _bannerSeq = 0;
+
+  void _showBanner(String text, int ms) {
+    final seq = ++_bannerSeq;
+    setState(() => _banner = text);
+    Future.delayed(Duration(milliseconds: (ms * widget.speed).round()), () {
+      if (!_disposed && _bannerSeq == seq) setState(() => _banner = null);
+    });
+  }
 
   int get _total => _bets.fold(0, (a, b) => a + b);
 
@@ -162,6 +207,10 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
       _winner = null;
       _lastPay = 0;
     });
+    if (!_synced || starRounds.elapsedMs < 1500) {
+      _showBanner('ابدأ الرهان', 1300);
+      Sfx.instance.whistle();
+    }
     _clock?.cancel();
     if (_synced) {
       int leftNow() => ((starRounds.startOf(_round) + starBetMs - SharedClock.nowMs()) / 1000).ceil();
@@ -220,10 +269,20 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
   }
 
   Future<void> _spin() async {
-    final win = _synced ? starWinnerFor(_round) : pickStarClub(_rng);
+    final win = _synced
+        ? starWinnerFor(_round)
+        : pickStarSafe(_rng, [for (var i = 0; i < starClubs.length; i++) starCrowd(_crowdRound, i, 1) + _bets[i]]);
     final land = _landingCell(win, _synced ? _round : _rng.nextInt(2));
     setState(() => phase = StarPhase.spinning);
+    // توقف الرهان ثم استعد، وبعدها تبدأ الأضواء تلف
+    _showBanner('توقف الرهان', 1100);
     Sfx.instance.whistle();
+    await Future.delayed(Duration(milliseconds: (1100 * widget.speed).round()));
+    if (_disposed) return;
+    _showBanner('استعد', 1000);
+    await Future.delayed(Duration(milliseconds: (1100 * widget.speed).round()));
+    if (_disposed) return;
+    Sfx.instance.spinStart();
     final n = starRing.length;
     final steps = 2 * n + ((land - _lit) % n + n) % n;
     for (var s = 1; s <= steps; s++) {
@@ -274,6 +333,7 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
     'اختر قيمة الرقاقة من تحت واضغط على النادي اللي تتوقع يفوز. تقدر تراهن على أكثر من نادي وأكثر من مرة. '
         'لما يخلص العداد تدور الأضواء على شعارات الأندية حول الملعب، والنادي اللي يقف عنده الضوء يفوز ويدفع رهانك مضروب في رقمه.\n\n'
         'كل ما كان المضاعف أعلى كان الفوز أندر: النسور ×2 تقريباً مرة كل جولتين، والثيران ×100 تقريباً مرة كل 100 جولة.\n\n'
+        'كل جولة 30 ثانية رهان، وبعدها "توقف الرهان" ثم الدوران. والجولة ما تطلّع نادي يدفع أكثر من مجموع رهانات الجولة.\n\n'
         'الجولات مباشرة ونفسها عند كل اللاعبين. الأندية وشعاراتها خيالية من تصميم موجان.',
   );
 
@@ -414,7 +474,10 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
           () {
             final a = -pi / 2 + i * 2 * pi / starRing.length;
             final x = cx + ringR * cos(a), y = cx + ringR * sin(a);
+            final n = starRing.length;
+            final back = ((_lit - i) % n + n) % n; // كام خانة ورا الضوء
             final lit = _lit == i && phase != StarPhase.betting;
+            final trail = phase == StarPhase.spinning && !lit && back <= 2 && back > 0;
             return Positioned(
               left: x - crest / 2 - 3,
               top: y - crest / 2 - 3,
@@ -426,8 +489,16 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: lit ? Border.all(color: const Color(0xFFFFF59A), width: 2.5) : null,
-                  boxShadow: lit ? const [BoxShadow(color: Color(0xFFFFE04D), blurRadius: 18, spreadRadius: 4)] : null,
+                  border: lit
+                      ? Border.all(color: const Color(0xFFFFF59A), width: 2.5)
+                      : trail
+                          ? Border.all(color: const Color(0xFFFFF59A).withValues(alpha: back == 1 ? .7 : .4), width: 2)
+                          : null,
+                  boxShadow: lit
+                      ? const [BoxShadow(color: Color(0xFFFFE04D), blurRadius: 18, spreadRadius: 4)]
+                      : trail
+                          ? [BoxShadow(color: const Color(0xFFFFE04D).withValues(alpha: back == 1 ? .55 : .3), blurRadius: 12, spreadRadius: 2)]
+                          : null,
                 ),
                 child: ClubCrest(club: starClubs[starRing[i]], size: crest),
               ),
@@ -443,23 +514,50 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
         ),
         if (phase == StarPhase.betting)
           Positioned(right: s * .02, top: s * .02, child: _alarm()),
-        if (phase == StarPhase.betting && _left >= widget.betSeconds - 1 && widget.betSeconds > 2)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Center(
-                child: Text(
-                  'استعد!',
-                  style: AppTheme.display.copyWith(
-                    fontSize: s * .12,
-                    color: const Color(0xFFFFD84D),
-                    shadows: const [Shadow(color: Color(0xFFB3261E), offset: Offset(3, 3)), Shadow(color: Colors.black54, blurRadius: 10)],
-                  ),
-                ).animate().scale(begin: const Offset(.3, .3), duration: 400.ms, curve: Curves.elasticOut),
-              ),
-            ),
-          ),
+        if (_banner != null)
+          Positioned.fill(child: IgnorePointer(child: Center(child: _bannerWidget(_banner!, s)))),
       ],
     );
+  }
+
+  Widget _bannerWidget(String t, double s) {
+    final ready = t == 'استعد';
+    final start = t == 'ابدأ الرهان';
+    final text = Text(
+      t,
+      style: AppTheme.display.copyWith(
+        fontSize: s * (ready ? .12 : .085),
+        color: ready ? const Color(0xFFFFD84D) : Colors.white,
+        shadows: const [Shadow(color: Colors.black54, offset: Offset(2, 3), blurRadius: 6)],
+      ),
+    );
+    if (ready) {
+      return text.animate(key: ValueKey(t)).scale(begin: const Offset(.3, .3), duration: 450.ms, curve: Curves.elasticOut);
+    }
+    return Container(
+      key: ValueKey('star-banner-$t'),
+      width: s,
+      padding: EdgeInsets.symmetric(vertical: s * .03),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: start
+              ? const [Color(0x00C62828), Color(0xEEE53935), Color(0xEEE53935), Color(0x00C62828)]
+              : const [Color(0x003949AB), Color(0xEE3949AB), Color(0xEE5E35B1), Color(0x005E35B1)],
+          stops: const [0, .2, .8, 1],
+        ),
+        border: Border.symmetric(horizontal: BorderSide(color: Colors.white.withValues(alpha: .7), width: 2)),
+      ),
+      child: Align(
+        heightFactor: 1,
+        child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(start ? '⚽ ' : '✋ ', style: TextStyle(fontSize: s * .07)),
+          text,
+        ]),
+      ),
+      ),
+    ).animate(key: ValueKey(t)).slideX(begin: start ? -1 : 1, duration: 350.ms, curve: Curves.easeOutBack).fadeIn(duration: 200.ms);
   }
 
   int get _bulbPhase => phase == StarPhase.spinning ? _lit : (_left % 2);
@@ -535,6 +633,8 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
                   ),
                 ),
               ),
+              // رقائق باقي اللاعبين تنزل على الخانة كل ما زادت رهاناتهم
+              ..._crowdChips(i, w, rowH),
               if (_cellTotal(i) > 0)
                 Positioned(
                   bottom: 1,
@@ -569,6 +669,33 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
         ),
       ),
     ).animate(target: won ? 1 : 0).shimmer(duration: 900.ms, color: const Color(0xFFFFF59A));
+  }
+
+  List<Widget> _crowdChips(int i, double w, double rowH) {
+    final amount = starCrowd(_crowdRound, i, _betFraction);
+    if (amount == 0) return const [];
+    final n = min(4, 1 + amount ~/ 1500);
+    final r = roundRng('star_league', _crowdRound, 'chips$i');
+    final size = rowH * .34;
+    return [
+      for (var k = 0; k < n; k++)
+        () {
+          final x = (.25 + r.nextDouble() * .5) * (w - size);
+          final y = (.1 + r.nextDouble() * .5) * (rowH - size);
+          final v = starChips[r.nextInt(starChips.length)];
+          return Positioned(
+            key: ValueKey('crowd-chip-$_crowdRound-$i-$k'),
+            left: x,
+            top: y,
+            child: IgnorePointer(
+              child: Opacity(opacity: .85, child: _chipIcon(v, size))
+                  .animate()
+                  .moveY(begin: -rowH * 1.2, end: 0, duration: 380.ms, curve: Curves.easeOutBack)
+                  .fadeIn(duration: 200.ms),
+            ),
+          );
+        }(),
+    ];
   }
 
   /// أكبر رقاقة تناسب المبلغ (للشكل فقط).
@@ -745,6 +872,65 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
     ),
   );
 
+  /// أبطال الجولة: أكثر 3 كسبوا (أنت لو كسبت + لاعبين من رهانات الجولة).
+  Widget _victors() {
+    final w = _winner!;
+    final pot = starCrowd(_synced ? _round : _history.length, w, 1) * starClubs[w].mult;
+    final r = roundRng('star_league', _synced ? _round : _history.length, 'victors');
+    final list = <(String, int, int?)>[];
+    if (pot > 0) {
+      final shares = [.55 + r.nextDouble() * .2, .15 + r.nextDouble() * .1, .05 + r.nextDouble() * .05];
+      final used = <int>{};
+      for (final sh in shares) {
+        var k = r.nextInt(_crowdNames.length);
+        while (used.contains(k)) {
+          k = (k + 1) % _crowdNames.length;
+        }
+        used.add(k);
+        final amt = (pot * sh / 100).round() * 100;
+        if (amt > 0) list.add((_crowdNames[k], amt, k % 18));
+      }
+    }
+    if (_lastPay > 0) list.add(('أنت', _lastPay, Account.instance.profile?.avatar));
+    list.sort((a, b) => b.$2.compareTo(a.$2));
+    final top = list.take(3).toList();
+    return Container(
+      key: const ValueKey('star-victors'),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      decoration: BoxDecoration(color: Colors.black.withValues(alpha: .22), borderRadius: BorderRadius.circular(16)),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('— أبطال الجولة —', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white70)),
+        const SizedBox(height: 6),
+        if (top.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(8),
+            child: Text('محدش راهن على الفايز الجولة دي', style: TextStyle(color: Colors.white60, fontWeight: FontWeight.w700)),
+          )
+        else
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            for (var k = 0; k < top.length; k++)
+              Column(mainAxisSize: MainAxisSize.min, children: [
+                Stack(clipBehavior: Clip.none, children: [
+                  PlayerAvatar(index: top[k].$3 ?? 0, size: 42),
+                  Positioned(
+                    left: -6,
+                    top: -8,
+                    child: Text(k == 0 ? '👑' : (k == 1 ? '🥈' : '🥉'), style: const TextStyle(fontSize: 16)),
+                  ),
+                ]),
+                const SizedBox(height: 2),
+                Text(top[k].$1, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  const CoinIcon(size: 14),
+                  const SizedBox(width: 3),
+                  Text(fmtCoins(top[k].$2), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFFFFE07A))),
+                ]),
+              ]).animate(delay: (150 * k).ms).fadeIn().slideY(begin: .3),
+          ]),
+      ]),
+    );
+  }
+
   Widget _resultPanel() {
     final c = starClubs[_winner!];
     final mine = _lastBets[_winner!] > 0 && _lastPay > 0;
@@ -785,6 +971,7 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
             Text(ltr('X${c.mult}'), style: AppTheme.display.copyWith(fontSize: 44, color: const Color(0xFFFFE04D))),
             Text('فاز ${c.name}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             const SizedBox(height: 4),
+            const SizedBox(height: 2),
             if (mine)
               Text('ربحت +${fmtCoins(_lastPay)} 🎉', style: AppTheme.display.copyWith(fontSize: 26, color: const Color(0xFFFFE07A)))
                   .animate()
@@ -794,6 +981,8 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
                 _lastBets.any((b) => b > 0) && _lastPay == 0 && _history.isNotEmpty ? 'حظ أوفر الجولة الجاية' : 'ما راهنت في هذه الجولة',
                 style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
               ),
+            const SizedBox(height: 10),
+            _victors(),
           ],
         ),
       ).animate().slideY(begin: 1, duration: 350.ms, curve: Curves.easeOutCubic),

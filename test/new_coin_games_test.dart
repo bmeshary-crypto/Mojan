@@ -142,4 +142,20 @@ void main() {
     }
     expect(low, greaterThan(high * 3));
   });
+
+  test('star league winner never makes the round lose money when a safe club exists', () {
+    final pool = [1000, 500, 300, 200, 100, 100, 0, 100, 40000, 300];
+    for (var k = 0; k < 400; k++) {
+      final w = pickStarSafe(Random(k), pool);
+      expect(w, isNot(8), reason: 'x30 with 40K would pay 1.2M');
+      final total = pool.fold(0, (a, b) => a + b);
+      expect(pool[w] * starClubs[w].mult, lessThanOrEqualTo(total));
+    }
+    // لا رهانات: الفرصة عكس المضاعف
+    var twos = 0;
+    for (var k = 0; k < 2000; k++) {
+      if (pickStarSafe(Random(k), List.filled(10, 0)) == 0) twos++;
+    }
+    expect(twos / 2000, closeTo(starChances()[0], .04));
+  });
 }
