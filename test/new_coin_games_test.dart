@@ -128,4 +128,18 @@ void main() {
     expect(find.byKey(const ValueKey('admin-upcoming')), findsOneWidget);
     await finish(tester);
   });
+
+  test('star league crowd bets: same on every device, grow during betting, more on low multipliers', () {
+    expect(starCrowd(77, 0, 1), starCrowd(77, 0, 1));
+    expect(starCrowd(77, 0, 0), 0);
+    for (var c = 0; c < starClubs.length; c++) {
+      expect(starCrowd(77, c, .5), lessThanOrEqualTo(starCrowd(77, c, 1)));
+    }
+    var low = 0, high = 0;
+    for (var r = 0; r < 300; r++) {
+      low += starCrowd(r, 0, 1);
+      high += starCrowd(r, 6, 1);
+    }
+    expect(low, greaterThan(high * 3));
+  });
 }

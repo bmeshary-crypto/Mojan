@@ -66,6 +66,18 @@ const starRing = [6, 1, 9, 2, 5, 0, 3, 7, 4, 8, 1, 6, 0, 9, 3, 5, 8, 2, 7, 4];
 
 const starChips = [100, 200, 500, 1000, 5000];
 
+/// رهانات باقي اللاعبين على كل نادي في الجولة (نفس الأرقام على كل الأجهزة).
+/// النوادي ذات المضاعف الصغير يراهن عليها الناس أكثر. [f] = كم مضى من وقت الرهان (0..1).
+int starCrowd(int round, int club, double f) {
+  final r = roundRng('star_league', round, 'crowd$club');
+  final cap = max(2, (110 / sqrt(starClubs[club].mult)).round());
+  final full = 100 * (1 + r.nextInt(cap));
+  // كل نادي يتعبى بسرعة مختلفة شوي
+  final speed = .6 + r.nextDouble() * .8;
+  final g = pow(f.clamp(0.0, 1.0), speed).toDouble();
+  return (full * g / 100).round() * 100;
+}
+
 enum StarPhase { betting, spinning, result }
 
 class StarLeagueScreen extends StatefulWidget {
@@ -96,6 +108,11 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
   bool _disposed = false;
 
   int get _total => _bets.fold(0, (a, b) => a + b);
+
+  int get _crowdRound => _synced ? _round : _history.length + 1;
+  double get _betFraction => phase == StarPhase.betting ? 1 - _left / max(1, _synced ? starBetMs ~/ 1000 : widget.betSeconds) : 1;
+  int _cellTotal(int i) => starCrowd(_crowdRound, i, _betFraction) + _bets[i];
+  int get _allTotal => [for (var i = 0; i < starClubs.length; i++) _cellTotal(i)].fold(0, (a, b) => a + b);
 
   @override
   void initState() {
@@ -518,15 +535,26 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
                   ),
                 ),
               ),
-              if (bet > 0)
+              if (_cellTotal(i) > 0)
                 Positioned(
                   bottom: 1,
                   left: left ? 2 : null,
                   right: left ? null : 2,
                   child: Text(
+                    fmtCoins(_cellTotal(i)),
+                    key: ValueKey('star-total-$i'),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 3)]),
+                  ),
+                ),
+              if (bet > 0)
+                Positioned(
+                  top: rowH * .38 + 2,
+                  left: left ? null : crest * .45,
+                  right: left ? crest * .45 : null,
+                  child: Text(
                     fmtCoins(bet),
                     key: ValueKey('star-bet-$i'),
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 3)]),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Color(0xFFFFE07A), shadows: [Shadow(color: Colors.black, blurRadius: 3)]),
                   ),
                 ),
               if (bet > 0)
@@ -572,6 +600,7 @@ class _StarLeagueScreenState extends State<StarLeagueScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(ltr('NO.${_synced ? _round : _history.length + 1}'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+              Text('مجموع الرهانات: ${fmtCoins(_allTotal)}', key: const ValueKey('star-all-total'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
               Text('رهانك: ${fmtCoins(_total)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFFFFE07A))),
             ],
           ),
