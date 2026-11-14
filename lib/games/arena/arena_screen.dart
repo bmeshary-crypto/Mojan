@@ -122,7 +122,7 @@ class _ArenaScreenState extends State<ArenaScreen> {
   }
 
   Widget _banner() => Container(
-        height: 150,
+        height: 230,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
           gradient: const LinearGradient(colors: arenaColors, begin: Alignment.topRight, end: Alignment.bottomLeft),
@@ -135,8 +135,22 @@ class _ArenaScreenState extends State<ArenaScreen> {
                 borderRadius: BorderRadius.circular(24),
                 child: Opacity(
                   opacity: .9,
-                  child: Image.asset('assets/images/arena.webp',
-                      fit: BoxFit.cover, errorBuilder: (_, _, _) => const SizedBox()),
+                  child: Image.asset('assets/images/ar_cover.webp',
+                      fit: BoxFit.cover,
+                      alignment: const Alignment(0, -.35),
+                      errorBuilder: (_, _, _) => const SizedBox()),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.transparent, Color(0xDD1A1033)],
+                  ),
                 ),
               ),
             ),
@@ -241,6 +255,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     super.initState();
     _newGame();
     _ticker = createTicker(_tick)..start();
+    ArenaSprites.instance.load();
   }
 
   void _newGame() {
@@ -751,6 +766,9 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
             ? const Center(child: Text('فارغ', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.w700)))
             : Row(
                 children: [
+                  Image.asset('assets/images/ar_gun_${gun.kind.index}.webp',
+                      width: 40, height: 26, fit: BoxFit.contain, errorBuilder: (_, _, _) => const SizedBox()),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(gun.kind.label,
                         maxLines: 1,
@@ -758,6 +776,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
                         style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: tierColor(gun.kind))),
                   ),
                   Text('${gun.loaded}/${me.ammo[gun.kind.ammo]}',
+                      textDirection: TextDirection.ltr,
                       style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
                 ],
               ),

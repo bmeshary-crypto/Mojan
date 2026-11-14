@@ -63,7 +63,7 @@ class Gun {
 
 // ───────────────────────── الخريطة ─────────────────────────
 
-enum ObstacleKind { tree, rock, wall, bush }
+enum ObstacleKind { tree, rock, wall, bush, crate, barrel }
 
 class Obstacle {
   Obstacle.circle(this.kind, this.c, this.r) : rect = null;
@@ -319,6 +319,24 @@ class ArenaGame {
       final c = _randPoint(60);
       final r = 22 + rng.nextDouble() * 26;
       if (freeAt(c, r)) obstacles.add(Obstacle.circle(ObstacleKind.rock, c, r));
+    }
+    // صناديق وبراميل قرب المباني وفي الطرقات
+    for (final b in [...buildings]) {
+      for (var k = 0; k < 2; k++) {
+        final side = rng.nextInt(4);
+        final f = b.floor;
+        final c = switch (side) {
+          0 => Offset(f.left + rng.nextDouble() * f.width, f.top - 40),
+          1 => Offset(f.right + 40, f.top + rng.nextDouble() * f.height),
+          2 => Offset(f.left + rng.nextDouble() * f.width, f.bottom + 40),
+          _ => Offset(f.left - 40, f.top + rng.nextDouble() * f.height),
+        };
+        if (freeAt(c, 20)) obstacles.add(Obstacle.circle(rng.nextInt(3) == 0 ? ObstacleKind.barrel : ObstacleKind.crate, c, 20));
+      }
+    }
+    for (var i = 0; i < 30; i++) {
+      final c = _randPoint(80);
+      if (freeAt(c, 20)) obstacles.add(Obstacle.circle(rng.nextBool() ? ObstacleKind.barrel : ObstacleKind.crate, c, 20));
     }
     for (var i = 0; i < 60; i++) {
       final c = _randPoint(60);

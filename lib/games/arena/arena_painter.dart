@@ -1,6 +1,9 @@
 import 'dart:math';
 
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'arena_engine.dart';
 
@@ -61,8 +64,72 @@ class ArenaDecor {
   final roads = <(Offset, Offset)>[];
 }
 
+/// رسومات Gemini للعبة (تُحمّل مرة واحدة). إذا لم تتوفر يُرسم بالكود.
+class ArenaSprites {
+  ArenaSprites._();
+  static final instance = ArenaSprites._();
+  final images = <String, ui.Image>{};
+  Future<void>? _loading;
+
+  Future<void> load() => _loading ??= _load();
+
+  Future<void> _load() async {
+    final names = [
+      for (var i = 0; i < 8; i++) 'ar_fighter_$i',
+      for (var i = 0; i < 5; i++) 'ar_gun_$i',
+      for (final n in ['tree', 'palm', 'bush', 'rock', 'crate', 'barrel', 'tex_grass', 'tex_sand', 'tex_wood']) 'ar_$n',
+      for (final n in ['ammo_light', 'ammo_heavy', 'ammo_shells', 'ammo_long', 'bandage', 'medkit', 'armor', 'armor_gold']) 'ar_$n',
+    ];
+    await Future.wait(names.map((n) async {
+      try {
+        final data = await rootBundle.load('assets/images/$n.webp');
+        final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+        images[n] = (await codec.getNextFrame()).image;
+      } catch (_) {}
+    }));
+  }
+
+  ui.Image? operator [](String n) => images[n];
+}
+
+/// يرسم صورة [img] داخل [dst] مع الحفاظ على الشكل.
+void drawSprite(Canvas canvas, ui.Image img, Rect dst, {Paint? paint}) {
+  canvas.drawImageRect(img, Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()), dst,
+      paint ?? (Paint()..filterQuality = FilterQuality.medium));
+}
+
+/// مقاس السلاح في يد المقاتل (بوحدات العالم).
+double gunLen(WeaponKind k) => switch (k) {
+      WeaponKind.pistol => 22,
+      WeaponKind.smg => 32,
+      WeaponKind.rifle => 42,
+      WeaponKind.shotgun => 40,
+      WeaponKind.sniper => 52,
+    };
+
 class ArenaPainter extends CustomPainter {
   ArenaPainter(this.g, this.decor, {required this.scale, required Listenable repaint}) : super(repaint: repaint);
+  static final sprites = ArenaSprites.instance;
+  static final _texPaints = <String, Paint>{};
+
+  /// طلاء بنقش متكرر من صورة أرضية.
+  static Paint? _tex(String name, double tile) {
+    final img = sprites[name];
+    if (img == null) return null;
+    return _texPaints.putIfAbsent(name, () {
+      final k = tile / img.width;
+      return Paint()
+        ..filterQuality = FilterQuality.medium
+        ..shader = ImageShader(img, TileMode.repeated, TileMode.repeated, Matrix4.diagonal3Values(k, k, 1).storage);
+    });
+  }
+
+  static ui.Image? _prop(ObstacleKind k) => switch (k) {
+        ObstacleKind.rock => sprites['ar_rock'],
+        ObstacleKind.crate => sprites['ar_crate'],
+        ObstacleKind.barrel => sprites['ar_barrel'],
+        _ => null,
+      };
   final ArenaGame g;
   final ArenaDecor decor;
   final double scale;
@@ -102,11 +169,12 @@ class ArenaPainter extends CustomPainter {
     canvas.drawRect(view.inflate(200), Paint()..color = _sea);
     const s = ArenaGame.size;
     canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-60, -60, s + 120, s + 120), const Radius.circular(180)),
-        Paint()..color = _sand);
+        _tex('ar_tex_sand', 220) ?? (Paint()..color = _sand));
+    final grass = _tex('ar_tex_grass', 260);
     canvas.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, s, s), const Radius.circular(140)),
-        Paint()..color = _ground);
+        grass ?? (Paint()..color = _ground));
     for (final (c, r, col) in decor.patches) {
-      if (vis(c, r)) canvas.drawCircle(c, r, Paint()..color = col.withValues(alpha: .55));
+      if (vis(c, r)) canvas.drawCircle(c, r, Paint()..color = col.withValues(alpha: grass == null ? .55 : .22));
     }
     final roadPaint = Paint()
       ..color = _road
@@ -120,7 +188,7 @@ class ArenaPainter extends CustomPainter {
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
     for (final t in decor.tufts) {
-      if (!vis(t, 10)) continue;
+      if (grass != null || !vis(t, 10)) continue;
       canvas.drawLine(t, t + const Offset(-4, -9), tuft);
       canvas.drawLine(t, t + const Offset(4, -8), tuft);
     }
@@ -129,7 +197,9 @@ class ArenaPainter extends CustomPainter {
     for (final b in g.buildings) {
       if (!view.overlaps(b.floor)) continue;
       canvas.drawRect(b.floor.shift(const Offset(6, 8)), Paint()..color = Colors.black.withValues(alpha: .18));
-      canvas.drawRect(b.floor, Paint()..color = const Color(0xFFC4A57A));
+      final wood = _tex('ar_tex_wood', 160);
+      canvas.drawRect(b.floor, wood ?? (Paint()..color = const Color(0xFFC4A57A)));
+      if (wood != null) continue;
       final tile = Paint()
         ..color = const Color(0xFFB0916A)
         ..strokeWidth = 1.5;
@@ -154,6 +224,9 @@ class ArenaPainter extends CustomPainter {
         canvas.drawRect(o.rect!.shift(const Offset(3, 4)), Paint()..color = Colors.black26);
         canvas.drawRect(o.rect!, Paint()..color = const Color(0xFF5B4636));
         canvas.drawRect(o.rect!.deflate(3), Paint()..color = const Color(0xFF7A604B));
+      } else if (_prop(o.kind) case final img?) {
+        canvas.drawCircle(o.c + const Offset(5, 7), o.r, Paint()..color = Colors.black26);
+        drawSprite(canvas, img, Rect.fromCircle(center: o.c, radius: o.r * 1.15));
       } else {
         canvas.drawCircle(o.c + const Offset(4, 6), o.r, Paint()..color = Colors.black26);
         canvas.drawCircle(o.c, o.r, Paint()..color = const Color(0xFF8C8F99));
@@ -186,6 +259,14 @@ class ArenaPainter extends CustomPainter {
       if (!vis(b.c, b.r)) continue;
       final inside = (b.c - me.pos).distance < b.r;
       final a = inside ? .45 : .95;
+      final bi = sprites['ar_bush'];
+      if (bi != null) {
+        drawSprite(canvas, bi, Rect.fromCircle(center: b.c, radius: b.r * 1.1),
+            paint: Paint()
+              ..filterQuality = FilterQuality.medium
+              ..color = Colors.white.withValues(alpha: a));
+        continue;
+      }
       canvas.drawCircle(b.c, b.r, Paint()..color = const Color(0xFF4E8A36).withValues(alpha: a));
       for (var k = 0; k < 5; k++) {
         final ang = k * 1.26 + b.c.dx;
@@ -198,6 +279,14 @@ class ArenaPainter extends CustomPainter {
       final near = (o.c - me.pos).distance < o.r * 1.6;
       final a = near ? .5 : 1.0;
       canvas.drawCircle(o.c + const Offset(8, 10), o.r * 1.5, Paint()..color = Colors.black.withValues(alpha: .18 * a));
+      final ti = sprites[(o.c.dx + o.c.dy).round() % 3 == 0 ? 'ar_palm' : 'ar_tree'];
+      if (ti != null) {
+        drawSprite(canvas, ti, Rect.fromCircle(center: o.c, radius: o.r * 1.65),
+            paint: Paint()
+              ..filterQuality = FilterQuality.medium
+              ..color = Colors.white.withValues(alpha: a));
+        continue;
+      }
       canvas.drawCircle(o.c, o.r * 1.5, Paint()..color = const Color(0xFF2F6B2A).withValues(alpha: a));
       canvas.drawCircle(o.c + Offset(-o.r * .3, -o.r * .35), o.r * 1.0, Paint()..color = const Color(0xFF3F8A37).withValues(alpha: a));
       canvas.drawCircle(o.c + Offset(-o.r * .45, -o.r * .5), o.r * .45, Paint()..color = const Color(0xFF58A84B).withValues(alpha: a));
@@ -269,9 +358,29 @@ class ArenaPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2
           ..color = glow.withValues(alpha: .8));
+    final itemImg = switch (p.kind) {
+      PickupKind.ammo => sprites['ar_ammo_${p.ammo!.name}'],
+      PickupKind.bandage => sprites['ar_bandage'],
+      PickupKind.medkit => sprites['ar_medkit'],
+      PickupKind.armor => sprites[p.amount >= 100 ? 'ar_armor_gold' : 'ar_armor'] ?? sprites['ar_armor'],
+      PickupKind.weapon => null,
+    };
+    if (itemImg != null) {
+      const w = 30.0;
+      final h = w * itemImg.height / itemImg.width;
+      drawSprite(canvas, itemImg, Rect.fromCenter(center: c, width: w, height: h));
+      return;
+    }
     switch (p.kind) {
       case PickupKind.weapon:
-        _gunShape(canvas, c - const Offset(14, 0), 0, p.weapon!, 1.0);
+        final img = sprites['ar_gun_${p.weapon!.index}'];
+        if (img != null) {
+          const w = 38.0;
+          final h = w * img.height / img.width;
+          drawSprite(canvas, img, Rect.fromCenter(center: c, width: w, height: h));
+        } else {
+          _gunShape(canvas, c - const Offset(14, 0), 0, p.weapon!, 1.0);
+        }
       case PickupKind.ammo:
         canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromCenter(center: c, width: 22, height: 15), const Radius.circular(3)),
             Paint()..color = const Color(0xFF4A3B2A));
@@ -332,7 +441,99 @@ class ArenaPainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// نقطة الرأس داخل صورة المقاتل (من 160) وطرف السلاح، والزاوية التي تجعل السلاح على خط التصويب.
+  static const _spriteSize = 78.0;
+  static const _pivot = Offset(64 / 160 * _spriteSize, 72 / 160 * _spriteSize);
+  static const _hand = Offset(115 / 160 * _spriteSize, 107 / 160 * _spriteSize);
+  static const _tilt = .353;
+
   void _fighter(Canvas canvas, Fighter f, bool hidden) {
+    final img = sprites['ar_fighter_${f.skin % 8}'];
+    if (img != null) return _fighterSprite(canvas, f, hidden, img);
+    _fighterShape(canvas, f, hidden);
+  }
+
+  void _fighterSprite(Canvas canvas, Fighter f, bool hidden, ui.Image img) {
+    final c = f.pos;
+    const r = ArenaGame.fighterR;
+    final alpha = hidden ? .55 : 1.0;
+    canvas.drawCircle(c + const Offset(4, 7), r + 4, Paint()..color = Colors.black.withValues(alpha: .22));
+    if (f.armor > 0) {
+      canvas.drawCircle(
+          c,
+          r + 6,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 3
+            ..color = (f.armor >= 100 ? const Color(0xFFFFC23D) : const Color(0xFF3D8BFF)).withValues(alpha: .7 * alpha));
+    }
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate(f.angle - _tilt);
+    final paint = Paint()
+      ..filterQuality = FilterQuality.medium
+      ..color = Colors.white.withValues(alpha: alpha);
+    if (f.hurtFlash > 0) paint.colorFilter = const ColorFilter.mode(Color(0x99FFFFFF), BlendMode.srcATop);
+    drawSprite(canvas, img, Rect.fromLTWH(-_pivot.dx, -_pivot.dy, _spriteSize, _spriteSize), paint: paint);
+    final g = f.gun;
+    final hand = _hand - _pivot;
+    var tip = hand + const Offset(22, 0);
+    if (g != null) {
+      final len = gunLen(g.kind);
+      tip = hand + Offset(len - 6, 0);
+      if (g.kind != WeaponKind.pistol) {
+        final gi = sprites['ar_gun_${g.kind.index}'];
+        if (gi != null) {
+          final h = len * gi.height / gi.width;
+          drawSprite(canvas, gi, Rect.fromLTWH(hand.dx - 8, hand.dy - h * .45, len, h), paint: paint);
+        }
+      }
+      if (f.muzzle > 0) {
+        canvas.drawCircle(tip + const Offset(4, 0), 9, Paint()..color = const Color(0xFFFFE08A));
+        canvas.drawCircle(tip + const Offset(4, 0), 5, Paint()..color = Colors.white);
+      }
+    }
+    canvas.restore();
+    _overhead(canvas, f);
+  }
+
+  void _overhead(Canvas canvas, Fighter f) {
+    final c = f.pos;
+    const r = ArenaGame.fighterR;
+    if (f.healing != null) {
+      canvas.drawArc(
+          Rect.fromCircle(center: c, radius: r + 10),
+          -pi / 2,
+          2 * pi * (1 - f.healLeft / (f.healing == PickupKind.medkit ? 3.5 : 1.6)),
+          false,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 4
+            ..color = const Color(0xFF6BE38F));
+    }
+    if (f.isPlayer) {
+      // سهم صغير يميز اللاعب
+      final p = Path()
+        ..moveTo(c.dx, c.dy - r - 22)
+        ..lineTo(c.dx - 7, c.dy - r - 32)
+        ..lineTo(c.dx + 7, c.dy - r - 32)
+        ..close();
+      canvas.drawPath(p, Paint()..color = const Color(0xFFFFC23D));
+      return;
+    }
+    final tp = label(f.name, size: 11);
+    tp.paint(canvas, c + Offset(-tp.width / 2, -r - 34));
+    final bar = Rect.fromLTWH(c.dx - 20, c.dy - r - 16, 40, 5);
+    canvas.drawRect(bar, Paint()..color = Colors.black54);
+    canvas.drawRect(Rect.fromLTWH(bar.left, bar.top, 40 * (f.hp / 100).clamp(0, 1), 5),
+        Paint()..color = f.hp > 50 ? const Color(0xFF6BE38F) : f.hp > 25 ? const Color(0xFFFFC23D) : const Color(0xFFFF5A5F));
+    if (f.armor > 0) {
+      canvas.drawRect(Rect.fromLTWH(bar.left, bar.top - 3, 40 * (f.armor / 100).clamp(0, 1), 2.5),
+          Paint()..color = const Color(0xFF5CC8FF));
+    }
+  }
+
+  void _fighterShape(Canvas canvas, Fighter f, bool hidden) {
     final c = f.pos;
     const r = ArenaGame.fighterR;
     final skin = arenaSkins[f.skin % arenaSkins.length];
