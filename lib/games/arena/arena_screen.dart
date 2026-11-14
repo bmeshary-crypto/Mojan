@@ -479,7 +479,16 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     }
   }
 
-  Widget _maybeRotate(Widget w) => _rotated ? RotatedBox(quarterTurns: 1, child: w) : w;
+  Widget _maybeRotate(Widget w) {
+    if (!_rotated) return w;
+    return Builder(builder: (context) {
+      final mq = MediaQuery.of(context);
+      return RotatedBox(
+        quarterTurns: 1,
+        child: MediaQuery(data: mq.copyWith(size: Size(mq.size.height, mq.size.width)), child: w),
+      );
+    });
+  }
 
   String? _killerName() {
     for (final e in g.feed.reversed) {
