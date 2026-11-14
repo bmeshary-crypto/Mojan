@@ -58,6 +58,7 @@ const gameTitles = {
   'quiz': 'أسئلة وأجوبة',
   'truth_dare': 'صراحة أو جرأة',
   'blocks': 'مكعبات',
+  'arena': 'ساحة البقاء',
   'sky_wheel': 'عجلة السماء',
   'fruits': 'سوق الفواكه',
   'star_league': 'دوري النجوم',

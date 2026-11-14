@@ -221,10 +221,13 @@ class GameResultDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final short = MediaQuery.sizeOf(context).height < 560;
     return Dialog(
       backgroundColor: Colors.transparent,
+      insetPadding: short ? const EdgeInsets.symmetric(horizontal: 40, vertical: 12) : null,
       child: Container(
-        padding: const EdgeInsets.all(22),
+        constraints: const BoxConstraints(maxWidth: 480),
+        padding: EdgeInsets.all(short ? 14 : 22),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(28),
@@ -234,15 +237,26 @@ class GameResultDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 56))
-                .animate()
-                .scale(duration: 700.ms, curve: Curves.elasticOut, begin: Offset.zero),
-            Text(title,
-                textAlign: TextAlign.center, style: AppTheme.display.copyWith(fontSize: 30, color: AppColors.gold)),
-            const SizedBox(height: 14),
-            for (final (i, r) in rows.indexed)
-              r.animate().fadeIn(delay: (200 + i * 120).ms).slideX(begin: .3, end: 0),
-            if (reward != null) ...[const SizedBox(height: 6), RewardBanner(reward: reward!)],
+            // المحتوى يتمرر إذا كانت الشاشة قصيرة (الوضع الأفقي) والأزرار تبقى ظاهرة
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(emoji, style: TextStyle(fontSize: short ? 40 : 56))
+                        .animate()
+                        .scale(duration: 700.ms, curve: Curves.elasticOut, begin: Offset.zero),
+                    Text(title,
+                        textAlign: TextAlign.center,
+                        style: AppTheme.display.copyWith(fontSize: short ? 24 : 30, color: AppColors.gold)),
+                    SizedBox(height: short ? 8 : 14),
+                    for (final (i, r) in rows.indexed)
+                      r.animate().fadeIn(delay: (200 + i * 120).ms).slideX(begin: .3, end: 0),
+                    if (reward != null) ...[const SizedBox(height: 6), RewardBanner(reward: reward!)],
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 10),
             Row(
               children: [
