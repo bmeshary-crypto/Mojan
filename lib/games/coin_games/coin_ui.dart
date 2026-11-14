@@ -254,7 +254,7 @@ class AdminUpcoming extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!AdminService.instance.isAdmin) return const SizedBox.shrink();
+    if (!AdminService.instance.can('results')) return const SizedBox.shrink();
     return Container(
       key: const ValueKey('admin-upcoming'),
       margin: EdgeInsets.symmetric(horizontal: 10, vertical: compact ? 2 : 4),

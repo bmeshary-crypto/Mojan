@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../account/account.dart';
 import '../account/auth_backend.dart';
 import '../account/leaderboard.dart';
+import '../admin/staff.dart';
 import '../ban.dart';
 import '../geo.dart';
 import '../gifts/diamonds.dart';
@@ -39,8 +40,11 @@ class Cloud {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
   String? get uid => enabled ? _auth.currentUser?.uid : null;
 
-  /// هل الحساب الحالي أدمن (حسابات محددة في firebase_config.dart).
-  bool get isAdmin => adminUids.contains(uid);
+  /// المالك (حسابات محددة في firebase_config.dart): كل الصلاحيات ويعيّن الفريق.
+  bool get isOwner => adminUids.contains(uid);
+
+  /// المالك أو أي عضو في فريق الإدارة (مدير/مشرف).
+  bool get isAdmin => isOwner || (uid != null && Staff.instance.current.value != null);
 
   /// حساب موقوف من الإدارة.
   final banned = ValueNotifier<bool>(false);
@@ -48,6 +52,7 @@ class Cloud {
   /// إشعار من الإدارة يظهر للاعب (مثل وصول عملات الشحن).
   final notice = ValueNotifier<String?>(null);
   StreamSubscription? _meSub;
+  StreamSubscription? _staffSub;
   String? _watching;
 
   // ---- التواجد: من داخل التطبيق الآن ومن بالخلفية ومن خارجه ----
@@ -117,10 +122,15 @@ class Cloud {
     _startPresence();
     if (Account.instance.profile?.id == id) Account.instance.log('login', 'فتح التطبيق • ${deviceInfo()}', save: true);
     Diamonds.instance.watch(id);
+    _staffSub?.cancel();
+    _staffSub = _db.collection('staff').doc(id).snapshots().listen(
+      (d) => Staff.instance.current.value = StaffInfo.parse(d.data()),
+      onError: (e) => debugPrint('staff: $e'),
+    );
     _meSub = _db.collection('users').doc(id).snapshots().listen((doc) async {
       final data = doc.data();
       if (data == null) return;
-      Restrictions.instance.set(isAdmin ? null : BanInfo.parse(data['banned']));
+      Restrictions.instance.set(isOwner ? null : BanInfo.parse(data['banned']));
       banned.value = Restrictions.instance.fullBan.value;
       final edit = data['edit'];
       if (edit is Map && Account.instance.profile?.id == doc.id) {
@@ -377,6 +387,50 @@ class Cloud {
     return out.values.toList();
   }
 
+  // ---- فريق الإدارة ----
+
+  /// كل أعضاء الفريق مباشرة.
+  Stream<List<Map<String, dynamic>>> staffList() {
+    if (!enabled || !isAdmin) return Stream.value(const []);
+    return _db.collection('staff').snapshots().map((s) => [for (final d in s.docs) {...d.data(), 'uid': d.id}]);
+  }
+
+  /// تعيين عضو أو تعديل صلاحياته (info = null يشيله من الفريق). للمالك فقط.
+  Future<void> setStaff(String id, StaffInfo? info) async {
+    final ref = _db.collection('staff').doc(id);
+    if (info == null) {
+      await ref.delete();
+    } else {
+      await ref.set({...info.toJson(), 'by': uid, 'at': FieldValue.serverTimestamp()});
+    }
+  }
+
+  /// سجل إجراءات الفريق (يقرأه المالك).
+  Future<void> logAdminAction(String text) async {
+    if (!enabled || uid == null || !isAdmin) return;
+    try {
+      await _db.collection('adminlog').add({
+        'by': uid,
+        'byName': Account.instance.profile?.name ?? '',
+        'role': isOwner ? 'owner' : Staff.instance.current.value?.role,
+        'text': text,
+        'at': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('adminlog: $e');
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> adminLogs() {
+    if (!enabled || !isOwner) return Stream.value(const []);
+    return _db
+        .collection('adminlog')
+        .orderBy('at', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((s) => [for (final d in s.docs) {...d.data(), 'id': d.id}]);
+  }
+
   /// حذف ملف لاعب نهائياً من السيرفر (لا يحذف حساب الدخول نفسه).
   Future<void> adminDeleteUser(String id) => _db.collection('users').doc(id).delete();
 
@@ -460,6 +514,9 @@ class Cloud {
     _debounce?.cancel();
     _meSub?.cancel();
     _meSub = null;
+    _staffSub?.cancel();
+    _staffSub = null;
+    Staff.instance.current.value = null;
     _watching = null;
     banned.value = false;
     Restrictions.instance.set(null);

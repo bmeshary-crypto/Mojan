@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../core/admin/admin.dart';
 import '../../core/account/account.dart';
 import '../../core/game_module.dart';
 import '../../core/haptics.dart';
@@ -12,7 +13,6 @@ import '../../core/shop.dart';
 import '../../core/text_dir.dart';
 import '../../core/theme.dart';
 import '../../core/vip.dart';
-import '../../core/firebase/cloud.dart';
 import '../../core/voice/live_voice.dart';
 import '../../core/voice/rtc/rtc.dart';
 import '../../core/voice/voice.dart';
@@ -1833,7 +1833,7 @@ Future<void> openVoiceRoom(BuildContext context, VoiceRoom room, {bool? hidden})
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => VoiceRoomScreen(room: room)));
     return;
   }
-  final admin = Cloud.instance.isAdmin && room.live && !svc.isHost(room);
+  final admin = AdminService.instance.can('rooms') && room.live && !svc.isHost(room);
   // الأدمن يقدر يدخل أي غرفة خاصة مراقباً مخفياً
   if (admin && hidden == null && room.private) {
     hidden = await showDialog<bool>(

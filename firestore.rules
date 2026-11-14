@@ -2,7 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isAdmin() { return signedIn() && request.auth.uid in ['iiSXEA6ABsdMdj9d3jIJKFFmOUX2']; }
+    // المالك: كل الصلاحيات، وهو الوحيد اللي يعيّن المدراء والمشرفين
+    function isOwnerAdmin() { return signedIn() && request.auth.uid in ['iiSXEA6ABsdMdj9d3jIJKFFmOUX2']; }
+    // فريق الإدارة: مستند staff/{uid} فيه الدور وقائمة الصلاحيات perms
+    function isStaff() { return signedIn() && exists(/databases/$(database)/documents/staff/$(request.auth.uid)); }
+    function can(p) { return isOwnerAdmin() || (isStaff() && p in get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.get('perms', [])); }
+    function isAdmin() { return isOwnerAdmin() || isStaff(); }
+    // كل نوع تعديل على اللاعب يحتاج صلاحيته
+    function staffEditOk(k) {
+      return (!k.hasAny(['coinsAdd', 'coinsSet', 'diamondsSet', 'vipAdd', 'xpSet']) || can('coins'))
+        && (!k.hasAny(['name', 'bio', 'avatar', 'sid', 'own', 'unown', 'inv']) || can('profile'))
+        && (!k.hasAny(['logout']) || can('ban'))
+        && (!k.hasAny(['resetStats', 'clearPosts']) || can('delete'));
+    }
     function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
 
@@ -10,11 +22,31 @@ service cloud.firestore {
       allow read: if signedIn();
       // اللاعب لا يغير حالة الإيقاف، ويستطيع فقط حذف هدية العملات بعد استلامها
       allow create: if isOwner(uid) && !('banned' in request.resource.data) && !('grant' in request.resource.data) && !('grants' in request.resource.data) && !('edit' in request.resource.data);
-      allow update: if isAdmin() || (isOwner(uid) && !changed().hasAny(['banned'])
+      // الفريق يعدل فقط ما تسمح به صلاحياته، وما أحد غير المالك يلمس حساب المالك
+      allow update: if isOwnerAdmin()
+        || (isStaff() && !(uid in ['iiSXEA6ABsdMdj9d3jIJKFFmOUX2'])
+          && changed().hasOnly(['banned', 'grants', 'edit', 'note', 'noteAt', 'name', 'avatar'])
+          && (!changed().hasAny(['banned']) || can('ban'))
+          && (!changed().hasAny(['grants']) || can('coins'))
+          && (!changed().hasAny(['name', 'avatar']) || can('profile'))
+          && (!changed().hasAny(['edit']) || staffEditOk(request.resource.data.get('edit', {}).keys()))
+          && (!changed().hasAny(['note', 'noteAt']) || can('users')))
+        || (isOwner(uid) && !changed().hasAny(['banned'])
         && (!changed().hasAny(['grant']) || !('grant' in request.resource.data))
         && (!changed().hasAny(['grants']) || !('grants' in request.resource.data))
         && (!changed().hasAny(['edit']) || !('edit' in request.resource.data)));
-      allow delete: if isAdmin();
+      allow delete: if can('delete') && !(uid in ['iiSXEA6ABsdMdj9d3jIJKFFmOUX2']);
+    }
+
+    // فريق الإدارة: يعيّنه المالك فقط
+    match /staff/{uid} {
+      allow read: if signedIn();
+      allow write: if isOwnerAdmin();
+    }
+    // سجل إجراءات الفريق: كل واحد يكتب باسمه، والمالك يقرأ
+    match /adminlog/{id} {
+      allow create: if isAdmin() && request.resource.data.by == request.auth.uid;
+      allow read, delete: if isOwnerAdmin();
     }
 
     // ---- الغرف الصوتية ----
@@ -23,7 +55,7 @@ service cloud.firestore {
     function kickedFrom(id) { return request.auth.uid in room(id).get('kicked', []); }
     // غرفة خاصة: لازم كلمة السر الحالية محفوظة في pass/{uid} (أو المضيف أو الأدمن)
     function memberOf(id) {
-      return !room(id).get('private', false) || isHostOf(id) || isAdmin()
+      return !room(id).get('private', false) || isHostOf(id) || can('rooms')
         || (exists(/databases/$(database)/documents/rooms/$(id)/pass/$(request.auth.uid))
             && get(/databases/$(database)/documents/rooms/$(id)/pass/$(request.auth.uid)).data.pw
                == get(/databases/$(database)/documents/rooms/$(id)/secret/pw).data.pw);
@@ -33,18 +65,18 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.host == request.auth.uid;
       // المضيف والأدمن يعدلون كل شيء. الباقون فقط: المقاعد، الشعبية (زيادة فقط)، آخر ظهور، الدعوات، الموسيقى، البودكاست
-      allow update: if isAdmin() || (signedIn() && resource.data.host == request.auth.uid
+      allow update: if can('rooms') || (signedIn() && resource.data.host == request.auth.uid
           && request.resource.data.host == resource.data.host)
         || (signedIn() && !kickedFrom(roomId) && memberOf(roomId)
           && changed().hasOnly(['seats', 'heat', 'lastActive', 'here', 'invites', 'media', 'pod', 'podGen'])
           && (!changed().hasAny(['heat']) || request.resource.data.heat >= resource.data.get('heat', 0)));
-      allow delete: if isAdmin() || (signedIn() && resource.data.host == request.auth.uid);
+      allow delete: if can('rooms') || (signedIn() && resource.data.host == request.auth.uid);
 
       match /secret/{doc} {
-        allow read, write: if isHostOf(roomId) || isAdmin();
+        allow read, write: if isHostOf(roomId) || can('rooms');
       }
       match /pass/{uid} {
-        allow read, delete: if isOwner(uid) || isAdmin();
+        allow read, delete: if isOwner(uid) || can('rooms');
         allow create, update: if isOwner(uid) && request.resource.data.pw is string
           && request.resource.data.pw == get(/databases/$(database)/documents/rooms/$(roomId)/secret/pw).data.pw;
       }
@@ -53,12 +85,12 @@ service cloud.firestore {
         allow create: if signedIn() && request.resource.data.uid == request.auth.uid
           && !kickedFrom(roomId) && memberOf(roomId)
           && request.resource.data.get('text', '') is string && request.resource.data.get('text', '').size() <= 600;
-        allow delete: if isAdmin() || isHostOf(roomId);
+        allow delete: if can('rooms') || isHostOf(roomId);
       }
       match /people/{uid} {
         allow read: if signedIn();
-        allow create, update: if isAdmin() || (isOwner(uid) && !kickedFrom(roomId) && memberOf(roomId));
-        allow delete: if isOwner(uid) || isAdmin() || isHostOf(roomId);
+        allow create, update: if can('rooms') || (isOwner(uid) && !kickedFrom(roomId) && memberOf(roomId));
+        allow delete: if isOwner(uid) || can('rooms') || isHostOf(roomId);
       }
       match /signals/{id} {
         allow read, write: if signedIn() && id.matches('.*' + request.auth.uid + '.*');
@@ -97,27 +129,27 @@ service cloud.firestore {
     }
 
     match /support/{uid} {
-      allow read, write: if isOwner(uid) || isAdmin();
+      allow read, write: if isOwner(uid) || can('support');
       match /messages/{id} {
-        allow read: if isOwner(uid) || isAdmin();
+        allow read: if isOwner(uid) || can('support');
         allow create: if (isOwner(uid) && request.resource.data.from in ['user', 'auto'] && request.resource.data.text is string && request.resource.data.text.size() <= 800)
-          || (isAdmin() && request.resource.data.from == 'admin');
-        allow delete: if isAdmin();
+          || (can('support') && request.resource.data.from == 'admin');
+        allow delete: if can('support');
       }
     }
     match /config/{id} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow write: if can('support');
     }
     match /ids/{num} {
       allow read: if signedIn();
-      allow create: if signedIn() && (request.resource.data.uid == request.auth.uid || isAdmin()) && num.matches('^[0-9]{2,7}$');
-      allow update: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid);
-      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn() && (request.resource.data.uid == request.auth.uid || can('profile')) && num.matches('^[0-9]{2,7}$');
+      allow update: if can('profile') || (signedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid);
+      allow delete: if can('profile') || (signedIn() && resource.data.uid == request.auth.uid);
     }
     match /reports/{id} {
       allow create: if signedIn() && request.resource.data.by == request.auth.uid;
-      allow read, update, delete: if isAdmin();
+      allow read, update, delete: if can('reports');
     }
     match /{document=**} { allow read, write: if false; }
   }

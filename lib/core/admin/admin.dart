@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../account/account.dart';
 import '../firebase/cloud.dart';
+import 'staff.dart';
 import '../voice/voice.dart';
 
 /// مباراة جارية تظهر في لوحة الأدمن.
@@ -31,8 +32,20 @@ class AdminService extends ChangeNotifier {
   @visibleForTesting
   bool? adminOverride;
 
-  /// زر لوحة التحكم يظهر للأدمن فقط.
+  /// زر لوحة التحكم يظهر للأدمن فقط (المالك وفريق الإدارة).
   bool get isAdmin => adminOverride ?? Cloud.instance.isAdmin;
+
+  /// المالك: كل الصلاحيات وإدارة الفريق.
+  bool get isOwner => adminOverride ?? Cloud.instance.isOwner;
+
+  /// هل الحساب الحالي يملك صلاحية [perm] (انظر staffPerms).
+  /// وضع التجربة بالرمز (بدون سيرفر) يفتح كل شيء.
+  bool can(String perm) {
+    if (isOwner) return true;
+    final s = Staff.instance.current.value;
+    if (s != null) return s.perms.contains(perm);
+    return unlocked && !Cloud.instance.enabled;
+  }
 
   /// الأدمن الحقيقي يدخل مباشرة بدون رمز.
   void enterAsAdmin() {
@@ -74,9 +87,10 @@ class AdminService extends ChangeNotifier {
     }
   }
 
-  /// تسجيل إجراء في سجل الإدارة.
+  /// تسجيل إجراء في سجل الإدارة (ويُرفع لسجل الفريق اللي يشوفه المالك).
   void audit(String s) {
     _audit(s);
+    Cloud.instance.logAdminAction(s);
     notifyListeners();
   }
 
