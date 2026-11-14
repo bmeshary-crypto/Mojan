@@ -108,7 +108,14 @@ double gunLen(WeaponKind k) => switch (k) {
     };
 
 class ArenaPainter extends CustomPainter {
-  ArenaPainter(this.g, this.decor, {required this.scale, required Listenable repaint}) : super(repaint: repaint);
+  ArenaPainter(this.g, this.decor, {required this.scale, required Listenable repaint, this.cam, this.aim})
+      : super(repaint: repaint);
+
+  /// مركز الكاميرا (يتبع اللاعب بنعومة مع اهتزاز). إذا null فهو اللاعب.
+  final Offset? Function()? cam;
+
+  /// اتجاه تصويب اللاعب الحالي (لخط التصويب).
+  final Offset? Function()? aim;
   static final sprites = ArenaSprites.instance;
   static final _texPaints = <String, Paint>{};
 
@@ -155,7 +162,7 @@ class ArenaPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final me = g.player;
-    final cam = me.pos;
+    final cam = this.cam?.call() ?? me.pos;
     final half = Offset(size.width / 2, size.height / 2) / scale;
     final view = Rect.fromCenter(center: cam, width: half.dx * 2, height: half.dy * 2).inflate(80);
     bool vis(Offset p, double r) => view.inflate(r).contains(p);
@@ -211,6 +218,27 @@ class ArenaPainter extends CustomPainter {
       }
     }
 
+    // آثار على الأرض: بقع، جثث، خراطيش، غبار
+    for (final e in g.fx) {
+      if (!vis(e.pos, 60)) continue;
+      _fxGround(canvas, e);
+    }
+
+    // خط التصويب
+    final aimDir = aim?.call();
+    if (aimDir != null && me.alive && me.gun != null) {
+      final d = aimDir / aimDir.distance;
+      final len = min(me.gun!.kind.range, 600.0);
+      final start = me.pos + d * 50;
+      final paint = Paint()
+        ..strokeWidth = 3
+        ..shader = LinearGradient(colors: [Colors.white.withValues(alpha: .55), Colors.white.withValues(alpha: 0)])
+            .createShader(Rect.fromPoints(start, start + d * len));
+      for (var x = 0.0; x < len; x += 26) {
+        canvas.drawLine(start + d * x, start + d * min(x + 14, len), paint);
+      }
+    }
+
     // الغنائم
     final t = g.time;
     for (final p in g.pickups) {
@@ -241,9 +269,16 @@ class ArenaPainter extends CustomPainter {
     for (final b in g.bullets) {
       if (!vis(b.pos, 40)) continue;
       final dir = b.vel / b.vel.distance;
-      trail.shader = LinearGradient(colors: [const Color(0x00FFE08A), const Color(0xFFFFF3C4)])
-          .createShader(Rect.fromPoints(b.pos - dir * 26, b.pos));
-      canvas.drawLine(b.pos - dir * 26, b.pos, trail);
+      final tl = b.kind == WeaponKind.sniper ? 70.0 : 34.0;
+      final sh = Rect.fromPoints(b.pos - dir * tl, b.pos);
+      trail
+        ..strokeWidth = 7
+        ..shader = LinearGradient(colors: [const Color(0x00FFB040), const Color(0x66FFB040)]).createShader(sh);
+      canvas.drawLine(b.pos - dir * tl, b.pos, trail);
+      trail
+        ..strokeWidth = 2.5
+        ..shader = LinearGradient(colors: [const Color(0x00FFE08A), const Color(0xFFFFFBE8)]).createShader(sh);
+      canvas.drawLine(b.pos - dir * tl, b.pos, trail);
     }
 
     // المقاتلون
@@ -292,57 +327,88 @@ class ArenaPainter extends CustomPainter {
       canvas.drawCircle(o.c + Offset(-o.r * .45, -o.r * .5), o.r * .45, Paint()..color = const Color(0xFF58A84B).withValues(alpha: a));
     }
 
-    // آثار
+    // آثار في الهواء
     for (final e in g.fx) {
-      final k = e.age / e.life;
-      switch (e.kind) {
-        case 'hit':
-          canvas.drawCircle(e.pos, 4 + 10 * k, Paint()..color = const Color(0xFFFFE9A8).withValues(alpha: 1 - k));
-        case 'blood':
-          canvas.drawCircle(e.pos, 5 + 8 * k, Paint()..color = const Color(0xFFFF4D4D).withValues(alpha: .9 * (1 - k)));
-        case 'puff':
-          for (var i = 0; i < 6; i++) {
-            final a = i * pi / 3;
-            canvas.drawCircle(e.pos + Offset(cos(a), sin(a)) * 30 * k, 12 * (1 - k) + 3,
-                Paint()..color = Colors.white.withValues(alpha: .6 * (1 - k)));
-          }
-        case 'dmg':
-          final tp = label(e.value.round().toString(), size: 15, color: const Color(0xFFFFE066));
-          canvas.save();
-          canvas.translate(e.pos.dx, e.pos.dy - 24 * k);
-          tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
-          canvas.restore();
-      }
+      if (!vis(e.pos, 160)) continue;
+      _fxAir(canvas, e);
     }
 
-    // العاصفة (خارج المنطقة)
+    // العاصفة (خارج المنطقة): لون متدرج وحافة متحركة
+    final t2 = g.time;
     final storm = Path()
       ..fillType = PathFillType.evenOdd
       ..addRect(view.inflate(300))
       ..addOval(Rect.fromCircle(center: g.zoneC, radius: g.zoneR));
-    canvas.drawPath(storm, Paint()..color = const Color(0xFF6A3BFF).withValues(alpha: .32));
-    canvas.drawCircle(
-        g.zoneC,
-        g.zoneR,
+    canvas.drawPath(
+        storm,
         Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 5 / scale * 1.4
-          ..color = const Color(0xFFB9A2FF));
-    if (g.phase < zonePhases.length) {
+          ..shader = RadialGradient(
+            colors: const [Color(0x006A3BFF), Color(0x666A3BFF), Color(0x887A2BFF)],
+            stops: const [.0, .5, 1],
+          ).createShader(Rect.fromCircle(center: g.zoneC, radius: g.zoneR + 500)));
+    if (view.inflate(60).overlaps(Rect.fromCircle(center: g.zoneC, radius: g.zoneR + 40))) {
       canvas.drawCircle(
-          g.nextC,
-          max(g.nextR, 4),
+          g.zoneC,
+          g.zoneR + 10,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 3 / scale
-            ..color = Colors.white.withValues(alpha: .85));
+            ..strokeWidth = 40
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18)
+            ..color = const Color(0xFF9B6BFF).withValues(alpha: .5 + .15 * sin(t2 * 3)));
+      // شرارات العاصفة تدور على الحافة
+      final arc = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round
+        ..color = const Color(0xFFE2D4FF);
+      final circ = 2 * pi * max(g.zoneR, 1);
+      final n = (circ / 90).clamp(8, 400).round();
+      for (var i = 0; i < n; i++) {
+        final a = i / n * 2 * pi + t2 * 40 / max(g.zoneR, 60);
+        final pt = g.zoneC + Offset.fromDirection(a, g.zoneR);
+        if (!view.contains(pt)) continue;
+        canvas.drawArc(Rect.fromCircle(center: g.zoneC, radius: g.zoneR), a, 22 / max(g.zoneR, 1), false, arc);
+        final wob = sin(t2 * 6 + i * 1.7);
+        canvas.drawCircle(g.zoneC + Offset.fromDirection(a + .002 * i, g.zoneR + 18 + 10 * wob), 3 + 2 * wob.abs(),
+            Paint()..color = const Color(0xFFCFB8FF).withValues(alpha: .7));
+      }
+    }
+    if (g.phase < zonePhases.length) {
+      final dash = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..color = Colors.white.withValues(alpha: .9);
+      final r = max(g.nextR, 4.0);
+      final n = max(12, (2 * pi * r / 60).round());
+      for (var i = 0; i < n; i += 1) {
+        final a = i / n * 2 * pi;
+        if (!view.contains(g.nextC + Offset.fromDirection(a, r))) continue;
+        canvas.drawArc(Rect.fromCircle(center: g.nextC, radius: r), a, pi / n, false, dash);
+      }
     }
     canvas.restore();
   }
 
   void _pickup(Canvas canvas, Pickup p, double t) {
     final bob = sin(t * 3 + p.pos.dx) * 2;
-    final c = p.pos + Offset(0, bob);
+    var c = p.pos + Offset(0, bob);
+    final age = t - p.born;
+    if (age < .5) {
+      final k = (age / .45).clamp(0.0, 1.0);
+      if (p.from != null) c = Offset.lerp(p.from!, p.pos, Curves.easeOut.transform(k))! - Offset(0, sin(k * pi) * 40);
+      final sc = Curves.elasticOut.transform(min(1.0, age / .5)).clamp(.05, 1.4);
+      canvas.save();
+      canvas.translate(c.dx, c.dy);
+      canvas.scale(sc);
+      canvas.translate(-c.dx, -c.dy);
+      _pickupAt(canvas, p, c);
+      canvas.restore();
+      return;
+    }
+    _pickupAt(canvas, p, c);
+  }
+
+  void _pickupAt(Canvas canvas, Pickup p, Offset c) {
     final glow = switch (p.kind) {
       PickupKind.weapon => tierColor(p.weapon!),
       PickupKind.ammo => ammoColor(p.ammo!),
@@ -457,7 +523,11 @@ class ArenaPainter extends CustomPainter {
     final c = f.pos;
     const r = ArenaGame.fighterR;
     final alpha = hidden ? .55 : 1.0;
-    canvas.drawCircle(c + const Offset(4, 7), r + 4, Paint()..color = Colors.black.withValues(alpha: .22));
+    // الهبوط بالمظلة في أول ثانيتين
+    final fall = (1 - this.g.time / 2.2).clamp(0.0, 1.0);
+    final lift = Curves.easeIn.transform(fall);
+    canvas.drawCircle(c + Offset(4 + 30 * lift, 7 + 40 * lift), (r + 4) * (1 - .4 * lift),
+        Paint()..color = Colors.black.withValues(alpha: .22 * (1 - .5 * lift)));
     if (f.armor > 0) {
       canvas.drawCircle(
           c,
@@ -469,7 +539,11 @@ class ArenaPainter extends CustomPainter {
     }
     canvas.save();
     canvas.translate(c.dx, c.dy);
-    canvas.rotate(f.angle - _tilt);
+    if (lift > 0) canvas.scale(1 + .7 * lift);
+    // تمايل المشي
+    final step = sin(f.walkT);
+    canvas.scale(1 + .035 * f.moveAmt * step.abs());
+    canvas.rotate(f.angle - _tilt + .07 * f.moveAmt * step);
     final paint = Paint()
       ..filterQuality = FilterQuality.medium
       ..color = Colors.white.withValues(alpha: alpha);
@@ -494,7 +568,140 @@ class ArenaPainter extends CustomPainter {
       }
     }
     canvas.restore();
+    if (lift > 0) _parachute(canvas, c, lift, f.skin);
     _overhead(canvas, f);
+  }
+
+  void _parachute(Canvas canvas, Offset c, double lift, int skin) {
+    final top = c - Offset(0, 50 + 60 * lift);
+    final w = 60 + 30 * lift;
+    final col = arenaSkins[skin % arenaSkins.length];
+    final lines = Paint()
+      ..strokeWidth = 1.5
+      ..color = Colors.black54;
+    for (final x in [-w * .9, -w * .3, w * .3, w * .9]) {
+      canvas.drawLine(top + Offset(x, 6), c, lines);
+    }
+    final rect = Rect.fromCenter(center: top, width: w * 2, height: w * 1.1);
+    canvas.drawArc(rect, pi, pi, true, Paint()..color = col);
+    for (var i = 0; i < 6; i += 2) {
+      canvas.drawArc(rect, pi + i * pi / 6, pi / 6, true, Paint()..color = Colors.white.withValues(alpha: .85));
+    }
+    canvas.drawArc(
+        rect,
+        pi,
+        pi,
+        true,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = Colors.black38);
+  }
+
+  void _fxGround(Canvas canvas, Fx e) {
+    final k = e.age / e.life;
+    switch (e.kind) {
+      case 'splat':
+        final a = (k < .7 ? .55 : .55 * (1 - (k - .7) / .3));
+        final col = e.value > 2 ? const Color(0xFF2A2420) : const Color(0xFF9E1B1B);
+        canvas.save();
+        canvas.translate(e.pos.dx, e.pos.dy);
+        canvas.rotate(e.rot);
+        final r = 9 * e.value;
+        canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: r * 2.2, height: r * 1.5), Paint()..color = col.withValues(alpha: a));
+        canvas.drawCircle(Offset(r * 1.2, r * .4), r * .35, Paint()..color = col.withValues(alpha: a));
+        canvas.drawCircle(Offset(-r * .9, -r * .6), r * .25, Paint()..color = col.withValues(alpha: a));
+        canvas.restore();
+      case 'corpse':
+        final img = sprites['ar_fighter_${e.value.round() % 8}'];
+        final a = k < .8 ? .85 : .85 * (1 - (k - .8) / .2);
+        if (img != null) {
+          canvas.save();
+          canvas.translate(e.pos.dx, e.pos.dy);
+          canvas.rotate(e.rot - _tilt + .5);
+          canvas.scale(1 - .1 * min(1, e.age * 3));
+          drawSprite(canvas, img, Rect.fromLTWH(-_pivot.dx, -_pivot.dy, _spriteSize, _spriteSize),
+              paint: Paint()
+                ..filterQuality = FilterQuality.medium
+                ..colorFilter = ColorFilter.mode(Colors.black.withValues(alpha: .45), BlendMode.srcATop)
+                ..color = Colors.white.withValues(alpha: a));
+          canvas.restore();
+        }
+      case 'shell':
+        final a = k < .7 ? 1.0 : 1 - (k - .7) / .3;
+        canvas.save();
+        canvas.translate(e.pos.dx, e.pos.dy);
+        canvas.rotate(e.rot);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(Rect.fromCenter(center: Offset.zero, width: 7 * e.value, height: 3.2), const Radius.circular(1.5)),
+            Paint()..color = (e.value > 1 ? const Color(0xFFE53935) : const Color(0xFFFFC94D)).withValues(alpha: a));
+        canvas.restore();
+      case 'dust':
+        canvas.drawCircle(e.pos, 5 + 10 * k, Paint()..color = const Color(0xFFE8DDBF).withValues(alpha: .45 * (1 - k)));
+    }
+  }
+
+  void _fxAir(Canvas canvas, Fx e) {
+    final k = e.age / e.life;
+    switch (e.kind) {
+      case 'hit':
+        canvas.drawCircle(e.pos, 3 + 8 * k, Paint()..color = const Color(0xFFFFE9A8).withValues(alpha: 1 - k));
+      case 'blood':
+        canvas.drawCircle(e.pos, 5 + 9 * k, Paint()..color = const Color(0xFFFF3D3D).withValues(alpha: .85 * (1 - k)));
+      case 'spark':
+        final dir = e.vel.distance > 0 ? e.vel / e.vel.distance : const Offset(1, 0);
+        canvas.drawLine(
+            e.pos,
+            e.pos - dir * (6 + 10 * (1 - k)),
+            Paint()
+              ..strokeWidth = 2.2
+              ..strokeCap = StrokeCap.round
+              ..color = (e.value == 1 ? const Color(0xFFFF5A5A) : const Color(0xFFFFE08A)).withValues(alpha: 1 - k));
+      case 'smoke':
+        canvas.drawCircle(e.pos, (6 + 18 * k) * e.value, Paint()..color = const Color(0xFFDADADA).withValues(alpha: .35 * (1 - k)));
+      case 'puff':
+        for (var i = 0; i < 8; i++) {
+          final a = i * pi / 4;
+          canvas.drawCircle(e.pos + Offset(cos(a), sin(a)) * 34 * k, 13 * (1 - k) + 3,
+              Paint()..color = Colors.white.withValues(alpha: .6 * (1 - k)));
+        }
+      case 'boom':
+        final r = e.value * (.4 + .8 * Curves.easeOut.transform(k));
+        canvas.drawCircle(
+            e.pos,
+            r,
+            Paint()
+              ..shader = RadialGradient(colors: [
+                Colors.white.withValues(alpha: 1 - k),
+                const Color(0xFFFFD25C).withValues(alpha: .9 * (1 - k)),
+                const Color(0xFFFF5A1F).withValues(alpha: .7 * (1 - k)),
+                const Color(0x00FF3D00),
+              ], stops: const [0, .3, .65, 1]).createShader(Rect.fromCircle(center: e.pos, radius: r)));
+      case 'ring':
+        canvas.drawCircle(
+            e.pos,
+            e.value * Curves.easeOut.transform(k),
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 8 * (1 - k) + 1
+              ..color = Colors.white.withValues(alpha: .7 * (1 - k)));
+      case 'debris':
+        canvas.save();
+        canvas.translate(e.pos.dx, e.pos.dy);
+        canvas.rotate(e.rot);
+        canvas.drawRect(const Rect.fromLTWH(-5, -3, 10, 6), Paint()..color = const Color(0xFF8E2A1A).withValues(alpha: 1 - k * k));
+        canvas.restore();
+      case 'dmg':
+        final big = e.value >= 40;
+        final pop = k < .15 ? 1 + (1 - k / .15) * .6 : 1.0;
+        final tp = label(e.value.round().toString(), size: big ? 20 : 15, color: big ? const Color(0xFFFF8A3D) : const Color(0xFFFFE066));
+        canvas.save();
+        canvas.translate(e.pos.dx, e.pos.dy);
+        canvas.scale(pop);
+        if (k > .7) canvas.scale(1 - (k - .7));
+        tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
+        canvas.restore();
+    }
   }
 
   void _overhead(Canvas canvas, Fighter f) {

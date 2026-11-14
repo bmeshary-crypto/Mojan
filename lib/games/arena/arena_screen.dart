@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/haptics.dart';
+import '../../core/landscape.dart';
 import '../../core/sfx.dart';
 import '../../core/theme.dart';
 import '../../widgets/animated_background.dart';
@@ -100,6 +102,7 @@ class _ArenaScreenState extends State<ArenaScreen> {
                             colors: arenaColors,
                             onTap: () {
                               Sfx.instance.tap();
+                              enterLandscape();
                               Navigator.of(context).push(MaterialPageRoute(
                                 builder: (_) => ArenaMatchScreen(difficulty: _diff, skin: _skin),
                               ));
@@ -250,9 +253,22 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
 
   Size _size = Size.zero;
 
+  // الكاميرا: تتبع ناعم + نظرة للأمام باتجاه التصويب + اهتزاز
+  Offset _cam = Offset.zero;
+  Offset _look = Offset.zero;
+  Offset _camShake = Offset.zero;
+  final _rng = Random();
+  int _seenKills = 0;
+  double _streakAt = -10;
+  int _streak = 0;
+
+  /// هل الشاشة طولية على جوال؟ عندها نديرها بأنفسنا (مثل سفاري الآيفون).
+  bool _rotated = false;
+
   @override
   void initState() {
     super.initState();
+    enterLandscape();
     _newGame();
     _ticker = createTicker(_tick)..start();
     ArenaSprites.instance.load();
@@ -270,10 +286,15 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     _dropT = 0;
     _landing = null;
     _ended = false;
+    _look = Offset.zero;
+    _seenKills = 0;
+    _streak = 0;
+    _streakAt = -10;
   }
 
   @override
   void dispose() {
+    exitLandscape();
     _ticker.dispose();
     _focus.dispose();
     super.dispose();
@@ -291,6 +312,8 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     }
     _readInput();
     g.update(dt, _input);
+    _updateCamera(dt);
+    _trackKills();
     _playSounds();
     _frame.value++;
     if (++_frames % 4 == 0) _hud.value++;
@@ -300,10 +323,37 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     }
   }
 
+  void _updateCamera(double dt) {
+    final me = g.player;
+    var want = Offset.zero;
+    final aim = _input.aim;
+    if (me.alive && aim != null && aim.distance > 0) {
+      want = aim / aim.distance * (me.gun?.kind == WeaponKind.sniper ? 170 : 90);
+    } else if (me.alive) {
+      want = _input.move * 45;
+    }
+    final k1 = 1 - exp(-3.5 * dt), k2 = 1 - exp(-14 * dt);
+    _look = Offset.lerp(_look, want, k1)!;
+    final target = me.pos + _look;
+    _cam = (_cam - target).distance > 600 ? target : Offset.lerp(_cam, target, k2)!;
+    final s = g.shake * g.shake * 14;
+    _camShake = s < .3 ? Offset.zero : Offset((_rng.nextDouble() * 2 - 1) * s, (_rng.nextDouble() * 2 - 1) * s);
+  }
+
+  void _trackKills() {
+    final n = g.playerKillTimes.length;
+    if (n == _seenKills) return;
+    _seenKills = n;
+    _streak = g.time - _streakAt < 6 ? _streak + 1 : 1;
+    _streakAt = g.time;
+  }
+
   void _jump() {
     final landing = _landing ??
         g.towns[Random().nextInt(g.towns.length)].center + Offset(Random().nextDouble() * 200 - 100, Random().nextDouble() * 200 - 100);
     g.start(landing);
+    _cam = g.player.pos;
+    _look = Offset.zero;
     Sfx.instance.whistle();
     setState(() => _dropping = false);
   }
@@ -380,6 +430,10 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
             Sfx.instance.tone(600, 1200, .2, vol: .1);
           case 'zone':
             Sfx.instance.tone(200, 120, .8, type: 'sawtooth', vol: .1);
+          case 'boom':
+            if (d < 500) Haptics.heavyImpact();
+            Sfx.instance.noise(.55, vol: .45 * vol, freq: 260, q: .5, filter: 'lowpass');
+            Sfx.instance.tone(120, 35, .5, type: 'sine', vol: .25 * vol);
         }
       }
     }
@@ -402,7 +456,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     final again = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => GameResultDialog(
+      builder: (ctx) => _maybeRotate(GameResultDialog(
         reward: reward,
         emoji: won ? '🏆' : (me.place <= 5 ? '🔥' : '🪦'),
         title: won ? 'بطل الساحة!' : 'المركز #${me.place}',
@@ -415,7 +469,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
         ],
         onAgain: () => Navigator.pop(ctx, true),
         onHome: () => Navigator.pop(ctx, false),
-      ),
+      )),
     );
     if (!mounted) return;
     if (again == true) {
@@ -424,6 +478,8 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
       Navigator.of(context).pop();
     }
   }
+
+  Widget _maybeRotate(Widget w) => _rotated ? RotatedBox(quarterTurns: 1, child: w) : w;
 
   String? _killerName() {
     for (final e in g.feed.reversed) {
@@ -445,12 +501,20 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
 
   // ── الإدخال ──
 
+  double get _scale => (_size.shortestSide / 480).clamp(.6, 1.4);
+
+  /// موقع الماوس على الشاشة → اتجاه من اللاعب (مع مراعاة حركة الكاميرا).
+  Offset _toAim(Offset p) {
+    final playerOnScreen = Offset(_size.width / 2, _size.height / 2) + (g.player.pos - _cam) * _scale;
+    return p - playerOnScreen;
+  }
+
   void _down(PointerDownEvent e) {
     if (_dropping) return;
     if (e.kind == PointerDeviceKind.mouse) {
       _mouse = true;
       _mouseFire = true;
-      _mouseAim = e.localPosition - Offset(_size.width / 2, _size.height / 2);
+      _mouseAim = _toAim(e.localPosition);
       return;
     }
     _mouse = false;
@@ -464,7 +528,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
 
   void _move(PointerMoveEvent e) {
     if (e.kind == PointerDeviceKind.mouse) {
-      _mouseAim = e.localPosition - Offset(_size.width / 2, _size.height / 2);
+      _mouseAim = _toAim(e.localPosition);
       return;
     }
     for (final s in [_left, _right]) {
@@ -492,8 +556,8 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
   KeyEventResult _key(FocusNode _, KeyEvent e) {
     if (e is KeyDownEvent) {
       _keys.add(e.logicalKey);
-      final me = g.player;
-      if (!_dropping && me.alive) {
+      if (!_dropping && g.player.alive) {
+        final me = g.player;
         final k = e.logicalKey;
         if (k == LogicalKeyboardKey.keyR) g.reload(me);
         if (k == LogicalKeyboardKey.digit1) g.switchTo(me, 0);
@@ -532,10 +596,28 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
           focusNode: _focus,
           autofocus: true,
           onKeyEvent: _key,
-          child: LayoutBuilder(builder: (context, c) {
-            _size = c.biggest;
-            final scale = (c.biggest.shortestSide / 540).clamp(.55, 1.4);
-            return _dropping ? _dropView(c.biggest) : _gameView(scale);
+          child: LayoutBuilder(builder: (context, outer) {
+            final phone = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
+            _rotated = phone && outer.maxHeight > outer.maxWidth * 1.1;
+            final view = LayoutBuilder(builder: (context, c) {
+              _size = c.biggest;
+              final scale = (c.biggest.shortestSide / 480).clamp(.6, 1.4);
+              return _dropping ? _dropView(c.biggest) : _gameView(scale);
+            });
+            if (!_rotated) return view;
+            // المتصفح رفض قفل الاتجاه: ندير اللعبة لتكون أفقية دائماً
+            final mq = MediaQuery.of(context);
+            return RotatedBox(
+              quarterTurns: 1,
+              child: MediaQuery(
+                data: mq.copyWith(
+                  size: Size(mq.size.height, mq.size.width),
+                  padding: EdgeInsets.fromLTRB(mq.padding.top, mq.padding.right, mq.padding.bottom, mq.padding.left),
+                  viewPadding: EdgeInsets.fromLTRB(mq.padding.top, mq.padding.right, mq.padding.bottom, mq.padding.left),
+                ),
+                child: view,
+              ),
+            );
           }),
         ),
       ),
@@ -550,7 +632,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
             cursor: SystemMouseCursors.precise,
             onHover: (e) {
               _mouse = true;
-              _mouseAim = e.localPosition - Offset(_size.width / 2, _size.height / 2);
+              _mouseAim = _toAim(e.localPosition);
             },
             child: Listener(
               behavior: HitTestBehavior.opaque,
@@ -560,7 +642,8 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
               onPointerCancel: _up,
               child: RepaintBoundary(
                 child: CustomPaint(
-                  painter: ArenaPainter(g, decor, scale: scale, repaint: _frame),
+                  painter: ArenaPainter(g, decor,
+                      scale: scale, repaint: _frame, cam: () => _cam + _camShake, aim: () => _input.aim),
                   size: Size.infinite,
                 ),
               ),
@@ -583,13 +666,17 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
               final outside = me.alive && !g.inZone(me.pos);
               final low = me.alive && me.hp < 30;
               if (!outside && !low && me.hurtFlash <= 0) return const SizedBox.expand();
+              // نبض القلب عند انخفاض الصحة
+              final beat = low ? pow(sin(g.time * 7.5).abs(), 6).toDouble() : 0.0;
+              final a = me.hurtFlash > 0 ? .55 : (outside ? .38 : .22 + .3 * beat);
               return Container(
                 decoration: BoxDecoration(
                   gradient: RadialGradient(
-                    radius: 1.1,
+                    radius: 1.05 - .12 * beat,
+                    stops: const [.55, 1],
                     colors: [
                       Colors.transparent,
-                      (outside ? const Color(0xFF7B4DFF) : const Color(0xFFFF2E2E)).withValues(alpha: me.hurtFlash > 0 ? .55 : .35),
+                      (outside ? const Color(0xFF7B4DFF) : const Color(0xFFFF2E2E)).withValues(alpha: a),
                     ],
                   ),
                 ),
@@ -597,9 +684,26 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
             },
           ),
         ),
+        // علامة الإصابة عند المؤشر
+        IgnorePointer(
+          child: ValueListenableBuilder(
+            valueListenable: _frame,
+            builder: (_, _, _) => g.hitMarker <= 0
+                ? const SizedBox.expand()
+                : CustomPaint(painter: _HitMarkerPainter(_hitPoint(), g.hitMarker / .25, g.hitKill), size: Size.infinite),
+          ),
+        ),
         SafeArea(child: ValueListenableBuilder(valueListenable: _hud, builder: (_, _, _) => _hudLayer())),
       ],
     );
+  }
+
+  Offset _hitPoint() {
+    final center = Offset(_size.width / 2, _size.height / 2) + (g.player.pos - _cam) * _scale;
+    final aim = _input.aim;
+    if (aim == null || aim.distance == 0) return center;
+    if (_mouse && _mouseAim != null) return center + _mouseAim!;
+    return center + aim / aim.distance * 110 * _scale;
   }
 
   Widget _hudLayer() {
@@ -613,6 +717,16 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
             ? 'العاصفة تتقدم ${zoneLeft}s'
             : 'العاصفة بعد ${zoneLeft ~/ 60}:${(zoneLeft % 60).toString().padLeft(2, '0')}';
     final near = me.alive ? g.weaponNear(me) : null;
+    final land = _size.width > _size.height;
+    final healBtns = [
+      _roundBtn('🩹', '${me.bandages}', () => g.heal(me, PickupKind.bandage), active: me.bandages > 0 && me.hp < 75),
+      const SizedBox(height: 8, width: 8),
+      _roundBtn('💊', '${me.medkits}', () => g.heal(me, PickupKind.medkit), active: me.medkits > 0 && me.hp < 100),
+    ];
+    final reloadBtn = _roundBtn('🔄', gun == null ? '' : '${me.ammo[gun.kind.ammo]}', () => g.reload(me),
+        active: gun != null && gun.loaded < gun.kind.mag && me.ammo[gun.kind.ammo]! > 0);
+    final streakOn = g.time - _streakAt < 2.2 && _streak > 0;
+    final warnOn = g.time - g.zoneWarnAt < 3;
     return Stack(
       children: [
         // أعلى: رجوع، الأحياء، الإقصاءات، المؤقت
@@ -713,23 +827,62 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
           ),
         ),
         // أزرار جانبية: علاج وتعبئة
-        Positioned(
-          right: 8,
-          bottom: 270,
-          child: Column(
-            children: [
-              _roundBtn('🩹', '${me.bandages}', () => g.heal(me, PickupKind.bandage), active: me.bandages > 0 && me.hp < 75),
-              const SizedBox(height: 8),
-              _roundBtn('💊', '${me.medkits}', () => g.heal(me, PickupKind.medkit), active: me.medkits > 0 && me.hp < 100),
-            ],
+        if (land)
+          Positioned(
+            right: 8,
+            top: 96,
+            child: Column(children: [reloadBtn, const SizedBox(height: 8), ...healBtns]),
+          )
+        else ...[
+          Positioned(right: 8, bottom: 270, child: Column(children: healBtns)),
+          Positioned(left: 8, bottom: 270, child: reloadBtn),
+        ],
+        // شريط الإقصاءات المتتالية
+        if (streakOn)
+          Positioned(
+            top: _size.height * .2,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Text(
+                _streak >= 3 ? '🔥 إقصاء ×$_streak!' : (_streak == 2 ? '💥 إقصاء مزدوج!' : '💀 إقصاء!'),
+                style: AppTheme.display.copyWith(
+                  fontSize: 30,
+                  color: _streak >= 2 ? AppColors.gold : Colors.white,
+                  shadows: const [Shadow(color: Colors.black, blurRadius: 12), Shadow(color: Color(0xFFE2582B), blurRadius: 24)],
+                ),
+              )
+                  .animate(key: ValueKey('streak$_seenKills'))
+                  .scale(begin: const Offset(2.2, 2.2), end: const Offset(1, 1), duration: 260.ms, curve: Curves.easeOutBack)
+                  .fadeIn(duration: 120.ms)
+                  .then(delay: 1400.ms)
+                  .fadeOut(duration: 400.ms),
+            ),
           ),
-        ),
-        Positioned(
-          left: 8,
-          bottom: 270,
-          child: _roundBtn('🔄', gun == null ? '' : '${me.ammo[gun.kind.ammo]}', () => g.reload(me),
-              active: gun != null && gun.loaded < gun.kind.mag && me.ammo[gun.kind.ammo]! > 0),
-        ),
+        if (warnOn && !streakOn)
+          Positioned(
+            top: _size.height * .2,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xCC2A1450),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: const Color(0xFFB9A2FF), width: 2),
+                  boxShadow: const [BoxShadow(color: Color(0x887B4DFF), blurRadius: 18)],
+                ),
+                child: const Text('⚠️ العاصفة تتقدم! ادخل الدائرة',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white)),
+              )
+                  .animate(key: ValueKey('warn${g.zoneWarnAt}'))
+                  .slideY(begin: -1, end: 0, duration: 300.ms, curve: Curves.easeOutBack)
+                  .fadeIn()
+                  .then()
+                  .shimmer(duration: 900.ms, color: const Color(0xFFB9A2FF)),
+            ),
+          ),
         if (g.time < ArenaGame.landingGrace)
           Center(
             child: Text('🪂 هبطت! اجمع سلاحك… ${(ArenaGame.landingGrace - g.time).ceil()}',
@@ -870,7 +1023,56 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
           builder: (_, _, _) {
             final left = (_dropTime - _dropT).ceil();
             return LayoutBuilder(builder: (context, c) {
-              final side = min(c.maxWidth - 24, c.maxHeight - 200);
+              final land = c.maxWidth > c.maxHeight;
+              final side = land ? min(c.maxHeight - 16, c.maxWidth * .55) : min(c.maxWidth - 24, c.maxHeight - 200);
+              final map = GestureDetector(
+                onTapDown: (d) {
+                  Sfx.instance.tap();
+                  setState(() => _landing = d.localPosition / side * ArenaGame.size);
+                },
+                child: Container(
+                  width: side,
+                  height: side,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(side * .08),
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 20)],
+                  ),
+                  child: CustomPaint(
+                    painter: ArenaMapPainter(g, decor,
+                        showPlayer: false, landing: _landing, names: true, plane: (_dropT / _dropTime).clamp(0, 1)),
+                  ),
+                ),
+              );
+              final jumpBtn = BigButton(
+                label: _landing == null ? 'انزل في مكان عشوائي' : '🪂 اقفز الآن',
+                colors: arenaColors,
+                onTap: _jump,
+              );
+              if (land) {
+                return Row(
+                  children: [
+                    Padding(padding: const EdgeInsets.all(8), child: map.animate().scale(begin: const Offset(.9, .9), duration: 300.ms)),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: Column(
+                          children: [
+                            const GameTopBar(title: 'ساحة البقاء', subtitle: 'اختر مكان النزول'),
+                            const Spacer(),
+                            Text('🪂 المس الخريطة لتحديد مكان هبوطك',
+                                textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+                            const SizedBox(height: 6),
+                            Text('$left', style: AppTheme.display.copyWith(fontSize: 42, color: AppColors.gold)),
+                            const Spacer(),
+                            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: jumpBtn),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
               return Column(
                 children: [
                   const GameTopBar(title: 'ساحة البقاء', subtitle: 'اختر مكان النزول'),
@@ -948,10 +1150,44 @@ class _SticksPainter extends CustomPainter {
     }
 
     // على الكمبيوتر لا داعي لرسمها إذا لم تُلمس
-    stick(l, Offset(96, s.height - 190), Colors.white, 'تحرك');
-    stick(r, Offset(s.width - 96, s.height - 190), const Color(0xFFFF6B6B), 'صوّب');
+    final land = s.width > s.height;
+    final ix = land ? min(130.0, s.width * .15) : 96.0;
+    final iy = land ? s.height - min(120.0, s.height * .3) : s.height - 190;
+    stick(l, Offset(ix, iy), Colors.white, 'تحرك');
+    stick(r, Offset(s.width - ix, iy), const Color(0xFFFF6B6B), 'صوّب');
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+/// علامة X عند إصابة الهدف (حمراء عند الإقصاء).
+class _HitMarkerPainter extends CustomPainter {
+  _HitMarkerPainter(this.at, this.t, this.kill);
+  final Offset at;
+  final double t;
+  final bool kill;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = t.clamp(0.0, 1.0);
+    final gap = 6 + 8 * (1 - k);
+    final len = kill ? 13.0 : 9.0;
+    final p = Paint()
+      ..strokeWidth = kill ? 4 : 3
+      ..strokeCap = StrokeCap.round
+      ..color = (kill ? const Color(0xFFFF3B3B) : Colors.white).withValues(alpha: k);
+    final sh = Paint()
+      ..strokeWidth = p.strokeWidth + 3
+      ..strokeCap = StrokeCap.round
+      ..color = Colors.black.withValues(alpha: .4 * k);
+    for (var i = 0; i < 4; i++) {
+      final d = Offset.fromDirection(pi / 4 + i * pi / 2);
+      canvas.drawLine(at + d * gap, at + d * (gap + len), sh);
+      canvas.drawLine(at + d * gap, at + d * (gap + len), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HitMarkerPainter o) => true;
 }
