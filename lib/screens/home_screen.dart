@@ -57,6 +57,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// رابط دعوة لغرفة (?join=123456&g=ludo): يفتح لوبي اللعبة أونلاين ويدخل الغرفة.
   bool _openInvite() {
     final q = Uri.base.queryParameters;
+    // رابط مباشر للعبة (?play=arena) يفتحها من الرئيسية
+    final play = q['play'];
+    if (play != null && play.isNotEmpty) {
+      try {
+        final game = GameRegistry.byId(play);
+        Navigator.of(context).push(MaterialPageRoute(builder: (c) => game.screenBuilder(c, game.modes.first)));
+        return true;
+      } catch (_) {}
+    }
     final code = q['join'];
     if (code == null || code.isEmpty) return false;
     clearJoinParam();

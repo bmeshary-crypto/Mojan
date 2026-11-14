@@ -44,9 +44,10 @@ void main() {
     expect(lose.levelUp, isFalse);
     acc.recordGame('seeko', won: false);
     acc.recordGame('blocks', won: false);
+    acc.recordGame('arena', won: false);
     final last = acc.recordGame('truth_dare', won: false)!;
     expect(last.unlocked.map((a) => a.id), contains('all_games'));
-    expect(p.totalPlayed, 5);
+    expect(p.totalPlayed, 6);
   });
 
   test('profile survives save and load', () async {
