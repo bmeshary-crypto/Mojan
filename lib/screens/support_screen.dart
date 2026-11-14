@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../core/admin/admin.dart';
 import '../core/firebase/cloud.dart';
 import '../core/firebase/support.dart';
 import '../core/image_pick.dart';
@@ -114,7 +115,10 @@ class _SupportScreenState extends State<SupportScreen> {
                 Text('طريقة الدفع: $method · صورة التحويل: ${proof ? '✅ وصلت' : '⏳ ما وصلت'}',
                     style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700, fontSize: 12.5)),
                 const SizedBox(height: 8),
-                Row(children: [
+                if (!AdminService.instance.can('coins'))
+                  const Text('الموافقة على الشحن تحتاج صلاحية العملات، حوّلها للمدير',
+                      style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.w800, fontSize: 12.5)),
+                if (AdminService.instance.can('coins')) Row(children: [
                   Expanded(
                     child: FilledButton(
                       key: const ValueKey('topup-approve'),

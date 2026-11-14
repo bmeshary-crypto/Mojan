@@ -64,6 +64,7 @@ class _AdminUserPageState extends State<AdminUserPage> {
   bool get _local => _u['local'] == true || !Cloud.instance.enabled;
   Map get _p => (_u['profile'] as Map?) ?? const {};
   int _int(Object? v) => (v as num?)?.toInt() ?? 0;
+  bool _can(String p) => AdminService.instance.can(p);
 
   @override
   void initState() {
@@ -420,7 +421,7 @@ class _AdminUserPageState extends State<AdminUserPage> {
           actions: [
             IconButton(
               tooltip: 'محادثة الدعم',
-              onPressed: _local ? null : () => openSupport(context, userId: _uid, userName: '${_u['name'] ?? ''}'),
+              onPressed: _local || !_can('support') ? null : () => openSupport(context, userId: _uid, userName: '${_u['name'] ?? ''}'),
               icon: const Icon(Icons.chat_rounded),
             ),
           ],
@@ -562,6 +563,7 @@ class _AdminUserPageState extends State<AdminUserPage> {
     }
     return _list([
       _header(),
+      _StaffCard(uid: _uid, name: '${_u['name'] ?? 'لاعب'}'),
       _card(
         key: const ValueKey('user-balance'),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -598,12 +600,12 @@ class _AdminUserPageState extends State<AdminUserPage> {
             ),
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            _btn('إضافة عملات', Icons.add_circle_rounded, _addCoins, color: _green, key: const ValueKey('user-add-coins')),
-            _btn('خصم عملات', Icons.remove_circle_rounded, _takeCoins, color: _red, key: const ValueKey('user-take-coins')),
-            _btn('تعيين الرصيد', Icons.edit_rounded, _setCoins, color: AppColors.gold, key: const ValueKey('user-set-coins')),
-            _btn('تعديل الماسات', Icons.diamond_rounded, _setDiamonds, color: const Color(0xFF7FE3FF)),
-            _btn('نقاط VIP', Icons.workspace_premium_rounded, _addVip, color: AppColors.gold),
-            _btn('المستوى', Icons.trending_up_rounded, _setLevel),
+            if (_can('coins')) _btn('إضافة عملات', Icons.add_circle_rounded, _addCoins, color: _green, key: const ValueKey('user-add-coins')),
+            if (_can('coins')) _btn('خصم عملات', Icons.remove_circle_rounded, _takeCoins, color: _red, key: const ValueKey('user-take-coins')),
+            if (_can('coins')) _btn('تعيين الرصيد', Icons.edit_rounded, _setCoins, color: AppColors.gold, key: const ValueKey('user-set-coins')),
+            if (_can('coins')) _btn('تعديل الماسات', Icons.diamond_rounded, _setDiamonds, color: const Color(0xFF7FE3FF)),
+            if (_can('coins')) _btn('نقاط VIP', Icons.workspace_premium_rounded, _addVip, color: AppColors.gold),
+            if (_can('coins')) _btn('المستوى', Icons.trending_up_rounded, _setLevel),
           ]),
         ]),
       ),
@@ -611,13 +613,13 @@ class _AdminUserPageState extends State<AdminUserPage> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _title('إدارة الحساب', Icons.manage_accounts_rounded),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            _btn('تعديل الملف', Icons.edit_note_rounded, _editProfile, key: const ValueKey('user-edit-profile')),
-            _btn('رسالة', Icons.mail_rounded, _message, color: AppColors.quiz),
-            _btn(_banOf(_u) == null ? 'حظر أو تقييد' : 'الحظر (مفعل)', Icons.block_rounded, _ban, color: _red, key: const ValueKey('user-ban')),
-            _btn('تسجيل خروجه', Icons.logout_rounded, _logout, color: AppColors.gold),
-            _btn('تصفير الإحصائيات', Icons.restart_alt_rounded, _resetStats),
-            _btn('حذف المنشورات', Icons.delete_sweep_rounded, _clearPosts),
-            _btn('حذف الملف نهائياً', Icons.delete_forever_rounded, _delete, color: _red),
+            if (_can('profile')) _btn('تعديل الملف', Icons.edit_note_rounded, _editProfile, key: const ValueKey('user-edit-profile')),
+            if (_can('support')) _btn('رسالة', Icons.mail_rounded, _message, color: AppColors.quiz),
+            if (_can('ban')) _btn(_banOf(_u) == null ? 'حظر أو تقييد' : 'الحظر (مفعل)', Icons.block_rounded, _ban, color: _red, key: const ValueKey('user-ban')),
+            if (_can('ban')) _btn('تسجيل خروجه', Icons.logout_rounded, _logout, color: AppColors.gold),
+            if (_can('delete')) _btn('تصفير الإحصائيات', Icons.restart_alt_rounded, _resetStats),
+            if (_can('delete')) _btn('حذف المنشورات', Icons.delete_sweep_rounded, _clearPosts),
+            if (_can('delete')) _btn('حذف الملف نهائياً', Icons.delete_forever_rounded, _delete, color: _red),
           ]),
         ]),
       ),
@@ -638,7 +640,7 @@ class _AdminUserPageState extends State<AdminUserPage> {
           ),
           Align(
             alignment: AlignmentDirectional.centerEnd,
-            child: TextButton.icon(onPressed: _saveNote, icon: const Icon(Icons.save_rounded), label: const Text('حفظ الملاحظة')),
+            child: TextButton.icon(onPressed: _can('users') ? _saveNote : null, icon: const Icon(Icons.save_rounded), label: const Text('حفظ الملاحظة')),
           ),
         ]),
       ),
@@ -806,14 +808,14 @@ class _AdminUserPageState extends State<AdminUserPage> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: _title('المقتنيات (${owned.length})', Icons.inventory_2_rounded)),
-            _btn('إهداء غرض', Icons.card_giftcard_rounded, _giveItem, color: AppColors.gold, key: const ValueKey('user-give-item')),
+            if (_can('profile')) _btn('إهداء غرض', Icons.card_giftcard_rounded, _giveItem, color: AppColors.gold, key: const ValueKey('user-give-item')),
           ]),
           if (owned.isEmpty) const Text('ما عنده مقتنيات', style: TextStyle(color: AppColors.textMuted)),
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (final id in owned)
               InputChip(
                 label: Text(_itemTitle(id), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                onDeleted: () async {
+                onDeleted: !_can('profile') ? null : () async {
                   if (await _confirm('سحب غرض', 'سحب "${_itemTitle(id)}" من اللاعب؟', ok: 'اسحب')) {
                     await _patch({'unown': [id]}, 'تم سحب ${_itemTitle(id)}');
                   }
@@ -830,12 +832,12 @@ class _AdminUserPageState extends State<AdminUserPage> {
               Icon(itemInfo[i]?.$3 ?? Icons.extension_rounded, color: itemInfo[i]?.$4, size: 20),
               const SizedBox(width: 8),
               Expanded(child: Text(itemInfo[i]?.$1 ?? i.name, style: const TextStyle(fontWeight: FontWeight.w700))),
-              IconButton(
+              if (_can('profile')) IconButton(
                 onPressed: () => _patch({'inv': {i.name: -1}}, 'نقصت ${itemInfo[i]?.$1 ?? i.name}'),
                 icon: const Icon(Icons.remove_circle_outline_rounded, color: _red),
               ),
               Text('${_int(inv[i.name])}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-              IconButton(
+              if (_can('profile')) IconButton(
                 onPressed: () => _patch({'inv': {i.name: 5}}, 'أضفت 5 ${itemInfo[i]?.$1 ?? i.name}'),
                 icon: const Icon(Icons.add_circle_outline_rounded, color: _green),
               ),
@@ -925,7 +927,7 @@ class _AdminUserPageState extends State<AdminUserPage> {
                     ]),
                   ),
                 ),
-              if (list.isNotEmpty)
+              if (list.isNotEmpty && _can('ban'))
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
                   child: _btn('حظر هذا الحساب والمرتبطين', Icons.phonelink_lock_rounded, () async {

@@ -380,7 +380,7 @@ class _SkyWheelScreenState extends State<SkyWheelScreen>
                                   _stats(),
                                   const SizedBox(height: 10),
                                   _historyStrip(),
-                                  if (AdminService.instance.isAdmin) ...[
+                                  if (AdminService.instance.can('results')) ...[
                                     const SizedBox(height: 8),
                                     _adminUpcoming(),
                                   ],

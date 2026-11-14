@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mojan/core/account/account.dart';
+import 'package:mojan/core/admin/admin.dart';
 import 'package:mojan/core/firebase/cloud.dart';
 import 'package:mojan/core/theme.dart';
 import 'package:mojan/screens/admin/admin_screen.dart';
@@ -72,6 +73,8 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     acc.recordGame('seeko', won: false);
+    AdminService.instance.adminOverride = true;
+    addTearDown(() => AdminService.instance.adminOverride = null);
     final doc = localUserDoc()!;
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.dark,

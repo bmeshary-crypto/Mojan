@@ -9,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/account/account.dart';
 import '../../core/admin/admin.dart';
+import '../../core/admin/staff.dart';
 import '../../core/ban.dart';
 import '../../core/firebase/cloud.dart';
 import '../../core/firebase/firebase_config.dart';
@@ -25,6 +26,7 @@ import '../voice/voice_widgets.dart';
 import '../../games/ludo/ludo_engine.dart';
 
 part 'admin_user_page.dart';
+part 'admin_team.dart';
 
 /// يطلب رمز الأدمن ثم يفتح لوحة التحكم.
 Future<void> openAdmin(BuildContext context) async {
@@ -89,8 +91,18 @@ class AdminScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final admin = AdminService.instance;
+    // كل عضو في الفريق يشوف التبويبات اللي تسمح بها صلاحياته
+    final tabs = <(String, String, Widget)>[
+      ('overview', 'نظرة عامة', const _Overview()),
+      ('matches', 'المباريات', const _Matches()),
+      if (admin.can('rooms')) ('rooms', 'الغرف الصوتية', const _Rooms()),
+      if (admin.can('reports')) ('reports', 'البلاغات', const _Reports()),
+      if (admin.can('users')) ('users', 'المستخدمون', const _Users()),
+      if (admin.can('support')) ('support', 'الدعم', const _SupportInbox()),
+      if (admin.isOwner) ('team', 'الفريق', const _Team()),
+    ];
     return DefaultTabController(
-      length: 6,
+      length: tabs.length,
       child: Scaffold(
         backgroundColor: const Color(0xFF0E0A24),
         appBar: AppBar(
@@ -118,31 +130,22 @@ class AdminScreen extends StatelessWidget {
               icon: const Icon(Icons.lock_rounded),
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             indicatorColor: AppColors.gold,
             labelColor: AppColors.gold,
             unselectedLabelColor: Colors.white70,
-            labelStyle: TextStyle(
+            labelStyle: const TextStyle(
               fontWeight: FontWeight.w900,
               fontFamily: 'Cairo',
             ),
-            tabs: [
-              Tab(key: ValueKey('admin-tab-overview'), text: 'نظرة عامة'),
-              Tab(key: ValueKey('admin-tab-matches'), text: 'المباريات'),
-              Tab(key: ValueKey('admin-tab-rooms'), text: 'الغرف الصوتية'),
-              Tab(key: ValueKey('admin-tab-reports'), text: 'البلاغات'),
-              Tab(key: ValueKey('admin-tab-users'), text: 'المستخدمون'),
-              Tab(key: ValueKey('admin-tab-support'), text: 'الدعم'),
-            ],
+            tabs: [for (final t in tabs) Tab(key: ValueKey('admin-tab-${t.$1}'), text: t.$2)],
           ),
         ),
         body: ListenableBuilder(
           listenable: Listenable.merge([admin, VoiceService.instance]),
-          builder: (context, _) => const TabBarView(
-            children: [_Overview(), _Matches(), _Rooms(), _Reports(), _Users(), _SupportInbox()],
-          ),
+          builder: (context, _) => TabBarView(children: [for (final t in tabs) t.$3]),
         ),
       ),
     );
@@ -1096,17 +1099,17 @@ class _CloudUsersState extends State<_CloudUsers> {
                         ),
                       ]),
                     ),
-                    IconButton(
+                    if (AdminService.instance.can('profile')) IconButton(
                       tooltip: 'تعديل الملف',
                       onPressed: () => _edit(u, same(u)),
                       icon: const Icon(Icons.edit_rounded, color: Colors.white70),
                     ),
-                    IconButton(
+                    if (AdminService.instance.can('coins')) IconButton(
                       tooltip: 'شحن عملات',
                       onPressed: () => _grant(u),
                       icon: const Icon(Icons.add_card_rounded, color: AppColors.gold),
                     ),
-                    IconButton(
+                    if (AdminService.instance.can('ban')) IconButton(
                       key: ValueKey('ban-${u['uid']}'),
                       tooltip: _banOf(u) != null ? 'الحظر والقيود (مفعل)' : 'حظر أو تقييد',
                       onPressed: () => _ban(u, users),
@@ -1124,7 +1127,11 @@ class _CloudUsersState extends State<_CloudUsers> {
   }
 }
 
-String adminUidsLabel(String uid) => Cloud.instance.uid == uid ? ' (أنت)' : '';
+String adminUidsLabel(String uid) =>
+    '${Cloud.instance.uid == uid ? ' (أنت)' : ''}${adminUids.contains(uid) ? ' 👑' : (_staffCache[uid] == null ? '' : ' 🛡️ ${roleTitle(_staffCache[uid]!.role)}')}';
+
+/// أعضاء الفريق (يتحدث من تبويب الفريق وصفحة اللاعب) لعرض شاراتهم في القوائم.
+final _staffCache = <String, StaffInfo>{};
 
 DateTime? _ts(Object? v) => v is Timestamp ? v.toDate() : null;
 

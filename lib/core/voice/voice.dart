@@ -1030,7 +1030,7 @@ class VoiceService extends ChangeNotifier {
 
   /// طرد من الغرفة.
   String? kick(VoiceRoom r, VoiceUser u) {
-    if (u.vipLevel >= 5 && !AdminService.instance.isAdmin) {
+    if (u.vipLevel >= 5 && !AdminService.instance.can('rooms')) {
       return '${u.name} عنده VIP${u.vipLevel} ومحمي من الطرد';
     }
     for (final s in r.seats) {
