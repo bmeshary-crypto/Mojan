@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp, lerp } from './consts.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const geoCache = {};
 function geo(key, make) {
@@ -58,6 +59,137 @@ function shirtTexture(c1, c2, pattern) {
 const SKINS = ['#f1c9a5', '#e0ac85', '#c68863', '#9a6440', '#6b4229', '#f5d7bd'];
 const HAIRS = ['#1a1310', '#2b1d14', '#4a3020', '#0d0d0d', '#7a5230', '#c9a15a'];
 
+
+const BOOTS = ['#111111', '#f2f2f2', '#ff3b30', '#ffd60a', '#0a84ff', '#30d158', '#ff6bd5'];
+const sharedVC = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72 });
+const _m = new THREE.Matrix4();
+const _c = new THREE.Color();
+
+function lathe(pts, segs = 14) {
+  // نرتب النقاط من الأسفل للأعلى حتى تكون الأوجه للخارج
+  const sorted = [...pts].sort((a, b) => a[1] - b[1]);
+  return new THREE.LatheGeometry(sorted.map(([r, y]) => new THREE.Vector2(r, y)), segs);
+}
+
+/** جزء بلون ثابت (ألوان على الرؤوس) مع إزاحة وتحجيم. */
+function part(g, color, sx = 1, sz = 1, pos = [0, 0, 0], sy = 1) {
+  g = g.index ? g.toNonIndexed() : g.clone();
+  for (const k of Object.keys(g.attributes)) if (!['position', 'normal'].includes(k)) g.deleteAttribute(k);
+  _m.compose(new THREE.Vector3(...pos), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz));
+  g.applyMatrix4(_m);
+  _c.set(color).convertSRGBToLinear();
+  const n = g.attributes.position.count;
+  const col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+function merged(parts, shadow) {
+  const m = new THREE.Mesh(mergeGeometries(parts), sharedVC);
+  m.castShadow = shadow;
+  return m;
+}
+
+function torsoGeo() {
+  // صدر أعرض وخصر أنحف
+  const g = lathe([[0.0, 0.05], [0.15, 0.06], [0.152, 0.14], [0.16, 0.26], [0.18, 0.38], [0.19, 0.47], [0.182, 0.54], [0.15, 0.6], [0.09, 0.635], [0.0, 0.64]], 20);
+  g.scale(1.22, 1, 0.72);
+  return g;
+}
+
+const shirtCache = new Map();
+function shirtMaterial(c1, c2, pattern, number, numColor) {
+  const key = [c1, c2, pattern, number, numColor].join('|');
+  if (shirtCache.has(key)) return shirtCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = c1;
+  g.fillRect(0, 0, 256, 128);
+  g.fillStyle = c2;
+  if (pattern === 1) for (let i = 0; i < 256; i += 32) g.fillRect(i, 0, 13, 128);
+  else if (pattern === 2) g.fillRect(0, 44, 256, 20);
+  else if (pattern === 3) { g.fillRect(0, 0, 64, 128); g.fillRect(128, 0, 64, 128); }
+  // جوانب بلون ثاني وياقة
+  g.fillRect(0, 0, 256, 6);
+  g.fillRect(58, 0, 12, 128); g.fillRect(186, 0, 12, 128);
+  // الرقم: الظهر عند u≈0.75 والصدر عند u≈0.25 (Lathe يبدأ من +z ويدور)
+  if (number !== '' && number !== undefined) {
+    g.font = 'bold 54px Arial Black, Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = 5;
+    g.strokeStyle = 'rgba(0,0,0,0.45)';
+    g.fillStyle = numColor;
+    g.save();
+    g.translate(128 + 64 * 0, 0);
+    g.restore();
+    g.strokeText(String(number), 128, 60);
+    g.fillText(String(number), 128, 60);
+    g.font = 'bold 18px Arial Black, Arial, sans-serif';
+    g.fillText(String(number), 20 + 0, 44);
+    // شعار صغير على الصدر
+    g.fillStyle = c2; g.beginPath(); g.arc(236, 42, 4, 0, 7); g.fill();
+  }
+  // ظل القماش
+  const gr = g.createLinearGradient(0, 0, 0, 128);
+  gr.addColorStop(0, 'rgba(255,255,255,0.06)');
+  gr.addColorStop(1, 'rgba(0,0,0,0.22)');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 256, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.62, sheen: 0 });
+  shirtCache.set(key, m);
+  return m;
+}
+
+const faceCache = new Map();
+function faceMaterial(skin, hair, beard) {
+  const key = skin + hair + beard;
+  if (faceCache.has(key)) return faceCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = skin;
+  g.fillRect(0, 0, 256, 128);
+  // الوجه حول u=0.25 (x=64)
+  const shade = (x, y, rx, ry, col) => { g.fillStyle = col; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, 7); g.fill(); };
+  // شعر قصير على مؤخرة وأعلى الرأس
+  g.fillStyle = hair;
+  g.fillRect(0, 0, 256, 30);
+  g.fillRect(100, 0, 156, 52);
+  g.fillRect(0, 0, 22, 52);
+  for (const s of [-1, 1]) {
+    shade(64 + s * 11, 58, 6.5, 3.6, '#f4f1ea'); // بياض العين
+    shade(64 + s * 11, 58.4, 3, 3.2, '#2a1b10'); // القزحية
+    shade(64 + s * 11 + 0.8, 57.6, 0.9, 0.9, '#ffffff');
+    g.fillStyle = hair; g.fillRect(64 + s * 11 - 7, 50, 14, 2.6); // الحاجب
+    shade(64 + s * 11, 62, 6, 1.2, 'rgba(0,0,0,0.12)');
+  }
+  shade(64, 69, 3.5, 4, 'rgba(0,0,0,0.12)'); // ظل الأنف
+  shade(64, 79, 7.5, 2, '#8a4a3a'); // الفم
+  shade(64, 78, 7, 0.8, 'rgba(0,0,0,0.35)');
+  if (beard) {
+    g.globalAlpha = 0.75;
+    g.fillStyle = hair;
+    g.beginPath();
+    g.ellipse(64, 84, 20, 14, 0, 0, Math.PI);
+    g.fill();
+    g.fillRect(44, 74, 6, 12); g.fillRect(78, 74, 6, 12);
+    g.globalAlpha = 1;
+    shade(64, 79, 7.5, 2, '#8a4a3a');
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 });
+  faceCache.set(key, m);
+  return m;
+}
+
 /**
  * لاعب بهيكل عظمي بسيط (مفاصل) وأنيميشن إجرائي: جري، تسديد، افتكاك، ارتماء حارس، احتفال.
  * الأمام = +z في الإحداثيات المحلية.
@@ -67,132 +199,112 @@ export class PlayerModel {
     const scale = kit.scale ?? 1;
     this.root = new THREE.Group();
     this.phase = Math.random() * 6;
-    const std = (color, rough = 0.75) => new THREE.MeshStandardMaterial({ color, roughness: rough });
-    const shirtMat = new THREE.MeshStandardMaterial({ map: shirtTexture(kit.shirt, kit.trim, kit.pattern ?? 0), roughness: 0.65 });
-    const sleeveMat = std(kit.shirt, 0.65);
-    const shortsMat = std(kit.shorts, 0.7);
-    const sockMat = std(kit.socks, 0.8);
     const skin = kit.skin ?? SKINS[(Math.random() * SKINS.length) | 0];
-    const skinMat = std(skin, 0.6);
-    const hairMat = std(kit.hair ?? HAIRS[(Math.random() * HAIRS.length) | 0], 0.9);
-    const bootMat = std(kit.boots ?? '#111111', 0.4);
-    const gloveMat = kit.keeper ? std('#f5f5f5', 0.6) : skinMat;
+    const hairC = kit.hair ?? HAIRS[(Math.random() * HAIRS.length) | 0];
+    const hairStyle = kit.hairStyle ?? ((Math.random() * 4) | 0);
+    const beard = kit.beard ?? Math.random() < 0.3;
+    const shirt = kit.shirt, trim = kit.trim, shorts = kit.shorts, socks = kit.socks;
+    const glove = kit.keeper ? '#f2f2f2' : skin;
+    const boots = kit.boots ?? BOOTS[(Math.random() * BOOTS.length) | 0];
 
     const body = new THREE.Group();
     body.scale.setScalar(scale);
     this.root.add(body);
     this.body = body;
-
     const hips = new THREE.Group();
     hips.position.y = 0.95;
     body.add(hips);
     this.hips = hips;
     this.hipBase = 0.95;
 
-    const shadowy = (m) => { m.castShadow = true; return m; };
-
-    // الجذع
-    const torso = shadowy(new THREE.Mesh(geo('torso', () => {
-      const g = new THREE.CapsuleGeometry(0.16, 0.34, 4, 12);
-      g.scale(1.32, 1, 0.78);
-      return g;
-    }), shirtMat));
-    torso.position.y = 0.33;
+    // ---- الجذع: قميص بقماش مرسوم (خطوط/رقم) ----
+    const torso = new THREE.Mesh(geo('torso2', torsoGeo), shirtMaterial(shirt, trim, kit.pattern ?? 0, kit.number, kit.numColor ?? '#fff'));
+    torso.castShadow = true;
     hips.add(torso);
     this.torso = torso;
-    const shorts = shadowy(new THREE.Mesh(geo('shorts', () => new THREE.CylinderGeometry(0.19, 0.2, 0.24, 12)), shortsMat));
-    shorts.position.y = 0.02;
-    shorts.scale.z = 0.8;
-    hips.add(shorts);
 
-    // الرقم على الظهر
-    const num = new THREE.Mesh(
-      geo('num', () => new THREE.PlaneGeometry(0.24, 0.24)),
-      new THREE.MeshStandardMaterial({ map: numberTexture(kit.number, kit.numColor ?? '#ffffff', 'rgba(0,0,0,0.5)'), transparent: true, roughness: 0.6 }),
-    );
-    num.position.set(0, 0.38, -0.132);
-    num.rotation.y = Math.PI;
-    hips.add(num);
-    const numF = num.clone();
-    numF.scale.setScalar(0.45);
-    numF.position.set(0.07, 0.48, 0.132);
-    numF.rotation.y = 0;
-    hips.add(numF);
+    // باقي الجسم بألوان على الرؤوس (مادة واحدة مشتركة = أداء أفضل)
+    const hipParts = [
+      part(lathe([[0.168, 0.14], [0.176, 0.06], [0.182, -0.02], [0.17, -0.07], [0.0, -0.075]]), shorts, 1, 0.74),
+      part(new THREE.SphereGeometry(0.062, 12, 8), shirt, 1, 0.85, [-0.2, 0.545, 0]),
+      part(new THREE.SphereGeometry(0.062, 12, 8), shirt, 1, 0.85, [0.2, 0.545, 0]),
+      part(lathe([[0.052, 0.62], [0.048, 0.7], [0.045, 0.73]]), skin),
+      part(new THREE.TorusGeometry(0.056, 0.014, 6, 16).rotateX(Math.PI / 2), trim, 1, 1, [0, 0.635, 0.005]),
+    ];
+    hips.add(merged(hipParts, true));
 
-    const neck = new THREE.Mesh(geo('neck', () => new THREE.CylinderGeometry(0.05, 0.055, 0.1, 8)), skinMat);
-    neck.position.y = 0.66;
-    hips.add(neck);
-    const head = shadowy(new THREE.Mesh(geo('head', () => {
-      const g = new THREE.SphereGeometry(0.112, 16, 12);
-      g.scale(0.92, 1.08, 1);
-      return g;
-    }), skinMat));
-    head.position.y = 0.78;
+    // ---- الرأس: وجه مرسوم + شعر + أذنين ----
+    const head = new THREE.Group();
+    head.position.y = 0.8;
     hips.add(head);
     this.head = head;
-    const hairStyle = kit.hairStyle ?? ((Math.random() * 3) | 0);
-    const hair = new THREE.Mesh(
-      geo('hair' + hairStyle, () => new THREE.SphereGeometry(0.118, 16, 10, 0, Math.PI * 2, 0, Math.PI * (hairStyle === 0 ? 0.45 : hairStyle === 1 ? 0.55 : 0.62))),
-      hairMat,
-    );
-    hair.position.set(0, 0.012, -0.012);
-    hair.scale.set(0.95, hairStyle === 2 ? 1.18 : 1.05, 1.02);
-    head.add(hair);
-    // أنف بسيط لإعطاء اتجاه للوجه
-    const nose = new THREE.Mesh(geo('nose', () => new THREE.SphereGeometry(0.02, 6, 4)), skinMat);
-    nose.position.set(0, -0.01, 0.105);
-    head.add(nose);
+    const skull = new THREE.Mesh(geo('skull', () => new THREE.SphereGeometry(0.108, 24, 18).scale(0.86, 1.06, 0.97)), faceMaterial(skin, hairC, beard));
+    skull.castShadow = true;
+    head.add(skull);
+    const headParts = [
+      part(new THREE.SphereGeometry(0.024, 8, 6), skin, 0.6, 1.3, [-0.092, -0.005, -0.005]),
+      part(new THREE.SphereGeometry(0.024, 8, 6), skin, 0.6, 1.3, [0.092, -0.005, -0.005]),
+      part(new THREE.SphereGeometry(0.016, 8, 6), skin, 1, 1.4, [0, -0.012, 0.1], 1.5),
+      part(new THREE.SphereGeometry(0.06, 12, 8), skin, 1.1, 0.7, [0, -0.07, 0.03]), // الفك
+    ];
+    if (hairStyle === 0) headParts.push(part(new THREE.SphereGeometry(0.114, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.42), hairC, 0.88, 1.05, [0, 0.012, -0.008]));
+    if (hairStyle === 1) headParts.push(part(new THREE.SphereGeometry(0.118, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hairC, 0.9, 1.15, [0, 0.02, -0.012]));
+    if (hairStyle === 2) {
+      headParts.push(part(new THREE.SphereGeometry(0.122, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), hairC, 0.93, 1.12, [0, 0.01, -0.02]));
+    }
+    if (hairStyle === 3) {
+      // شعر طويل مربوط
+      headParts.push(part(new THREE.SphereGeometry(0.117, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.48), hairC, 0.9, 1.08, [0, 0.015, -0.01]));
+      headParts.push(part(new THREE.SphereGeometry(0.035, 8, 6), hairC, 1, 1, [0, 0.03, -0.118]));
+    }
+    head.add(merged(headParts, false));
 
-    // الأذرع
+    // ---- الأذرع ----
     this.shoulders = [];
     this.elbows = [];
     for (const s of [-1, 1]) {
       const sh = new THREE.Group();
-      sh.position.set(s * 0.235, 0.56, 0);
+      sh.position.set(s * 0.225, 0.55, 0);
       hips.add(sh);
-      const up = shadowy(new THREE.Mesh(geo('uparm', () => new THREE.CapsuleGeometry(0.052, 0.2, 4, 8)), sleeveMat));
-      up.position.y = -0.13;
-      sh.add(up);
+      sh.add(merged([
+        part(lathe([[0.0, 0.035], [0.058, 0.03], [0.06, -0.05], [0.056, -0.13], [0.0, -0.135]]), shirt), // كمّ
+        part(lathe([[0.0, -0.1], [0.05, -0.11], [0.054, -0.16], [0.046, -0.25], [0.04, -0.29]]), kit.keeper ? shirt : skin),
+        part(new THREE.TorusGeometry(0.056, 0.007, 4, 14).rotateX(Math.PI / 2), trim, 1, 1, [0, -0.13, 0]),
+      ], true));
       const el = new THREE.Group();
-      el.position.y = -0.27;
+      el.position.y = -0.28;
       sh.add(el);
-      const fa = new THREE.Mesh(geo('forearm', () => new THREE.CapsuleGeometry(0.043, 0.2, 4, 8)), kit.keeper ? sleeveMat : skinMat);
-      fa.position.y = -0.13;
-      el.add(fa);
-      const hand = new THREE.Mesh(geo('hand' + (kit.keeper ? 'k' : ''), () => new THREE.SphereGeometry(kit.keeper ? 0.065 : 0.048, 8, 6)), gloveMat);
-      hand.position.y = -0.27;
-      el.add(hand);
+      el.add(merged([
+        part(new THREE.SphereGeometry(0.041, 8, 6), kit.keeper ? shirt : skin),
+        part(lathe([[0.041, 0], [0.042, -0.06], [0.034, -0.2], [0.03, -0.24]]), kit.keeper ? shirt : skin),
+        part(new THREE.CapsuleGeometry(kit.keeper ? 0.05 : 0.032, 0.05, 4, 8), glove, 1, 1, [0, -0.29, 0.005]),
+      ], true));
       sh.rotation.z = s * 0.12;
       this.shoulders.push(sh);
       this.elbows.push(el);
     }
 
-    // الأرجل
+    // ---- الأرجل ----
     this.thighs = [];
     this.knees = [];
     for (const s of [-1, 1]) {
       const hp = new THREE.Group();
-      hp.position.set(s * 0.1, -0.06, 0);
+      hp.position.set(s * 0.098, -0.04, 0);
       hips.add(hp);
-      const shortLeg = new THREE.Mesh(geo('shortleg', () => new THREE.CylinderGeometry(0.088, 0.08, 0.17, 10)), shortsMat);
-      shortLeg.position.y = -0.06;
-      hp.add(shortLeg);
-      const th = shadowy(new THREE.Mesh(geo('thigh', () => new THREE.CapsuleGeometry(0.07, 0.28, 4, 8)), skinMat));
-      th.position.y = -0.2;
-      hp.add(th);
+      hp.add(merged([
+        part(lathe([[0.098, 0.02], [0.102, -0.08], [0.1, -0.17], [0.0, -0.172]]), shorts), // ساق الشورت
+        part(lathe([[0.0, -0.12], [0.084, -0.13], [0.08, -0.22], [0.068, -0.33], [0.055, -0.42]]), skin), // الفخذ
+      ], true));
       const kn = new THREE.Group();
       kn.position.y = -0.42;
       hp.add(kn);
-      const sh = shadowy(new THREE.Mesh(geo('shin', () => new THREE.CapsuleGeometry(0.058, 0.3, 4, 8)), sockMat));
-      sh.position.y = -0.2;
-      kn.add(sh);
-      const boot = shadowy(new THREE.Mesh(geo('boot', () => {
-        const g = new THREE.BoxGeometry(0.095, 0.075, 0.25);
-        g.translate(0, 0, 0.045);
-        return g;
-      }), bootMat));
-      boot.position.y = -0.43;
-      kn.add(boot);
+      kn.add(merged([
+        part(new THREE.SphereGeometry(0.053, 10, 8), skin),
+        part(lathe([[0.054, 0.0], [0.06, -0.08], [0.064, -0.14], [0.05, -0.27], [0.04, -0.36], [0.038, -0.42]]), socks), // الجورب والسمانة
+        part(new THREE.CylinderGeometry(0.056, 0.056, 0.03, 12), trim, 1, 1, [0, -0.04, 0]),
+        part(new THREE.SphereGeometry(0.06, 12, 8), boots, 0.95, 0.7, [0, -0.45, 0.06], 2.05), // الحذاء
+        part(new THREE.BoxGeometry(0.1, 0.018, 0.25), '#e8e8e8', 1, 1, [0, -0.488, 0.055]), // النعل
+      ], true));
       this.thighs.push(hp);
       this.knees.push(kn);
     }

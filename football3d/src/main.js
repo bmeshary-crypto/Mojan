@@ -12,7 +12,17 @@ const params = new URLSearchParams(window.MOJAN_FB_CFG || (location.hash || '').
 const crestBase = params.get('assets') ?? '../images/';
 const homeId = params.get('home') || 'eagle';
 const awayId = params.get('away') || 'lion';
-const home = makeTeam(homeId, crestBase);
+const custom = homeId === 'custom'
+  ? {
+      name: params.get('hname') || 'فريقي',
+      c1: params.get('hc1') || '#2F7BFF',
+      c2: params.get('hc2') || '#ffffff',
+      shorts: params.get('hsh') || '#ffffff',
+      pattern: +(params.get('hpat') || 0),
+      names: (params.get('names') || '').split('|'),
+    }
+  : null;
+const home = makeTeam(homeId, crestBase, null, custom);
 const away = makeTeam(awayId, crestBase, home);
 if (window.MOJAN_FB_CRESTS) {
   home.crest = window.MOJAN_FB_CRESTS.home || home.crest;
@@ -186,6 +196,8 @@ function updateCamera(dt) {
     camPos.lerp(tmpP, k);
     camLook.lerp(tmpL, k);
   }
+  const o = window.__fb?.camOverride;
+  if (o) { camPos.set(...o.pos); camLook.set(...o.look); }
   camera.position.copy(camPos);
   camera.lookAt(camLook);
 }
@@ -215,7 +227,7 @@ function showEnd(r) {
     $('ehc').src = home.crest;
     $('eac').src = away.crest;
     $('etitle').textContent = r.result === 'win' ? 'فوز! 🏆' : r.result === 'draw' ? 'تعادل' : 'خسارة';
-    const sc = (i) => r.events.filter((e) => e.team === i).map((e) => `${e.own ? 'عكسي' : '#' + e.num} ${e.min}'`).join(' · ') || '—';
+    const sc = (i) => r.events.filter((e) => e.team === i).map((e) => `${e.own ? 'عكسي' : e.name || '#' + e.num} ${e.min}'`).join(' · ') || '—';
     $('egoals').innerHTML = `<div>${sc(0)}</div><div>${sc(1)}</div>`;
     $('estats').innerHTML = [
       ['الاستحواذ', r.possession + '%', 100 - r.possession + '%'],

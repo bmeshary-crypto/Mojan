@@ -29,6 +29,7 @@ class Player {
     this.nx = nx;
     this.nz = nz;
     this.number = NUMBERS[idx];
+    this.name = (team.names && team.names[idx]) || '';
     this.model = model;
     this.ring = ring;
     this.x = 0; this.z = 0; this.vx = 0; this.vz = 0;
@@ -1168,7 +1169,7 @@ export class Match {
     const b = this.ball;
     const scorer = b.lastPlayer && b.lastPlayer.team === team ? b.lastPlayer : null;
     const ownGoal = !scorer;
-    this.events.push({ team: this.teams.indexOf(team), min: Math.floor(this.clock / 60) + 1, num: scorer?.number ?? 0, own: ownGoal });
+    this.events.push({ team: this.teams.indexOf(team), min: Math.floor(this.clock / 60) + 1, num: scorer?.number ?? 0, name: scorer?.name || '', own: ownGoal });
     this.state = 'goal';
     this.stateT = 0;
     this.goalTeam = team;
@@ -1180,7 +1181,7 @@ export class Match {
     const goal = this.world?.goals[String(s)];
     if (goal) { goal.bulge = 1; goal.hitZ = b.z; goal.hitY = b.y; }
     this.hud.setScore(this.teams[0].score, this.teams[1].score);
-    this.hud.banner('هــدف!', ownGoal ? `هدف عكسي · ${team.name}` : `${team.name} · رقم ${scorer.number}`, true);
+    this.hud.banner('هــدف!', ownGoal ? `هدف عكسي · ${team.name}` : `${team.name} · ${scorer.name || 'رقم ' + scorer.number}`, true);
     for (const p of this.players) p.plan = null;
   }
 
@@ -1286,7 +1287,7 @@ export class Match {
 
   get controlledInfo() {
     const cp = this.user.cp;
-    return cp ? `${cp.number} · ${ROLE_NAMES[cp.role]}` : '';
+    return cp ? `${cp.number} · ${cp.name || ROLE_NAMES[cp.role]}` : '';
   }
 }
 

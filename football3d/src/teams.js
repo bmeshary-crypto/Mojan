@@ -27,8 +27,34 @@ function cdist(a, b) {
   return Math.hypot(r1 - r2, g1 - g2, b1 - b2);
 }
 
-export function makeTeam(id, crestBase, vs) {
-  const c = { ...(CLUBS[id] || CLUBS.eagle), id };
+/** شعار مرسوم لفريق المستخدم: درع بألوانه وأول حرف من اسمه. */
+function drawCrest(name, c1, c2) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const g = cv.getContext('2d');
+  const shield = () => {
+    g.beginPath();
+    g.moveTo(64, 6); g.lineTo(116, 22); g.lineTo(110, 78);
+    g.quadraticCurveTo(96, 108, 64, 122); g.quadraticCurveTo(32, 108, 18, 78);
+    g.lineTo(12, 22); g.closePath();
+  };
+  shield();
+  g.fillStyle = c2; g.fill();
+  g.save(); shield(); g.clip();
+  g.fillStyle = c1; g.fillRect(0, 0, 64, 128);
+  g.restore();
+  shield();
+  g.lineWidth = 7; g.strokeStyle = '#ffd34d'; g.stroke();
+  g.font = 'bold 54px Cairo, Arial, sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,0.6)';
+  const ch = [...(name || '?').trim()][0] || '?';
+  g.strokeText(ch, 64, 64); g.fillStyle = '#fff'; g.fillText(ch, 64, 64);
+  return cv.toDataURL();
+}
+
+export function makeTeam(id, crestBase, vs, custom) {
+  const c = custom ? { short: 'MY', gk: '#f2c200', ...custom, id } : { ...(CLUBS[id] || CLUBS.eagle), id };
   // طقم بديل إذا تشابهت الألوان
   if (vs && cdist(c.c1, vs.c1) < 120) {
     const light = lum(vs.c1) < 0.55;
@@ -38,6 +64,6 @@ export function makeTeam(id, crestBase, vs) {
     c.pattern = 2;
   }
   c.num = lum(c.c1) > 0.6 ? '#111111' : '#ffffff';
-  c.crest = `${crestBase}fc_${id}.webp`;
+  c.crest = custom ? drawCrest(c.name, custom.c1, custom.c2) : `${crestBase}fc_${id}.webp`;
   return c;
 }

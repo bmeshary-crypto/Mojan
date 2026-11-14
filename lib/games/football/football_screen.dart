@@ -9,6 +9,7 @@ import '../../core/sfx.dart';
 import '../../core/theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/game_ui.dart';
+import 'football_team_editor.dart';
 import 'football_view.dart';
 
 const footballColors = [Color(0xFF7CF28A), Color(0xFF1E9E4A), Color(0xFF0B3D1F)];
@@ -70,8 +71,29 @@ class FootballScreen extends StatefulWidget {
 }
 
 class _FootballScreenState extends State<FootballScreen> {
-  int _home = 0;
+  int _home = 0; // -1 = فريقي (المخصص)
   int _away = 1;
+  MyFootballTeam? _mine;
+
+  @override
+  void initState() {
+    super.initState();
+    MyFootballTeam.load().then((t) {
+      if (mounted) setState(() => _mine = t);
+    });
+  }
+
+  Future<void> _editMine() async {
+    final t = await Navigator.of(context).push<MyFootballTeam>(
+      MaterialPageRoute(builder: (_) => FootballTeamEditor(initial: _mine ?? MyFootballTeam.fresh())),
+    );
+    if (t == null || !mounted) return;
+    await t.save();
+    setState(() {
+      _mine = t;
+      _home = -1;
+    });
+  }
   FootballDiff _diff = FootballDiff.normal;
   int _mins = 4;
   int _stake = 0;
@@ -109,7 +131,7 @@ class _FootballScreenState extends State<FootballScreen> {
                           _clubs(_home, (i) => setState(() {
                                 _home = i;
                                 if (_away == i) _away = (i + 1) % footballClubs.length;
-                              })),
+                              }), mine: true),
                           const SizedBox(height: 14),
                           Row(children: [
                             Expanded(child: _label('الخصم')),
@@ -186,8 +208,11 @@ class _FootballScreenState extends State<FootballScreen> {
       return;
     }
     enterLandscape();
-    final home = footballClubs[_home], away = footballClubs[_away];
-    final cfg = 'home=${home.id}&away=${away.id}&diff=${_diff.name}&mins=$_mins';
+    final mine = _home < 0 ? (_mine ?? MyFootballTeam.fresh()) : null;
+    final home = mine?.asClub ?? footballClubs[_home], away = footballClubs[_away];
+    final cfg = mine != null
+        ? '${mine.toConfig()}&away=${away.id}&diff=${_diff.name}&mins=$_mins'
+        : 'home=${home.id}&away=${away.id}&diff=${_diff.name}&mins=$_mins';
     final res = await Navigator.of(context).push<FootballResult>(MaterialPageRoute(
       builder: (_) => FootballMatchScreen(config: cfg),
     ));
@@ -244,13 +269,15 @@ class _FootballScreenState extends State<FootballScreen> {
         child: Text(t, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
       );
 
-  Widget _clubs(int value, ValueChanged<int> onTap, {int? disabled}) => SizedBox(
+  Widget _clubs(int value, ValueChanged<int> onTap, {int? disabled, bool mine = false}) => SizedBox(
         height: 86,
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
-          itemCount: footballClubs.length,
+          itemCount: footballClubs.length + (mine ? 1 : 0),
           separatorBuilder: (_, _) => const SizedBox(width: 8),
-          itemBuilder: (_, i) {
+          itemBuilder: (_, j) {
+            if (mine && j == 0) return _mineCard(value == -1);
+            final i = mine ? j - 1 : j;
             final c = footballClubs[i];
             final sel = i == value;
             final off = i == disabled;
@@ -286,6 +313,28 @@ class _FootballScreenState extends State<FootballScreen> {
         ),
       );
 
+  Widget _mineCard(bool sel) {
+    final t = _mine;
+    return GestureDetector(
+      onTap: () => t == null || sel ? _editMine() : setState(() => _home = -1),
+      child: AnimatedContainer(
+        duration: 200.ms,
+        width: 72,
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: Colors.white.withValues(alpha: sel ? .16 : .06),
+          border: Border.all(color: sel ? AppColors.gold : Colors.white38, width: sel ? 3 : 1),
+        ),
+        child: Column(children: [
+          Expanded(child: t == null ? const Icon(Icons.add_circle_outline_rounded, size: 34, color: AppColors.gold) : MyTeamCrest(team: t)),
+          Text(t == null ? 'فريقي' : (sel ? '✏️ تعديل' : t.name),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+        ]),
+      ),
+    );
+  }
+
   Widget _banner() => Container(
         height: 200,
         decoration: BoxDecoration(
@@ -311,7 +360,12 @@ class _FootballScreenState extends State<FootballScreen> {
               right: 16,
               bottom: 12,
               child: Row(children: [
-                _crest(footballClubs[_home]),
+                _home < 0 && _mine != null
+                    ? Column(mainAxisSize: MainAxisSize.min, children: [
+                        SizedBox(width: 56, height: 56, child: MyTeamCrest(team: _mine!)),
+                        Text(_mine!.name, style: const TextStyle(fontWeight: FontWeight.w900, shadows: [Shadow(blurRadius: 6)])),
+                      ])
+                    : _crest(footballClubs[_home < 0 ? 0 : _home]),
                 const Spacer(),
                 const Text('VS', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.gold)),
                 const Spacer(),
