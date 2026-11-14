@@ -13,6 +13,7 @@ import '../account/account.dart';
 import '../account/auth_backend.dart';
 import '../account/leaderboard.dart';
 import '../ban.dart';
+import '../geo.dart';
 import '../gifts/diamonds.dart';
 import 'firebase_config.dart';
 
@@ -114,6 +115,7 @@ class Cloud {
     _meSub?.cancel();
     _watching = id;
     _startPresence();
+    if (Account.instance.profile?.id == id) Account.instance.log('login', 'فتح التطبيق • ${deviceInfo()}', save: true);
     Diamonds.instance.watch(id);
     _meSub = _db.collection('users').doc(id).snapshots().listen((doc) async {
       final data = doc.data();
@@ -121,21 +123,90 @@ class Cloud {
       Restrictions.instance.set(isAdmin ? null : BanInfo.parse(data['banned']));
       banned.value = Restrictions.instance.fullBan.value;
       final edit = data['edit'];
-      if (edit is Map) {
+      if (edit is Map && Account.instance.profile?.id == doc.id) {
         try {
           await doc.reference.update({'edit': FieldValue.delete()});
-          final acc = Account.instance;
-          if (edit['name'] is String) await acc.rename(edit['name'] as String);
-          if (edit['bio'] is String) acc.setBio(edit['bio'] as String);
-          if (edit['avatar'] is num) await acc.setAvatar((edit['avatar'] as num).toInt());
-          if (edit['vipAdd'] is num) acc.addVip((edit['vipAdd'] as num).toInt());
-          if (edit['sid'] is String) acc.adoptSpecialId(edit['sid'] as String);
+          if (await applyAdminEdit(edit)) return;
         } catch (e) {
           debugPrint('edit failed: $e');
         }
       }
       if (data['grants'] is Map || data['grant'] is Map) await _claimGrants(doc.reference);
     }, onError: (e) => debugPrint('watchMe: $e'));
+  }
+
+  /// يطبق تعديلات الإدارة على الحساب المفتوح. يرجع true لو طُلب تسجيل الخروج.
+  Future<bool> applyAdminEdit(Map edit) async {
+    final acc = Account.instance;
+    final p = acc.profile;
+    if (p == null) return false;
+    if (edit['name'] is String) await acc.rename(edit['name'] as String);
+    if (edit['bio'] is String) acc.setBio(edit['bio'] as String);
+    if (edit['avatar'] is num) await acc.setAvatar((edit['avatar'] as num).toInt());
+    if (edit['vipAdd'] is num) acc.addVip((edit['vipAdd'] as num).toInt());
+    if (edit['sid'] is String) acc.adoptSpecialId(edit['sid'] as String);
+    final changes = <String>[];
+    if (edit['coinsSet'] is num) {
+      final v = (edit['coinsSet'] as num).toInt().clamp(0, _maxCoins);
+      acc.log('admin', 'الإدارة عدّلت الرصيد إلى $v', coins: v - p.coins);
+      p.coins = v;
+      changes.add('الرصيد صار $v 🪙');
+    }
+    if (edit['coinsAdd'] is num && (edit['coinsAdd'] as num) != 0) {
+      final d = (edit['coinsAdd'] as num).toInt();
+      final before = p.coins;
+      p.coins = (p.coins + d).clamp(0, _maxCoins);
+      acc.log('admin', d > 0 ? 'الإدارة أضافت $d عملة' : 'الإدارة خصمت ${-d} عملة', coins: p.coins - before);
+      changes.add(d > 0 ? 'تمت إضافة $d 🪙' : 'تم خصم ${-d} 🪙');
+    }
+    if (edit['diamondsSet'] is num) {
+      final v = (edit['diamondsSet'] as num).toInt().clamp(0, _maxCoins);
+      acc.log('admin', 'الإدارة عدّلت الماسات من ${p.diamonds} إلى $v');
+      p.diamonds = v;
+      changes.add('الماسات صارت $v 💎');
+    }
+    if (edit['xpSet'] is num) {
+      p.xp = (edit['xpSet'] as num).toInt().clamp(0, _maxCoins);
+      acc.log('admin', 'الإدارة عدّلت الخبرة (المستوى ${p.level})');
+    }
+    for (final id in (edit['own'] as List? ?? const [])) {
+      if (id is String && p.owned.add(id)) acc.log('admin', 'الإدارة أهدته $id');
+    }
+    for (final id in (edit['unown'] as List? ?? const [])) {
+      if (id is! String || !p.owned.remove(id)) continue;
+      final name = id.split('.').last;
+      if (id.startsWith('frame.') && p.frame == name) p.frame = 'none';
+      if (id.startsWith('entrance.') && p.entrance == name) p.entrance = 'none';
+      if (id.startsWith('bubble.') && p.bubble == name) p.bubble = 'none';
+      if (id.startsWith('chair.') && p.chair == name) p.chair = 'none';
+      if (id.startsWith('dice.') && p.diceSkin == name) p.diceSkin = 'classic';
+      if (id.startsWith('board.') && p.boardTheme == name) p.boardTheme = 'classic';
+      acc.log('admin', 'الإدارة سحبت $id');
+    }
+    final inv = edit['inv'];
+    if (inv is Map) {
+      for (final e in inv.entries) {
+        if (e.value is! num) continue;
+        p.inventory['${e.key}'] = ((p.inventory['${e.key}'] ?? 0) + (e.value as num).toInt()).clamp(0, 9999);
+      }
+      acc.log('admin', 'الإدارة عدّلت أدوات الحقيبة');
+    }
+    if (edit['resetStats'] == true) {
+      p.stats.clear();
+      acc.log('admin', 'الإدارة صفّرت إحصائيات الألعاب');
+    }
+    if (edit['clearPosts'] == true) {
+      p.posts.clear();
+      acc.log('admin', 'الإدارة حذفت المنشورات');
+    }
+    acc.touch();
+    await saveNow(p);
+    if (changes.isNotEmpty) notice.value = 'تحديث من الإدارة:\n${changes.join('\n')}';
+    if (edit['logout'] == true) {
+      await acc.signOut();
+      return true;
+    }
+    return false;
   }
 
   /// يستلم كل شحنات الإدارة المعلقة مرة واحدة (معاملة حتى لا يضيع أو يتكرر شيء).
@@ -163,6 +234,7 @@ class Cloud {
         return sum;
       });
       if (total > 0) {
+        acc.log('admin', 'شحن من الإدارة $total عملة', coins: total);
         acc.earn(total);
         acc.addVip(total);
         await saveNow(acc.profile!);
@@ -266,6 +338,47 @@ class Cloud {
       );
     }
   }
+
+  /// متابعة مستند لاعب واحد مباشرة (صفحة المستخدم في لوحة التحكم).
+  Stream<Map<String, dynamic>?> adminUser(String id) {
+    if (!enabled) return Stream.value(null);
+    return _db.collection('users').doc(id).snapshots().map((d) => d.data() == null ? null : {...d.data()!, 'uid': d.id});
+  }
+
+  /// تعديلات على الرصيد والأغراض تطبق على جهاز اللاعب (فوراً لو التطبيق مفتوح).
+  /// [coinsAdd] تتراكم لو انرسلت أكثر من مرة قبل ما يستلمها.
+  Future<void> adminPatch(String id, Map<String, Object?> edit) async {
+    final e = <String, Object?>{...edit};
+    if (e['coinsAdd'] is int) e['coinsAdd'] = FieldValue.increment(e['coinsAdd'] as int);
+    if (e['own'] is List) e['own'] = FieldValue.arrayUnion(e['own'] as List);
+    if (e['unown'] is List) e['unown'] = FieldValue.arrayUnion(e['unown'] as List);
+    await _db.collection('users').doc(id).set({'edit': e}, SetOptions(merge: true));
+  }
+
+  /// ملاحظة داخلية للإدارة عن اللاعب.
+  Future<void> adminNote(String id, String note) => _db.collection('users').doc(id).set(
+        {'note': note.isEmpty ? FieldValue.delete() : note, 'noteAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+
+  /// الحسابات المرتبطة: نفس الجهاز أو نفس عنوان الـ IP.
+  Future<List<Map<String, dynamic>>> adminLinked({String? device, String? ip, required String except}) async {
+    final out = <String, Map<String, dynamic>>{};
+    Future<void> by(String field, String value, String why) async {
+      final snap = await _db.collection('users').where(field, isEqualTo: value).limit(30).get();
+      for (final d in snap.docs) {
+        if (d.id == except) continue;
+        final cur = out[d.id];
+        out[d.id] = {...d.data(), 'uid': d.id, 'why': cur == null ? why : '${cur['why']} + $why'};
+      }
+    }
+    if (device != null) await by('device', device, 'نفس الجهاز');
+    if (ip != null && ip.isNotEmpty) await by('geo.ip', ip, 'نفس الـ IP');
+    return out.values.toList();
+  }
+
+  /// حذف ملف لاعب نهائياً من السيرفر (لا يحذف حساب الدخول نفسه).
+  Future<void> adminDeleteUser(String id) => _db.collection('users').doc(id).delete();
 
   Future<void> init() async {
     try {
@@ -393,6 +506,9 @@ class Cloud {
         'device': await deviceId(),
         'tz': _timeZone(),
         'lang': PlatformDispatcher.instance.locale.toLanguageTag(),
+        'ua': deviceInfo(),
+        'method': p.method.name,
+        'geo': ?(await _geoOnce()),
         'wb': _weekBase,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -439,6 +555,22 @@ class Cloud {
       return null;
     }
   }
+}
+
+/// أعلى رصيد مسموح (رقم عادي وليس إزاحة بتات، لأن الإزاحة على الويب 32 بت فقط).
+const _maxCoins = 1000000000000;
+
+Map<String, String>? _geo;
+bool _geoAsked = false;
+
+/// الموقع التقريبي مرة واحدة لكل فتح للتطبيق.
+Future<Map<String, String>?> _geoOnce() async {
+  if (_geoAsked) return _geo;
+  _geoAsked = true;
+  try {
+    _geo = await lookupGeo().timeout(const Duration(seconds: 6));
+  } catch (_) {}
+  return _geo;
 }
 
 String? _device;

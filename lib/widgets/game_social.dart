@@ -86,7 +86,7 @@ Future<GameGift?> pickGameGift(BuildContext context, String toName) async {
     },
   );
   if (g == null) return null;
-  if (!Account.instance.spend(g.price)) {
+  if (!Account.instance.spend(g.price, reason: 'أرسل هدية داخل لعبة', kind: 'gift')) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('عملاتك ما تكفي'), behavior: SnackBarBehavior.floating));
     }

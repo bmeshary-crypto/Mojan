@@ -74,6 +74,12 @@ class AdminService extends ChangeNotifier {
     }
   }
 
+  /// تسجيل إجراء في سجل الإدارة.
+  void audit(String s) {
+    _audit(s);
+    notifyListeners();
+  }
+
   void _audit(String s) {
     log.insert(0, '${_hm(DateTime.now())}  $s');
     if (log.length > 50) log.removeLast();

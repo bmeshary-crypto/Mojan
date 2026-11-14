@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +13,8 @@ import '../../core/ban.dart';
 import '../../core/firebase/cloud.dart';
 import '../../core/firebase/firebase_config.dart';
 import '../../core/firebase/support.dart';
+import '../../core/geo.dart';
+import '../../core/shop.dart';
 import '../../core/theme.dart';
 import '../../core/vip.dart';
 import '../../core/voice/voice.dart';
@@ -19,6 +22,9 @@ import '../../widgets/account_widgets.dart';
 import '../support_screen.dart';
 import '../voice/voice_room_screen.dart';
 import '../voice/voice_widgets.dart';
+import '../../games/ludo/ludo_engine.dart';
+
+part 'admin_user_page.dart';
 
 /// يطلب رمز الأدمن ثم يفتح لوحة التحكم.
 Future<void> openAdmin(BuildContext context) async {
@@ -751,6 +757,15 @@ class _UsersState extends State<_Users> {
               ]),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
+                OutlinedButton.icon(
+                  key: const ValueKey('open-my-user-page'),
+                  onPressed: () {
+                    final d = localUserDoc();
+                    if (d != null) openAdminUser(context, d);
+                  },
+                  icon: const Icon(Icons.person_search_rounded),
+                  label: const Text('صفحة حسابي الكاملة', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
                 for (final n in const [10000, 100000, 1000000])
                   FilledButton(
                     key: ValueKey('grant-$n'),
@@ -833,6 +848,17 @@ class _CloudUsers extends StatefulWidget {
 
 class _CloudUsersState extends State<_CloudUsers> {
   late Future<List<Map<String, dynamic>>> _users = Cloud.instance.adminUsers();
+  String _q = '';
+
+  bool _match(Map<String, dynamic> u) {
+    if (_q.isEmpty) return true;
+    final p = (u['profile'] as Map?) ?? const {};
+    return '${u['name'] ?? ''}'.toLowerCase().contains(_q.toLowerCase()) ||
+        '${p['sid'] ?? defaultPlayerId(u['uid'] as String)}'.contains(_q) ||
+        '${u['uid']}'.startsWith(_q) ||
+        '${(u['geo'] as Map?)?['ip'] ?? ''}'.startsWith(_q) ||
+        '${(u['geo'] as Map?)?['country'] ?? ''}'.contains(_q);
+  }
 
   void _reload() => setState(() => _users = Cloud.instance.adminUsers());
 
@@ -1018,8 +1044,33 @@ class _CloudUsersState extends State<_CloudUsers> {
               ]),
               if (snap.connectionState != ConnectionState.done) const LinearProgressIndicator(),
               if (snap.hasError) Text('تعذر التحميل: ${snap.error}', style: const TextStyle(color: Color(0xFFFF7A7A))),
-              for (final u in users)
-                Padding(
+              const SizedBox(height: 6),
+              TextField(
+                key: const ValueKey('cloud-user-search'),
+                onChanged: (v) => setState(() => _q = v.trim()),
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  hintText: 'ابحث بالاسم أو الـ ID أو الـ IP أو الدولة',
+                  filled: true,
+                  fillColor: Colors.white.withValues(alpha: .05),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text('اضغط على أي لاعب لفتح صفحته الكاملة (السجل، الرصيد، الجهاز والموقع...)',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+              ),
+              for (final u in users.where(_match))
+                InkWell(
+                  key: ValueKey('cloud-user-${u['uid']}'),
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AdminUserPage(user: u)));
+                    if (mounted) _reload();
+                  },
+                  child: Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(children: [
                     PlayerAvatar(index: ((u['avatar'] as num?)?.toInt() ?? 0) % avatars.length, size: 36, ring: false),
@@ -1039,7 +1090,8 @@ class _CloudUsersState extends State<_CloudUsers> {
                           '  •  ID ${(u['profile'] as Map?)?['sid'] ?? defaultPlayerId(u['uid'] as String)}'
                           '${vipLevelFor(((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0) > 0 ? '  •  👑 VIP${vipLevelFor(((u['profile'] as Map?)?['vp'] as num?)?.toInt() ?? 0)}' : ''}'
                           '${_pendingGrants(u) > 0 ? '  •  ⏳ ${_pendingGrants(u)} شحن بانتظار دخول اللاعب' : ''}'
-                          '${same(u) > 1 ? '  •  ⚠️ ${same(u)} حسابات بنفس الجهاز' : ''}${_banOf(u) == null ? '' : '  •  ${_banOf(u)!.full ? '🚫 محظور' : '⛔ مقيد'} (${_banOf(u)!.remaining()})'}',
+                          '${same(u) > 1 ? '  •  ⚠️ ${same(u)} حسابات بنفس الجهاز' : ''}${_banOf(u) == null ? '' : '  •  ${_banOf(u)!.full ? '🚫 محظور' : '⛔ مقيد'} (${_banOf(u)!.remaining()})'}'
+                          '${(u['geo'] as Map?)?['country'] != null ? '  •  ${flagOf((u['geo'] as Map)['cc'] as String?)} ${(u['geo'] as Map)['country']}' : ''}',
                           style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                         ),
                       ]),
@@ -1062,6 +1114,7 @@ class _CloudUsersState extends State<_CloudUsers> {
                           color: const Color(0xFFFF7A7A)),
                     ),
                   ]),
+                ),
                 ),
             ],
           ),

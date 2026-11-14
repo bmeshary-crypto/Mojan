@@ -224,6 +224,49 @@ class ProfilePost {
   );
 }
 
+/// حدث في سجل نشاط اللاعب (يظهر للإدارة في صفحة المستخدم).
+/// k: game (مباراة)، bet (جولات ألعاب العملات)، buy، gift، reward، admin، room، login، diamonds.
+class ActEntry {
+  ActEntry({required this.kind, required this.text, this.coins = 0, this.game, DateTime? at, this.count = 1, this.bet = 0, this.won = 0})
+      : at = at ?? DateTime.now();
+  final String kind;
+  String text;
+  /// التغير في العملات بسبب هذا الحدث (موجب = دخل، سالب = صرف).
+  int coins;
+  final String? game;
+  DateTime at;
+  /// لجولات ألعاب العملات المتتالية: عدد الجولات ومجموع الرهان والربح.
+  int count;
+  int bet;
+  int won;
+
+  Map<String, dynamic> toJson() => {
+    'k': kind,
+    'x': text,
+    if (coins != 0) 'c': coins,
+    'g': ?game,
+    't': at.millisecondsSinceEpoch,
+    if (count != 1) 'n': count,
+    if (bet != 0) 'b': bet,
+    if (won != 0) 'w': won,
+  };
+
+  static ActEntry? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final t = j['t'];
+    return ActEntry(
+      kind: j['k'] as String? ?? 'other',
+      text: j['x'] as String? ?? '',
+      coins: (j['c'] as num?)?.toInt() ?? 0,
+      game: j['g'] as String?,
+      at: t is num ? DateTime.fromMillisecondsSinceEpoch(t.toInt()) : null,
+      count: (j['n'] as num?)?.toInt() ?? 1,
+      bet: (j['b'] as num?)?.toInt() ?? 0,
+      won: (j['w'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class PlayerProfile {
   PlayerProfile({
     required this.id,
@@ -253,7 +296,9 @@ class PlayerProfile {
     this.vipPoints = 0,
     this.lastVipDaily,
     this.specialId,
+    List<ActEntry>? activity,
   }) : posts = posts ?? [],
+       activity = activity ?? [],
        stats = stats ?? {},
        unlocked = unlocked ?? {},
        inventory = inventory ?? {},
@@ -284,6 +329,10 @@ class PlayerProfile {
   /// ID مميز محجوز (VIP3 فأعلى)، وإلا يظهر الـ ID العادي من 8 أرقام.
   String? specialId;
   String get displayId => specialId ?? defaultPlayerId(id);
+
+  /// سجل النشاط (آخر [maxActivity] حدث، الأحدث أولاً).
+  final List<ActEntry> activity;
+  static const maxActivity = 120;
 
   /// الملف الشخصي: النبذة والمنشورات.
   String bio;
@@ -367,6 +416,7 @@ class PlayerProfile {
     'vp': vipPoints,
     'vd': lastVipDaily,
     'sid': specialId,
+    'act': activity.map((e) => e.toJson()).toList(),
   };
 
   factory PlayerProfile.fromJson(Map<String, dynamic> j) => PlayerProfile(
@@ -404,6 +454,10 @@ class PlayerProfile {
     vipPoints: (j['vp'] as num?)?.toInt() ?? 0,
     lastVipDaily: j['vd'] as String?,
     specialId: j['sid'] as String?,
+    activity: [
+      for (final e in (j['act'] as List? ?? const []))
+        ?ActEntry.fromJson(e),
+    ],
   );
 }
 
@@ -584,6 +638,42 @@ class Account extends ChangeNotifier {
     await _save();
   }
 
+  // ---- سجل النشاط ----
+
+  /// يضيف حدثاً لسجل نشاط اللاعب (يُرفع للسحابة مع الملف ويظهر للإدارة).
+  void log(String kind, String text, {int coins = 0, String? game, bool save = false}) {
+    final p = profile;
+    if (p == null) return;
+    p.activity.insert(0, ActEntry(kind: kind, text: text, coins: coins, game: game));
+    _trimActivity(p);
+    if (save) _save();
+  }
+
+  void _trimActivity(PlayerProfile p) {
+    while (p.activity.length > PlayerProfile.maxActivity) {
+      p.activity.removeLast();
+    }
+  }
+
+  /// جولات ألعاب العملات المتتالية لنفس اللعبة خلال 15 دقيقة تُجمع في سطر واحد.
+  void _logRound(PlayerProfile p, String game, int bet, int won) {
+    final now = DateTime.now();
+    final last = p.activity.isEmpty ? null : p.activity.first;
+    if (last != null && last.kind == 'bet' && last.game == game && now.difference(last.at).inMinutes < 15) {
+      last
+        ..count += 1
+        ..bet += bet
+        ..won += won
+        ..coins = last.won - last.bet
+        ..at = now;
+    } else {
+      p.activity.insert(0, ActEntry(kind: 'bet', text: '', game: game, bet: bet, won: won, coins: won - bet));
+      _trimActivity(p);
+    }
+    final e = p.activity.first;
+    e.text = '${gameTitles[game] ?? game}: ${e.count} جولة، راهن ${e.bet} وربح ${e.won}';
+  }
+
   /// سجل مباريات هذا الجهاز (تعرضه لوحة الأدمن).
   final List<MatchRecord> matchLog = [];
 
@@ -614,6 +704,13 @@ class Account extends ChangeNotifier {
     final coins = won ? 100 : 25;
     p.xp += xp;
     p.coins += coins;
+    p.activity.insert(0, ActEntry(
+      kind: 'game',
+      game: game,
+      coins: coins,
+      text: 'لعب ${gameTitles[game] ?? game}: ${won ? 'فاز 🏆' : 'خسر'}${points > 0 ? ' ($points نقطة)' : ''}',
+    ));
+    _trimActivity(p);
     final unlocked = _checkAchievements();
     _save();
     return Reward(
@@ -663,6 +760,7 @@ class Account extends ChangeNotifier {
     p.lastDaily = _day(now);
     final gift = dailyGifts[(p.dailyStreak - 1) % 7];
     p.coins += gift.coins;
+    log('reward', 'استلم بونص اليوم ${p.dailyStreak}', coins: gift.coins);
     gift.items.forEach((i, n) => p.inventory[i.name] = p.itemCount(i) + n);
     if (gift.skin != null) {
       // إذا كان يملكه يأخذ قيمته عملات
@@ -696,15 +794,17 @@ class Account extends ChangeNotifier {
     if (p == null || chestWait(now: now) > Duration.zero) return null;
     p.lastChest = now;
     p.coins += chestCoins;
+    log('reward', 'فتح الصندوق المجاني', coins: chestCoins);
     _save();
     return chestCoins;
   }
 
-  bool spend(int coins) {
+  bool spend(int coins, {String? reason, String kind = 'spend', String? game}) {
     if (coins > 0 && Restrictions.instance.check('coins') != null) return false;
     final p = profile;
     if (p == null || coins < 0 || p.coins < coins) return false;
     p.coins -= coins;
+    if (reason != null) log(kind, reason, coins: -coins, game: game);
     _save();
     return true;
   }
@@ -713,6 +813,7 @@ class Account extends ChangeNotifier {
   void recordSkyRound({required int bet, required int won}) {
     final p = profile;
     if (p == null || bet <= 0) return;
+    _logRound(p, 'sky_wheel', bet, won);
     final s = p.statsFor('sky_wheel')
       ..played += 1
       ..points += won;
@@ -725,6 +826,7 @@ class Account extends ChangeNotifier {
   void recordCoinRound(String game, {required int bet, required int won}) {
     final p = profile;
     if (p == null || bet <= 0) return;
+    _logRound(p, game, bet, won);
     final s = p.statsFor(game)
       ..played += 1
       ..points += won;
@@ -740,9 +842,10 @@ class Account extends ChangeNotifier {
   }
 
   /// ماسات من هدايا الناس.
-  void addDiamonds(int n) {
+  void addDiamonds(int n, {String? from}) {
     if (profile == null || n <= 0) return;
     profile!.diamonds += n;
+    log('diamonds', 'وصله $n 💎 من هدية${from == null ? '' : ' $from'}');
     _save();
   }
 
@@ -752,6 +855,7 @@ class Account extends ChangeNotifier {
     if (p == null || n <= 0 || p.diamonds < n) return false;
     p.diamonds -= n;
     p.coins += n;
+    log('diamonds', 'بدّل $n 💎 إلى عملات', coins: n);
     _save();
     notifyListeners();
     return true;
@@ -769,6 +873,7 @@ class Account extends ChangeNotifier {
     if (p.diamonds < price) return 'ماساتك لا تكفي';
     p.diamonds -= price;
     p.owned.add(item.id);
+    log('buy', 'اشترى ${item.title} بـ $price 💎');
     _save();
     return null;
   }
@@ -853,6 +958,7 @@ class Account extends ChangeNotifier {
     final coins = vipTier(p.vipLevel)!.daily;
     p.lastVipDaily = _today(now);
     p.coins += coins;
+    log('reward', 'مكافأة VIP${p.vipLevel} اليومية', coins: coins);
     _save();
     return coins;
   }
@@ -868,6 +974,7 @@ class Account extends ChangeNotifier {
     final price = priceFor(item);
     if (p.coins < price) return 'عملاتك لا تكفي';
     p.coins -= price;
+    log('buy', 'اشترى ${item.title} من المتجر', coins: -price);
     addVip(price, save: false);
     switch (item.kind) {
       case ShopKind.dice:
@@ -910,6 +1017,9 @@ class Account extends ChangeNotifier {
   }
 
   // ---------- الملف الشخصي ----------
+
+  /// حفظ وتحديث الواجهة بعد تعديل مباشر على الملف (مثل تعديلات الإدارة).
+  void touch() => _save();
 
   void setBio(String bio) {
     final p = profile;

@@ -909,7 +909,10 @@ class VoiceService extends ChangeNotifier {
       r.messages.add(VoiceMessage(kind: VoiceMsgKind.join, text: 'دخل الغرفة', user: me()));
     }
     if (r.system != null) SystemRooms.instance.entered(r);
-    if (!hidden) _markVisited(r);
+    if (!hidden) {
+      _markVisited(r);
+      Account.instance.log('room', 'دخل غرفة ${r.title}');
+    }
     Cloud.instance.setWhere('🎙️ ${r.title}');
     notifyListeners();
     return null;
@@ -1186,7 +1189,7 @@ class VoiceService extends ChangeNotifier {
     final noCoins = Restrictions.instance.check('coins');
     if (noCoins != null) return noCoins;
     final cost = g.price * count * to.length;
-    if (!Account.instance.spend(cost)) return 'عملاتك لا تكفي';
+    if (!Account.instance.spend(cost, reason: 'أرسل ${g.title} ×$count إلى ${to.length == 1 ? to.first.name : '${to.length} أشخاص'} في ${r.title}', kind: 'gift')) return 'عملاتك لا تكفي';
     Account.instance.addVip(cost);
     r.heat += cost;
     final from = me();
