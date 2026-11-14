@@ -14,6 +14,7 @@ import '../../core/sfx.dart';
 import '../../core/theme.dart';
 import '../../widgets/animated_background.dart';
 import '../../widgets/game_ui.dart';
+import 'arena_camera.dart';
 import 'arena_engine.dart';
 import 'arena_painter.dart';
 
@@ -247,7 +248,6 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
   Offset? _landing;
 
   bool _mouse = false;
-  Offset? _mouseAim;
   bool _mouseFire = false;
   bool _ended = false;
 
@@ -255,6 +255,8 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
 
   // الكاميرا: تتبع ناعم + نظرة للأمام باتجاه التصويب + اهتزاز
   Offset _cam = Offset.zero;
+  final _camera = ArenaCamera();
+  Offset? _mousePos;
   Offset _look = Offset.zero;
   Offset _camShake = Offset.zero;
   final _rng = Random();
@@ -313,6 +315,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     _readInput();
     g.update(dt, _input);
     _updateCamera(dt);
+    _camera.update(_size, _cam + _camShake, _scale);
     _trackKills();
     _playSounds();
     _frame.value++;
@@ -354,6 +357,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     g.start(landing);
     _cam = g.player.pos;
     _look = Offset.zero;
+    _camera.update(_size, _cam, _scale);
     Sfx.instance.whistle();
     setState(() => _dropping = false);
   }
@@ -368,13 +372,18 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     final kx = k(LogicalKeyboardKey.keyD, LogicalKeyboardKey.arrowRight) - k(LogicalKeyboardKey.keyA, LogicalKeyboardKey.arrowLeft);
     final ky = k(LogicalKeyboardKey.keyS, LogicalKeyboardKey.arrowDown) - k(LogicalKeyboardKey.keyW, LogicalKeyboardKey.arrowUp);
     if (kx != 0 || ky != 0) mv = Offset(kx, ky) / Offset(kx, ky).distance;
+    // العصا على الشاشة المائلة: نصحح الاتجاه ليطابق الأرض
+    if (mv != Offset.zero && _left.pointer != null) {
+      final w = _camera.screenDirToWorld(mv);
+      mv = w / w.distance * min(1.0, mv.distance);
+    }
     _input.move = mv;
 
     if (_right.pointer != null && _right.v.distance > 14) {
-      _input.aim = _assist(_right.v);
+      _input.aim = _assist(_camera.screenDirToWorld(_right.v));
       _input.fire = _right.v.distance > 26;
-    } else if (_mouse && _mouseAim != null) {
-      _input.aim = _mouseAim;
+    } else if (_mouse && _mousePos != null) {
+      _input.aim = _camera.unproject(_mousePos!, ArenaPainter.fighterH) - g.player.pos;
       _input.fire = _mouseFire || _keys.contains(LogicalKeyboardKey.space);
     } else {
       _input.aim = null;
@@ -514,8 +523,8 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
 
   /// موقع الماوس على الشاشة → اتجاه من اللاعب (مع مراعاة حركة الكاميرا).
   Offset _toAim(Offset p) {
-    final playerOnScreen = Offset(_size.width / 2, _size.height / 2) + (g.player.pos - _cam) * _scale;
-    return p - playerOnScreen;
+    _mousePos = p;
+    return _camera.unproject(p, ArenaPainter.fighterH) - g.player.pos;
   }
 
   void _down(PointerDownEvent e) {
@@ -523,7 +532,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
     if (e.kind == PointerDeviceKind.mouse) {
       _mouse = true;
       _mouseFire = true;
-      _mouseAim = _toAim(e.localPosition);
+      _toAim(e.localPosition);
       return;
     }
     _mouse = false;
@@ -537,7 +546,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
 
   void _move(PointerMoveEvent e) {
     if (e.kind == PointerDeviceKind.mouse) {
-      _mouseAim = _toAim(e.localPosition);
+      _toAim(e.localPosition);
       return;
     }
     for (final s in [_left, _right]) {
@@ -641,7 +650,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
             cursor: SystemMouseCursors.precise,
             onHover: (e) {
               _mouse = true;
-              _mouseAim = _toAim(e.localPosition);
+              _toAim(e.localPosition);
             },
             child: Listener(
               behavior: HitTestBehavior.opaque,
@@ -652,7 +661,7 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: ArenaPainter(g, decor,
-                      scale: scale, repaint: _frame, cam: () => _cam + _camShake, aim: () => _input.aim),
+                      scale: scale, repaint: _frame, cam: () => _cam + _camShake, aim: () => _input.aim, camera: _camera),
                   size: Size.infinite,
                 ),
               ),
@@ -708,11 +717,11 @@ class _ArenaMatchScreenState extends State<ArenaMatchScreen> with SingleTickerPr
   }
 
   Offset _hitPoint() {
-    final center = Offset(_size.width / 2, _size.height / 2) + (g.player.pos - _cam) * _scale;
+    final me = g.player.pos;
     final aim = _input.aim;
-    if (aim == null || aim.distance == 0) return center;
-    if (_mouse && _mouseAim != null) return center + _mouseAim!;
-    return center + aim / aim.distance * 110 * _scale;
+    if (_mouse && _mousePos != null) return _mousePos!;
+    if (aim == null || aim.distance == 0) return _camera.project(me, ArenaPainter.fighterH);
+    return _camera.project(me + aim / aim.distance * 110, ArenaPainter.fighterH);
   }
 
   Widget _hudLayer() {
