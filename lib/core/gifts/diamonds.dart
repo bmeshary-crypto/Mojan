@@ -66,7 +66,7 @@ class Diamonds {
       if (got == null) return;
       final n = diamondsFor((got['coins'] as num?)?.toInt() ?? 0);
       if (n <= 0) return;
-      Account.instance.addDiamonds(n);
+      Account.instance.addDiamonds(n, from: '${got['gift'] ?? ''} من ${got['fromName'] ?? 'لاعب'}'.trim());
       Cloud.instance.notice.value = '💎 وصلتك $n ماسة من هدية ${got['fromName'] ?? 'لاعب'}';
     } catch (e) {
       debugPrint('claim gift: $e');

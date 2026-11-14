@@ -73,7 +73,7 @@ class _LudoScreenState extends State<LudoScreen> {
   /// يبدأ مباراة جديدة ويخصم رسوم الدخول إن وُجدت.
   void _start() {
     final s = _setupData;
-    if (s.entry > 0 && !Account.instance.spend(s.entry)) {
+    if (s.entry > 0 && !Account.instance.spend(s.entry, reason: 'رسوم دخول لودو ${s.entry}', kind: 'bet', game: 'ludo')) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(duration: const Duration(seconds: 2), persist: false, 
@@ -942,7 +942,7 @@ class _LudoTableState extends State<_LudoTable> {
       ),
     );
     if (ok != true || _disposed) return;
-    if (!Account.instance.spend(price)) {
+    if (!Account.instance.spend(price, reason: 'اشترى أداة داخل لودو', kind: 'buy', game: 'ludo')) {
       setState(() => _status = 'عملاتك ما تكفي');
       return;
     }
