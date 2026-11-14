@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../screens/coming_soon_screen.dart';
 import '../screens/online_lobby.dart';
 import '../widgets/game_icons.dart';
+import 'arena/arena_screen.dart';
 import 'blocks/blocks_screen.dart';
 import 'coin_games/fruits.dart';
 import 'coin_games/lucky_slots.dart';
@@ -84,6 +85,16 @@ class GameRegistry {
       screenBuilder: (_, mode) => mode == PlayMode.online
           ? ComingSoonScreen(gameId: 'truth_dare', mode: mode)
           : TruthDareScreen(mode: mode),
+    ),
+    GameModule(
+      id: 'arena',
+      title: 'ساحة البقاء',
+      tagline: 'آخر واحد يبقى هو البطل',
+      colors: arenaColors,
+      players: '20',
+      modes: const [PlayMode.vsComputer],
+      iconBuilder: (_) => const GameArt('assets/images/arena.webp', fallback: EmojiArt('🪂', small: '🎯🛡️')),
+      screenBuilder: (_, _) => const ArenaScreen(),
     ),
     GameModule(
       id: 'sky_wheel',
