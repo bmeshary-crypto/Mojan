@@ -59,6 +59,7 @@ const gameTitles = {
   'truth_dare': 'صراحة أو جرأة',
   'blocks': 'مكعبات',
   'arena': 'ساحة البقاء',
+  'football': 'كرة القدم 3D',
   'sky_wheel': 'عجلة السماء',
   'fruits': 'سوق الفواكه',
   'star_league': 'دوري النجوم',

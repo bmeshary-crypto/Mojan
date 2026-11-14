@@ -7,6 +7,7 @@ import '../screens/online_lobby.dart';
 import '../widgets/game_icons.dart';
 import 'arena/arena_screen.dart';
 import 'blocks/blocks_screen.dart';
+import 'football/football_screen.dart';
 import 'coin_games/fruits.dart';
 import 'coin_games/lucky_slots.dart';
 import 'coin_games/star_league.dart';
@@ -95,6 +96,16 @@ class GameRegistry {
       modes: const [PlayMode.vsComputer],
       iconBuilder: (_) => const GameArt('assets/images/arena.webp', fallback: EmojiArt('🪂', small: '🎯🛡️')),
       screenBuilder: (_, _) => const ArenaScreen(),
+    ),
+    GameModule(
+      id: 'football',
+      title: 'كرة القدم 3D',
+      tagline: 'مباراة 11 ضد 11 بملعب حقيقي',
+      colors: footballColors,
+      players: '1',
+      modes: const [PlayMode.vsComputer],
+      iconBuilder: (_) => const GameArt('assets/images/football.webp', fallback: EmojiArt('⚽', small: '🏟️🥅')),
+      screenBuilder: (_, _) => const FootballScreen(),
     ),
     GameModule(
       id: 'sky_wheel',
