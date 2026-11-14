@@ -75,6 +75,10 @@ class Obstacle {
   final double r;
   final Rect? rect;
   bool get isBox => rect != null;
+
+  /// صحة البراميل (تنفجر عند الصفر).
+  double hp = 30;
+  bool destroyed = false;
 }
 
 class Building {
@@ -99,6 +103,10 @@ class Pickup {
   final int amount;
   final int? loaded;
   bool taken = false;
+
+  /// وقت ظهوره (لحركة القفز) ومن أين طار (عند سقوطه من مقاتل).
+  double born = -10;
+  Offset? from;
 }
 
 // ───────────────────────── المقاتلون ─────────────────────────
@@ -143,6 +151,12 @@ class Fighter {
   Offset lastPos = Offset.zero;
   double stuckT = 0;
 
+  // للحركة: مقدار المشي (0..1) وطور الخطوات، ومكان الإطار السابق
+  double moveAmt = 0;
+  double walkT = 0;
+  Offset prevPos = Offset.zero;
+  double dustT = 0;
+
   Gun? get gun => slots[active];
   bool get reloading => reloadLeft > 0;
 }
@@ -169,12 +183,17 @@ class KillEvent {
 
 /// أثر بصري مؤقت (شرارة/رقم ضرر).
 class Fx {
-  Fx(this.pos, this.kind, {this.value = 0, this.life = .5});
+  Fx(this.pos, this.kind, {this.value = 0, this.life = .5, this.vel = Offset.zero, this.rot = 0, this.spin = 0});
   Offset pos;
-  final String kind; // hit, dmg, puff, blood
+
+  /// hit, dmg, puff, blood, shell, smoke, spark, boom, ring, dust, splat, corpse, debris
+  final String kind;
   final double value;
   double life;
   double age = 0;
+  Offset vel;
+  double rot;
+  final double spin;
 }
 
 // ───────────────────────── المنطقة ─────────────────────────
@@ -263,6 +282,15 @@ class ArenaGame {
 
   double time = 0;
   bool started = false;
+
+  /// اهتزاز الكاميرا (يخف مع الوقت) وعلامة إصابة اللاعب لهدف.
+  double shake = 0;
+  double hitMarker = 0;
+  bool hitKill = false;
+
+  /// آخر إقصاءات اللاعب (لشارة السلسلة) ووقت بدء تقدم العاصفة.
+  final playerKillTimes = <double>[];
+  double zoneWarnAt = -100;
   bool over = false;
 
   // المنطقة
@@ -506,11 +534,17 @@ class ArenaGame {
     _updateZone(dt);
 
     final me = player;
+    shake = max(0, shake - dt * 3);
+    hitMarker = max(0, hitMarker - dt);
+    for (final f in fighters) {
+      f.prevPos = f.pos;
+    }
     if (me.alive) _control(me, dt, input);
     for (final f in fighters) {
       if (!f.alive) continue;
       if (!f.isPlayer) _bot(f, dt);
       _tickTimers(f, dt);
+      _walk(f, dt);
       if (!inZone(f.pos)) {
         _damage(f, zoneDps * dt, null, zone: true);
       }
@@ -518,8 +552,14 @@ class ArenaGame {
     _updateBullets(dt);
     for (final e in fx) {
       e.age += dt;
+      if (e.vel != Offset.zero) {
+        e.pos += e.vel * dt;
+        e.vel *= pow(e.kind == 'smoke' ? .3 : .02, dt).toDouble();
+        e.rot += e.spin * dt * (e.vel.distance / 200).clamp(0, 1);
+      }
     }
     fx.removeWhere((e) => e.age >= e.life);
+    if (fx.length > 450) fx.removeRange(0, fx.length - 450);
     if (feed.length > 6) feed.removeRange(0, feed.length - 6);
 
     final alive = fighters.where((f) => f.alive).toList();
@@ -539,6 +579,7 @@ class ArenaGame {
         phaseT = 0;
         zoneFromC = zoneC;
         zoneFromR = zoneR;
+        zoneWarnAt = time;
         sounds.add(('zone', 0));
       }
     } else {
@@ -606,6 +647,25 @@ class ArenaGame {
     }
     if (input.fire) tryFire(f);
     _autoPickup(f);
+  }
+
+  /// قريب من الكاميرا؟ (لا نصنع مؤثرات لا يراها أحد)
+  bool nearCam(Offset p, [double r = 900]) => (p - player.pos).distance < r;
+
+  void _walk(Fighter f, double dt) {
+    final sp = dt > 0 ? (f.pos - f.prevPos).distance / dt : 0.0;
+    final target = (sp / 200).clamp(0.0, 1.0);
+    f.moveAmt += (target - f.moveAmt) * min(1, dt * 10);
+    f.walkT += dt * 11 * f.moveAmt;
+    if (f.moveAmt > .5 && nearCam(f.pos)) {
+      f.dustT -= dt;
+      if (f.dustT <= 0) {
+        f.dustT = .22;
+        final back = (f.prevPos - f.pos);
+        final dir = back.distance > 0 ? back / back.distance : Offset.zero;
+        fx.add(Fx(f.pos + dir * 12, 'dust', life: .5, vel: dir * 30, value: .6));
+      }
+    }
   }
 
   // ── الحركة والتصادم ──
@@ -721,6 +781,19 @@ class ArenaGame {
       bullets.add(b);
     }
     sounds.add(('shot_${k.name}', (f.pos - player.pos).distance));
+    if (nearCam(f.pos)) {
+      final dir = Offset(cos(f.angle), sin(f.angle));
+      final side = Offset(-dir.dy, dir.dx);
+      final tip = f.pos + dir * 46;
+      fx.add(Fx(tip, 'smoke', life: .6, vel: dir * 60 + side * (rng.nextDouble() - .5) * 30, value: k.pellets > 1 || k == WeaponKind.sniper ? 1.6 : 1));
+      fx.add(Fx(f.pos + dir * 14 + side * 10, 'shell',
+          life: 1.4,
+          vel: side * (140 + rng.nextDouble() * 80) - dir * 40,
+          rot: rng.nextDouble() * 6,
+          spin: 18,
+          value: k == WeaponKind.shotgun ? 2 : 1));
+    }
+    if (f.isPlayer) shake = min(1.0, shake + (k == WeaponKind.sniper || k == WeaponKind.shotgun ? .5 : .12));
     if (g.loaded == 0) reload(f);
     return true;
   }
@@ -758,10 +831,14 @@ class ArenaGame {
       b.left -= step.distance;
       double? hitT;
       Fighter? hitF;
+      Obstacle? hitO;
       for (final o in obstacles) {
         if ((o.c - from).distance > o.r + step.distance + 4) continue;
         final t = _segHit(from, to, o);
-        if (t != null && (hitT == null || t < hitT)) hitT = t;
+        if (t != null && (hitT == null || t < hitT)) {
+          hitT = t;
+          hitO = o;
+        }
       }
       for (final f in fighters) {
         if (!f.alive || f.id == b.owner) continue;
@@ -777,16 +854,72 @@ class ArenaGame {
         to = from + step * hitT;
         b.left = -1;
         if (hitF != null) {
+          final wasAlive = hitF.alive;
           _damage(hitF, b.damage, b.owner, weapon: b.kind);
+          final dir = b.vel / b.vel.distance;
           fx.add(Fx(to, 'blood', life: .35));
-          fx.add(Fx(hitF.pos + const Offset(0, -30), 'dmg', value: b.damage, life: .7));
+          if (nearCam(to)) {
+            for (var i = 0; i < 3; i++) {
+              fx.add(Fx(to, 'spark', life: .3, vel: Offset.fromDirection(dir.direction + (rng.nextDouble() - .5) * 1.2, 160 + rng.nextDouble() * 120), value: 1));
+            }
+            fx.add(Fx(to + dir * (8 + rng.nextDouble() * 14), 'splat', life: 6, rot: rng.nextDouble() * 6, value: .6 + rng.nextDouble() * .6));
+          }
+          fx.add(Fx(hitF.pos + const Offset(0, -30), 'dmg', value: b.damage, life: .8, vel: Offset((rng.nextDouble() - .5) * 60, -50)));
+          if (b.owner == 0) {
+            hitMarker = .25;
+            hitKill = wasAlive && !hitF.alive;
+          }
+          if (hitF.isPlayer) shake = min(1.0, shake + .35);
         } else {
           fx.add(Fx(to, 'hit', life: .25));
+          if (nearCam(to)) {
+            final n = -(b.vel / b.vel.distance);
+            for (var i = 0; i < 4; i++) {
+              fx.add(Fx(to, 'spark', life: .25, vel: Offset.fromDirection(n.direction + (rng.nextDouble() - .5) * 1.6, 120 + rng.nextDouble() * 160)));
+            }
+            if (hitO != null && hitO.kind != ObstacleKind.barrel) {
+              fx.add(Fx(to, 'smoke', life: .5, vel: n * 30, value: .7));
+            }
+          }
+          if (hitO != null && hitO.kind == ObstacleKind.barrel && !hitO.destroyed) {
+            hitO.hp -= b.damage;
+            if (hitO.hp <= 0) _explode(hitO, b.owner);
+          }
         }
       }
       b.pos = to;
     }
     bullets.removeWhere((b) => b.left <= 0);
+    if (obstacles.any((o) => o.destroyed)) obstacles.removeWhere((o) => o.destroyed);
+  }
+
+  /// انفجار برميل: ضرر حوله ومؤثرات واهتزاز.
+  void _explode(Obstacle o, int? by) {
+    o.destroyed = true;
+    const radius = 140.0;
+    fx.add(Fx(o.c, 'boom', life: .55, value: radius));
+    fx.add(Fx(o.c, 'ring', life: .5, value: radius * 1.3));
+    fx.add(Fx(o.c, 'splat', life: 12, value: 2.2, rot: 1));
+    for (var i = 0; i < 10; i++) {
+      final a = rng.nextDouble() * pi * 2;
+      fx.add(Fx(o.c, 'debris', life: .9, vel: Offset.fromDirection(a, 200 + rng.nextDouble() * 260), rot: a, spin: 14));
+      fx.add(Fx(o.c + Offset.fromDirection(a, 20), 'smoke', life: 1.4, vel: Offset.fromDirection(a, 80), value: 2.4));
+    }
+    final d = (o.c - player.pos).distance;
+    shake = min(1.0, shake + (1 - d / 700).clamp(0, 1));
+    sounds.add(('boom', d));
+    for (final f in fighters) {
+      if (!f.alive) continue;
+      final fd = (f.pos - o.c).distance;
+      if (fd < radius) _damage(f, 70 * (1 - fd / radius) + 10, by, weapon: null);
+    }
+    // البراميل القريبة تنفجر بالتسلسل
+    for (final other in obstacles) {
+      if (other.kind == ObstacleKind.barrel && !other.destroyed && (other.c - o.c).distance < radius) {
+        other.hp = -1;
+        _explode(other, by);
+      }
+    }
   }
 
   void _damage(Fighter f, double dmg, int? by, {WeaponKind? weapon, bool zone = false}) {
@@ -819,6 +952,10 @@ class ArenaGame {
     feed.add(KillEvent(killer?.name, f.name, weapon, time, zone: zone));
     sounds.add((killer?.isPlayer == true ? 'kill' : 'death', (f.pos - player.pos).distance));
     fx.add(Fx(f.pos, 'puff', life: .6));
+    fx.add(Fx(f.pos, 'corpse', life: 5, rot: f.angle, value: f.skin.toDouble()));
+    fx.add(Fx(f.pos, 'splat', life: 10, value: 1.4, rot: rng.nextDouble() * 6));
+    if (killer?.isPlayer == true) playerKillTimes.add(time);
+    final dropsFrom = pickups.length;
     // تسقط أغراضه
     var i = 0;
     Offset spot() {
@@ -837,6 +974,11 @@ class ArenaGame {
     if (f.medkits > 0) pickups.add(Pickup(PickupKind.medkit, spot(), amount: f.medkits));
     if (f.bandages > 0) pickups.add(Pickup(PickupKind.bandage, spot(), amount: f.bandages));
     if (f.armor > 10) pickups.add(Pickup(PickupKind.armor, spot(), amount: f.armor.round()));
+    for (var k = dropsFrom; k < pickups.length; k++) {
+      pickups[k]
+        ..born = time
+        ..from = f.pos;
+    }
   }
 
   // ── الالتقاط ──
@@ -897,7 +1039,9 @@ class ArenaGame {
     if (slot < 0) {
       slot = f.active;
       final old = f.slots[slot]!;
-      pickups.add(Pickup(PickupKind.weapon, f.pos + const Offset(0, 26), weapon: old.kind, loaded: old.loaded));
+      pickups.add(Pickup(PickupKind.weapon, f.pos + const Offset(0, 26), weapon: old.kind, loaded: old.loaded)
+        ..born = time
+        ..from = f.pos);
     }
     f.slots[slot] = Gun(w, p.loaded);
     f.active = slot;
